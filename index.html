@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Asistencia QR</title>
+    <!-- Librería para generar QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
+    <!-- Librería para LEER QR -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        /* --- DEFINICIÓN DE TEMAS (VARIABLES CSS) --- */
+        :root {
+            --bg-color: #0a0e27;
+            --card-bg: #151b35;
+            --accent-color: #00d4ff;
+            --text-color: #ffffff;
+            --text-muted: #8b92b0;
+            --border-color: #1f2744;
+            --success-color: #10b981;
+            --danger-color: #ef4444;
+            --warning-color: #f59e0b;
+            --extra-color: #3b82f6;
+            --whatsapp-color: #25D366;
+            --input-bg: #1a2040;
+            --nav-bg: rgba(10, 14, 39, 0.95);
+        }
+
+        /* Tema Claro */
+        [data-theme="light"] {
+            --bg-color: #f3f4f6;
+            --card-bg: #ffffff;
+            --accent-color: #2563eb;
+            --text-color: #111827;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+            --success-color: #059669;
+            --danger-color: #dc2626;
+            --warning-color: #d97706;
+            --extra-color: #4f46e5;
+            --whatsapp-color: #16a34a;
+            --input-bg: #f9fafb;
+            --nav-bg: rgba(255, 255, 255, 0.95);
+        }
+
+        /* Tema Alto Contraste */
+        [data-theme="contrast"] {
+            --bg-color: #000000;
+            --card-bg: #000000;
+            --accent-color: #ffff00;
+            --text-color: #ffffff;
+            --text-muted: #e5e5e5;
+            --border-color: #ffffff;
+            --success-color: #00ff00;
+            --danger-color: #ff0000;
+            --warning-color: #ffa500;
+            --extra-color: #00ffff;
+            --input-bg: #000000;
+            --nav-bg: #000000;
+        }
+
+        /* Tema Océano */
+        [data-theme="ocean"] {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --success-color: #2dd4bf;
+            --danger-color: #f43f5e;
+            --warning-color: #fbbf24;
+            --extra-color: #818cf8;
+            --input-bg: #0f172a;
+            --nav-bg: rgba(15, 23, 42, 0.95);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-color);
+            min-height: 100vh;
+            color: var(--text-color);
+            padding-bottom: 90px;
+            overscroll-behavior-y: none;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* --- Header & Nav --- */
+        .top-nav {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: var(--nav-bg);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            border-bottom: 1px solid var(--border-color);
+            transition: background-color 0.3s ease;
+        }
+
+        .nav-tab {
+            flex: 1;
+            padding: 10px;
+            border-radius: 12px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .nav-tab.active {
+            background: var(--card-bg);
+            border-color: var(--accent-color);
+            color: var(--text-color);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        [data-theme="contrast"] .nav-tab.active {
+            background: var(--accent-color);
+            color: black;
+            font-weight: 800;
+        }
+
+        .menu-btn {
+            padding: 10px;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .menu-btn:active { transform: scale(0.95); }
+
+        /* --- Selector de Vista --- */
+        .view-selector { padding: 16px 16px 8px 16px; }
+
+        .view-mode-pills {
+            display: flex;
+            background: var(--input-bg);
+            padding: 4px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            position: relative;
+        }
+
+        .view-btn {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: none;
+            border-radius: 12px;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+            z-index: 1;
+        }
+
+        .view-btn.active {
+            background: var(--accent-color);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        [data-theme="light"] .view-btn.active { color: white; }
+        [data-theme="contrast"] .view-btn.active { color: black; font-weight: 800; }
+
+        /* --- Panel de Control --- */
+        .dashboard-panel { padding: 16px; background: var(--bg-color); transition: background-color 0.3s ease; }
+
+        .date-nav {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px; background: var(--card-bg);
+            padding: 6px; border-radius: 16px; border: 1px solid var(--border-color);
+        }
+
+        .nav-arrow {
+            background: transparent; border: none; color: var(--accent-color);
+            font-size: 20px; width: 44px; height: 44px; cursor: pointer;
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        }
+        .nav-arrow:active { background: var(--border-color); }
+
+        .current-date-wrapper { position: relative; flex: 1; text-align: center; height: 44px; display: flex; align-items: center; justify-content: center; }
+        .current-date-display { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
+        #date-picker-trigger { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; }
+
+        /* --- Stats --- */
+        .stats-filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+
+        .stat-card {
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 14px; padding: 12px 2px; text-align: center;
+            cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+        }
+        .stat-card:active { transform: scale(0.95); }
+
+        .stat-card.active {
+            background: var(--input-bg);
+            border-color: var(--accent-color);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .stat-card.active::after {
+            content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+            width: 40%; height: 3px; background: var(--accent-color); border-radius: 3px 3px 0 0;
+        }
+
+        .stat-card[data-filter="present"].active { border-color: var(--success-color); }
+        .stat-card[data-filter="present"].active::after { background: var(--success-color); }
+        .stat-card[data-filter="extra"].active { border-color: var(--extra-color); }
+        .stat-card[data-filter="extra"].active::after { background: var(--extra-color); }
+        .stat-card[data-filter="absent"].active { border-color: var(--danger-color); }
+        .stat-card[data-filter="absent"].active::after { background: var(--danger-color); }
+
+        .stat-value { font-size: 18px; font-weight: 800; margin-bottom: 2px; line-height: 1; }
+        .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; }
+        .stat-card.active .stat-label { color: var(--text-color); }
+
+        /* --- Config & Search --- */
+        .config-bar {
+            display: flex; align-items: center; background: var(--card-bg);
+            border: 1px solid var(--border-color); border-radius: 12px;
+            padding: 8px 12px; margin-bottom: 12px; gap: 12px;
+        }
+        .config-label { font-size: 14px; color: var(--text-muted); font-weight: 600; flex: 1; }
+        
+        .hours-input-global {
+            width: 60px; background: var(--input-bg); border: 1px solid var(--border-color);
+            color: var(--text-color); padding: 8px; border-radius: 8px;
+            text-align: center; font-weight: 700; font-size: 16px;
+        }
+        .hours-input-global:focus { outline: none; border-color: var(--accent-color); }
+
+        .search-container { position: relative; margin-bottom: 8px; }
+        .search-input {
+            width: 100%; background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 14px; padding: 14px 16px 14px 44px; color: var(--text-color);
+            font-size: 16px; transition: border-color 0.2s;
+        }
+        .search-input:focus { outline: none; border-color: var(--accent-color); }
+        .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 18px; opacity: 0.5; pointer-events: none; color: var(--text-color); }
+
+        /* --- Lista --- */
+        .users-list { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
+        .user-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 8px; display: flex; align-items: center; gap: 12px; min-height: 72px; transition: background-color 0.3s ease; }
+        .user-info-area { flex: 1; display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 4px; }
+        
+        .avatar-placeholder {
+            width: 40px; height: 40px; background: var(--input-bg); color: var(--text-muted);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px; border: 1px solid var(--border-color);
+        }
+
+        .user-details { display: flex; flex-direction: column; gap: 2px; }
+        .user-name { font-size: 16px; font-weight: 600; color: var(--text-color); }
+        .user-role { font-size: 12px; color: var(--text-muted); }
+
+        .hours-badge { background: var(--input-bg); color: var(--text-muted); padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 700; border: 1px solid var(--border-color); }
+        .hours-badge.green { color: var(--success-color); border-color: var(--success-color); }
+        .hours-badge.blue { color: var(--extra-color); border-color: var(--extra-color); }
+        .hours-badge.red { color: var(--danger-color); border-color: var(--danger-color); }
+
+        .check-box { width: 56px; height: 56px; border-radius: 14px; background: transparent; border: 2px solid var(--border-color); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; color: transparent; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); flex-shrink: 0; }
+        .check-box:active { transform: scale(0.9); }
+        .check-box.checked { color: white; border: none; }
+        .check-box.checked.green { background: var(--success-color); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+        .check-box.checked.blue { background: var(--extra-color); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+        .check-box.checked.red { background: var(--danger-color); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+
+        /* --- Tabla Semanal --- */
+        .week-view-container { padding: 0 16px 100px; }
+        .week-table-wrapper { background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden; position: relative; }
+        .week-scroll-area { overflow-x: auto; position: relative; }
+        .week-table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        .week-table th, .week-table td { padding: 12px 8px; text-align: center; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
+        
+        .week-table th { background: var(--input-bg); color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; }
+        
+        .col-sticky {
+            position: sticky; left: 0; background: inherit; z-index: 10;
+            text-align: left !important; padding-left: 16px !important;
+            border-right: 1px solid var(--border-color); min-width: 120px; max-width: 120px;
+            overflow: hidden; text-overflow: ellipsis; color: var(--text-color);
+        }
+        
+        .week-table thead .col-sticky { background: var(--input-bg); z-index: 20; }
+        .week-table tbody .col-sticky { background: var(--card-bg); }
+
+        .week-cell { font-size: 13px; font-weight: 700; cursor: pointer; }
+        .cell-green { color: var(--success-color); }
+        .cell-blue { color: var(--extra-color); }
+        .cell-red { color: var(--danger-color); }
+        .cell-empty { color: var(--text-muted); font-weight: 400; opacity: 0.3; }
+
+        /* FAB */
+        .fab {
+            position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px;
+            border-radius: 20px; border: none; color: white; font-size: 32px;
+            cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            display: flex; align-items: center; justify-content: center;
+            transition: transform 0.2s, opacity 0.2s, visibility 0.2s;
+            z-index: 100;
+        }
+        .fab:active { transform: scale(0.9); }
+        .fab.hidden { display: none; }
+
+        /* Botón Específico WhatsApp */
+        .fab-whatsapp {
+            background: var(--whatsapp-color);
+            box-shadow: 0 8px 24px rgba(37, 211, 102, 0.4);
+        }
+
+        /* Botón Específico Agregar */
+        .fab-add {
+            background: var(--accent-color);
+            color: #000;
+        }
+        
+        /* High contrast overrides for FAB text color */
+        [data-theme="dark"] .fab-add { color: white; background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%); }
+        [data-theme="ocean"] .fab-add { color: white; background: var(--accent-color); }
+        [data-theme="light"] .fab-add { color: white; background: var(--accent-color); }
+        [data-theme="contrast"] .fab-add { color: black; background: var(--accent-color); border: 2px solid white; }
+
+        /* Modales */
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); z-index: 200; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.3s; }
+        .modal.active { display: flex; opacity: 1; }
+        .modal-content { background: var(--card-bg); border-top-left-radius: 28px; border-top-right-radius: 28px; padding: 24px 20px 40px; width: 100%; max-width: 600px; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1, 0.7, 0.1, 1); border-top: 1px solid var(--border-color); box-shadow: 0 -10px 40px rgba(0,0,0,0.5); }
+        .modal.active .modal-content { transform: translateY(0); }
+        @media(min-width: 600px) { .modal { align-items: center; } .modal-content { border-radius: 28px; max-width: 400px; padding-bottom: 24px; border: 1px solid var(--border-color); } }
+        .modal-handle { width: 40px; height: 4px; background: var(--border-color); border-radius: 2px; margin: 0 auto 20px; }
+        .modal-header { text-align: center; margin-bottom: 24px; }
+        .modal-title { font-size: 20px; font-weight: 700; color: var(--text-color); }
+        .modal-subtitle { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
+        
+        .btn-full { width: 100%; padding: 16px; border-radius: 16px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+        .btn-primary { background: var(--accent-color); color: #ffffff; }
+        [data-theme="contrast"] .btn-primary { color: #000000; }
+        .btn-secondary { background: var(--input-bg); color: var(--text-muted); border: 1px solid var(--border-color); }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger-color); }
+
+        .action-item { background: var(--input-bg); padding: 18px; border-radius: 16px; display: flex; align-items: center; gap: 16px; margin-bottom: 10px; font-weight: 500; font-size: 16px; border: 1px solid var(--border-color); color: var(--text-color); }
+        .action-item:active { opacity: 0.8; }
+
+        /* Calendario */
+        .calendar-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .cal-nav-btn { width: 40px; height: 40px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-color); font-size: 18px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; margin-bottom: 20px; }
+        .cal-header { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 10px; }
+        .cal-day { aspect-ratio: 1; border-radius: 10px; font-size: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--input-bg); position: relative; color: var(--text-color); border: 1px solid transparent; }
+        .cal-day.has-data { background: var(--input-bg); border-color: var(--border-color); font-weight: 700; }
+        .dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 4px; }
+        .dot.green { background: var(--success-color); }
+        .dot.red { background: var(--danger-color); }
+        .dot.blue { background: var(--extra-color); }
+        .cal-hours { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+        .hours-display { font-size: 64px; font-weight: 800; text-align: center; margin: 30px 0; color: var(--text-color); letter-spacing: -2px; }
+        .range-slider { width: 100%; margin-bottom: 20px; accent-color: var(--accent-color); }
+        .hidden { display: none !important; }
+        .export-menu, .qr-container, .share-menu { z-index: 300; }
+        .export-options { display: grid; gap: 12px; }
+        .export-option { background: var(--input-bg); padding: 16px; border-radius: 16px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--border-color); cursor: pointer; }
+        .qr-code { background: white; padding: 20px; border-radius: 20px; margin: 20px auto; display: flex; justify-content: center; }
+        .qr-code canvas { max-width: 100%; height: auto; }
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.3; }
+        
+        #qr-file-input { display: none; }
+
+        /* Estilos Selector Temas */
+        .theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .theme-btn {
+            padding: 16px; border-radius: 16px; border: 2px solid var(--border-color);
+            background: var(--input-bg); color: var(--text-color); cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            font-weight: 600;
+        }
+        .theme-btn.active { border-color: var(--accent-color); background: rgba(0, 212, 255, 0.05); }
+        .theme-preview { width: 24px; height: 24px; border-radius: 50%; border: 1px solid white; }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+        <button class="nav-tab active" onclick="switchView('attendance')">Asistencia</button>
+        <button class="nav-tab" onclick="switchView('employees')">Empleados</button>
+        <!-- Botón de Tema -->
+        <button class="menu-btn" onclick="openModal('theme-menu')" title="Temas">🎨</button>
+        <!-- Botón Menú Datos -->
+        <button class="menu-btn" id="export-btn" title="Gestión">⚙️</button>
+    </div>
+
+    <!-- VISTA PRINCIPAL -->
+    <div id="attendance-view">
+        <div class="view-selector">
+            <div class="view-mode-pills">
+                <button class="view-btn active" id="btn-mode-daily" onclick="setMode('daily')">📅 Diaria</button>
+                <button class="view-btn" id="btn-mode-weekly" onclick="setMode('weekly')">📊 Semanal</button>
+            </div>
+        </div>
+
+        <!-- MODO DIARIO -->
+        <div id="daily-view">
+            <div class="dashboard-panel" style="padding-top:0;">
+                <div class="date-nav">
+                    <button class="nav-arrow" id="btn-prev-day">❮</button>
+                    <div class="current-date-wrapper">
+                        <span class="current-date-display" id="header-date">...</span>
+                        <input type="date" id="date-picker-trigger">
+                    </div>
+                    <button class="nav-arrow" id="btn-next-day">❯</button>
+                </div>
+
+                <div class="stats-filters">
+                    <div class="stat-card active" onclick="setFilter('all')" data-filter="all">
+                        <div class="stat-value" id="stat-total">0</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat-card" onclick="setFilter('present')" data-filter="present">
+                        <div class="stat-value" id="stat-present" style="color: var(--success-color)">0</div>
+                        <div class="stat-label">Presentes</div>
+                    </div>
+                    <div class="stat-card" onclick="setFilter('extra')" data-filter="extra">
+                        <div class="stat-value" id="stat-extra-dash" style="color: var(--extra-color)">0</div>
+                        <div class="stat-label">Extras</div>
+                    </div>
+                    <div class="stat-card" onclick="setFilter('absent')" data-filter="absent">
+                        <div class="stat-value" id="stat-absent" style="color: var(--danger-color)">0</div>
+                        <div class="stat-label">Ausentes</div>
+                    </div>
+                </div>
+
+                <div class="config-bar">
+                    <div class="config-label">⏱️ Horas a marcar:</div>
+                    <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1" max="24">
+                </div>
+
+                <div class="search-container">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" class="search-input" id="search-input" placeholder="Buscar empleado...">
+                </div>
+            </div>
+
+            <div class="users-list" id="users-container"></div>
+            
+            <!-- FAB WhatsApp Contextual (Solo aquí) -->
+            <button class="fab fab-whatsapp" id="fab-whatsapp" onclick="shareToWhatsApp()" style="position: fixed; bottom: 24px; right: 24px;">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="white">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- MODO SEMANAL -->
+        <div id="weekly-view" class="hidden week-view-container">
+            <div class="dashboard-panel" style="padding-top:0;">
+                <div class="date-nav">
+                    <button class="nav-arrow" onclick="changeWeek(-1)">❮</button>
+                    <div class="current-date-wrapper">
+                        <span class="current-date-display" id="week-range-display">...</span>
+                    </div>
+                    <button class="nav-arrow" onclick="changeWeek(1)">❯</button>
+                </div>
+            </div>
+            
+            <div class="week-table-wrapper">
+                <div class="week-scroll-area">
+                    <table class="week-table" id="week-table"></table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- VISTA EMPLEADOS -->
+    <div id="employees-view" class="hidden">
+        <div class="dashboard-panel">
+            <div class="search-container">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="search-input" id="search-employees" placeholder="Gestionar empleados...">
+            </div>
+        </div>
+        <div class="users-list" id="employees-container"></div>
+        
+        <!-- FAB Agregar Usuario Contextual (Solo aquí) -->
+        <button class="fab fab-add" id="fab-add-user" onclick="openAddUserModal()" style="position: fixed; bottom: 24px; right: 24px;">＋</button>
+    </div>
+
+    <!-- MODAL DE TEMAS (NUEVO) -->
+    <div class="modal" id="theme-menu">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">Apariencia</div>
+                <div class="modal-subtitle">Personaliza tu experiencia</div>
+            </div>
+            <div class="theme-options">
+                <div class="theme-btn" onclick="setTheme('dark')">
+                    <div class="theme-preview" style="background:#0a0e27;"></div>
+                    <span>Original</span>
+                </div>
+                <div class="theme-btn" onclick="setTheme('light')">
+                    <div class="theme-preview" style="background:#f3f4f6; border-color:#ccc;"></div>
+                    <span>Claro</span>
+                </div>
+                <div class="theme-btn" onclick="setTheme('contrast')">
+                    <div class="theme-preview" style="background:#000000; border-color:yellow;"></div>
+                    <span>Alto Contraste</span>
+                </div>
+                <div class="theme-btn" onclick="setTheme('ocean')">
+                    <div class="theme-preview" style="background:#0f172a; border-color:#38bdf8;"></div>
+                    <span>Océano</span>
+                </div>
+            </div>
+            <button class="btn-full btn-secondary" onclick="closeModal('theme-menu')">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- MODALES EXISTENTES -->
+    <div class="modal" id="modal-quick-actions">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="qa-user-name">Nombre</div>
+                <div class="modal-subtitle">Opciones de asistencia</div>
+            </div>
+            <div class="action-list">
+                <div class="action-item" id="qa-modify"><span>⏱️</span> Modificar Horas</div>
+                <div class="action-item" id="qa-delete" style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span>🗑️</span> Marcar como Ausente</div>
+            </div>
+            <button class="btn-full btn-secondary" onclick="closeModal('modal-quick-actions')">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-hours">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">Horas Trabajadas</div>
+                <div class="modal-subtitle" id="hours-user-name">Nombre</div>
+            </div>
+            <div class="hours-display"><span id="hours-display-val">8</span>h</div>
+            <input type="range" class="range-slider" id="hours-slider" min="0" max="16" step="0.5" value="8">
+            <div style="display: flex; gap: 12px;">
+                <button class="btn-full btn-secondary" onclick="closeModal('modal-hours')">Cancelar</button>
+                <button class="btn-full btn-primary" id="btn-save-hours">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-calendar">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="cal-user-name">Nombre</div>
+                <div class="modal-subtitle">Historial de asistencia</div>
+            </div>
+            <div class="calendar-nav">
+                <button class="cal-nav-btn" id="cal-prev">❮</button>
+                <span style="font-weight: 700; font-size: 16px;" id="cal-month-year">...</span>
+                <button class="cal-nav-btn" id="cal-next">❯</button>
+            </div>
+            <div class="calendar-grid" id="cal-grid"></div>
+            <div style="display: flex; justify-content: space-around; font-size: 12px; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--border-color);">
+                <div style="text-align: center;"><span style="color: var(--success-color); font-weight: 800; font-size: 16px; display: block;" id="stat-normal">0</span>Normal</div>
+                <div style="text-align: center;"><span style="color: var(--danger-color); font-weight: 800; font-size: 16px; display: block;" id="stat-less">0</span>Menos</div>
+                <div style="text-align: center;"><span style="color: var(--extra-color); font-weight: 800; font-size: 16px; display: block;" id="stat-extra">0</span>Extras</div>
+            </div>
+            <button class="btn-full btn-secondary" onclick="closeModal('modal-calendar')">Cerrar</button>
+        </div>
+    </div>
+
+    <div class="modal" id="user-modal">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header"><div class="modal-title" id="form-title">Nuevo Empleado</div></div>
+            <form id="user-form">
+                <input type="hidden" id="edit-user-id">
+                <div style="margin-bottom: 16px;"><input type="text" id="user-name" placeholder="Nombre Completo" class="search-input" required></div>
+                <div style="margin-bottom: 16px;"><input type="number" id="user-number" placeholder="Número de empleado" class="search-input" required></div>
+                <div style="margin-bottom: 24px;"><input type="text" id="user-position" placeholder="Cargo / Puesto (Opcional)" class="search-input"></div>
+                <button type="submit" class="btn-full btn-primary">Guardar Empleado</button>
+                <button type="button" id="btn-delete-user" class="btn-full btn-danger" style="display: none; margin-top: 12px;">Eliminar</button>
+                <button type="button" class="btn-full btn-secondary" id="cancel-btn" style="margin-top: 12px;">Cancelar</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="export-menu">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header"><div class="modal-title">Gestión de Datos</div></div>
+            <div class="export-options">
+                <div class="export-option" onclick="handleExport('today')">
+                    <span style="font-size: 24px;">📅</span>
+                    <div><div style="font-weight: 600; color: var(--text-color);">Exportar Día (QR)</div><div style="font-size: 12px; color: var(--text-muted);">Compartir asistencia hoy</div></div>
+                </div>
+                <div class="export-option" onclick="handleExport('week')">
+                    <span style="font-size: 24px;">📊</span>
+                    <div><div style="font-weight: 600; color: var(--text-color);">Exportar Semana (QR)</div><div style="font-size: 12px; color: var(--text-muted);">Compartir semana actual</div></div>
+                </div>
+                <div class="export-option" onclick="handleExport('all')">
+                    <span style="font-size: 24px;">💾</span>
+                    <div><div style="font-weight: 600; color: var(--text-color);">Respaldo (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Guardar todo</div></div>
+                </div>
+                <div class="export-option" onclick="importFromQR()">
+                    <span style="font-size: 24px;">📥</span>
+                    <div><div style="font-weight: 600; color: var(--accent-color);">Importar desde QR</div><div style="font-size: 12px; color: var(--text-muted);">Leer imagen guardada</div></div>
+                </div>
+                <input type="file" id="qr-file-input" accept="image/*">
+            </div>
+            <button class="btn-full btn-secondary" onclick="closeModal('export-menu')">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="modal" id="qr-container">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header"><div class="modal-title" id="qr-title">Código QR</div></div>
+            <div id="qr-code" class="qr-code"></div>
+            <div style="text-align:center; color:var(--text-muted); font-size:12px;">Haz captura para compartir</div>
+            <button class="btn-full btn-primary" onclick="closeModal('qr-container')">Cerrar</button>
+        </div>
+    </div>
+
+    <script>
+        let users = [];
+        let attendanceData = {}; 
+        let currentFilter = 'all'; 
+        let selectedDate = new Date().toISOString().split('T')[0];
+        let currentWeekStart = new Date(); 
+        let selectedUserId = null;
+        let calendarDate = new Date();
+        let lastActionTime = "";
+
+        function init() {
+            const today = new Date();
+            const day = today.getDay();
+            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+            currentWeekStart = new Date(today.setDate(diff));
+
+            loadData();
+            loadTheme(); // Cargar tema guardado
+            updateDashboard();
+            setupEvents();
+        }
+
+        // --- SISTEMA DE TEMAS ---
+        function setTheme(themeName) {
+            document.documentElement.setAttribute('data-theme', themeName);
+            localStorage.setItem('appTheme', themeName);
+            document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+        }
+
+        function loadTheme() {
+            const savedTheme = localStorage.getItem('appTheme') || 'dark';
+            setTheme(savedTheme);
+        }
+
+        function loadData() {
+            const u = localStorage.getItem('users');
+            const a = localStorage.getItem('weeklyAttendance');
+            const t = localStorage.getItem('lastUpdateTimestamp'); 
+            
+            if (u) users = JSON.parse(u);
+            if (a) {
+                const parsed = JSON.parse(a);
+                for(let d in parsed) {
+                    if(!attendanceData[d]) attendanceData[d] = {};
+                    for(let id in parsed[d]) {
+                        let rec = parsed[d][id];
+                        attendanceData[d][id] = (typeof rec === 'string') ? { status: rec, hours: 8 } : rec;
+                    }
+                }
+            }
+            if (t) lastActionTime = t;
+        }
+
+        function saveData() {
+            localStorage.setItem('users', JSON.stringify(users));
+            localStorage.setItem('weeklyAttendance', JSON.stringify(attendanceData));
+            localStorage.setItem('lastUpdateTimestamp', lastActionTime); 
+            updateDashboard();
+        }
+
+        function getRecord(uid, date = selectedDate) { return attendanceData[date]?.[uid]; }
+
+        function setRecord(uid, status, hours) {
+            if(!attendanceData[selectedDate]) attendanceData[selectedDate] = {};
+            if(status === 'absent' || status === 'pending') {
+                delete attendanceData[selectedDate][uid];
+            } else {
+                attendanceData[selectedDate][uid] = { status: 'present', hours: parseFloat(hours) };
+            }
+            
+            const now = new Date();
+            lastActionTime = now.toLocaleTimeString('es-ES', {hour: 'numeric', minute:'2-digit', hour12: true});
+            
+            saveData();
+        }
+
+        function shareToWhatsApp() {
+            const records = attendanceData[selectedDate] || {};
+            const presentUsers = users.filter(u => records[u.id]).sort((a,b) => parseInt(a.number) - parseInt(b.number));
+            
+            if (presentUsers.length === 0) {
+                alert("No hay asistencia registrada para hoy.");
+                return;
+            }
+
+            const [y, m, d] = selectedDate.split('-');
+            const dateObj = new Date(y, m - 1, d);
+            const dateStr = dateObj.toLocaleDateString('es-ES', {weekday: 'long', day: 'numeric', month: 'long'});
+            
+            let message = `*Asistencia de hoy ${dateStr}*\n`;
+            message += `_Última actualización: ${lastActionTime || 'Reciente'}_\n\n`;
+
+            presentUsers.forEach(u => {
+                const rec = records[u.id];
+                message += `${u.number}. ${u.name}  *${rec.hours}h*\n`;
+            });
+
+            const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+            window.open(url, '_blank');
+        }
+
+        function updateDashboard() {
+            const [y, m, d] = selectedDate.split('-');
+            const dateObj = new Date(y, m-1, d);
+            const options = { weekday: 'short', day: 'numeric', month: 'short' };
+            document.getElementById('header-date').textContent = dateObj.toLocaleDateString('es-ES', options).replace('.', '');
+            document.getElementById('date-picker-trigger').value = selectedDate;
+
+            const total = users.length;
+            const records = attendanceData[selectedDate] || {};
+            let presentCount = 0;
+            let extraCount = 0;
+
+            for (let uid in records) {
+                const r = records[uid];
+                if (r.status === 'present') {
+                    presentCount++;
+                    if (r.hours > 8) extraCount++;
+                }
+            }
+            
+            const absentCount = total - presentCount;
+
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-present').textContent = presentCount;
+            document.getElementById('stat-extra-dash').textContent = extraCount;
+            document.getElementById('stat-absent').textContent = absentCount;
+
+            renderList();
+            renderWeeklyTable();
+        }
+
+        function setFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('active'));
+            document.querySelector(`.stat-card[data-filter="${filter}"]`).classList.add('active');
+            renderList();
+        }
+
+        function setMode(mode) {
+            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-mode-${mode}`).classList.add('active');
+            
+            if(mode === 'daily') {
+                document.getElementById('daily-view').classList.remove('hidden');
+                document.getElementById('weekly-view').classList.add('hidden');
+            } else {
+                document.getElementById('daily-view').classList.add('hidden');
+                document.getElementById('weekly-view').classList.remove('hidden');
+                renderWeeklyTable();
+            }
+        }
+
+        function renderList() {
+            const container = document.getElementById('users-container');
+            const search = document.getElementById('search-input').value.toLowerCase();
+            container.innerHTML = '';
+
+            const filtered = users.filter(u => {
+                const matchesSearch = u.name.toLowerCase().includes(search) || u.number.includes(search);
+                const record = getRecord(u.id);
+                const isPresent = !!record;
+                const hours = isPresent ? record.hours : 0;
+                
+                let matchesFilter = true;
+                if (currentFilter === 'present') matchesFilter = isPresent;
+                if (currentFilter === 'absent') matchesFilter = !isPresent;
+                if (currentFilter === 'extra') matchesFilter = isPresent && hours > 8;
+
+                return matchesSearch && matchesFilter;
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>No hay resultados</div></div>`;
+                return;
+            }
+
+            filtered.sort((a,b) => parseInt(a.number) - parseInt(b.number));
+
+            filtered.forEach(u => {
+                const record = getRecord(u.id);
+                const isPresent = !!record;
+                const hours = isPresent ? record.hours : 0;
+
+                let colorClass = '';
+                if(isPresent) {
+                    if(hours == 8) colorClass = 'green';
+                    else if(hours > 8) colorClass = 'blue';
+                    else colorClass = 'red';
+                }
+
+                const div = document.createElement('div');
+                div.className = 'user-card';
+                div.innerHTML = `
+                    <div class="avatar-placeholder">${u.number}</div>
+                    <div class="user-info-area" onclick="openCalendar('${u.id}')">
+                        <div class="user-details">
+                            <div class="user-name">${u.name}</div>
+                            <div class="user-role">${u.position || 'Sin cargo'}</div>
+                        </div>
+                        ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
+                    </div>
+                    <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${u.id}', ${isPresent})">
+                        ${isPresent ? '✓' : ''}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function changeWeek(offset) {
+            currentWeekStart.setDate(currentWeekStart.getDate() + (offset * 7));
+            renderWeeklyTable();
+        }
+
+        function renderWeeklyTable() {
+            const table = document.getElementById('week-table');
+            
+            const weekDates = [];
+            const curr = new Date(currentWeekStart);
+            for(let i=0; i<7; i++) {
+                weekDates.push(new Date(curr));
+                curr.setDate(curr.getDate() + 1);
+            }
+
+            const startStr = weekDates[0].toLocaleDateString('es-ES', {day:'numeric', month:'short'});
+            const endStr = weekDates[6].toLocaleDateString('es-ES', {day:'numeric', month:'short'});
+            document.getElementById('week-range-display').textContent = `${startStr} - ${endStr}`;
+
+            const daysHeader = weekDates.map(d => {
+                const dayName = d.toLocaleDateString('es-ES', {weekday:'short'}).replace('.','');
+                const dayNum = d.getDate();
+                return `<th>${dayName}<br><small>${dayNum}</small></th>`;
+            }).join('');
+
+            let html = `<thead><tr><th class="col-sticky">Empleado</th>${daysHeader}</tr></thead><tbody>`;
+
+            const sortedUsers = [...users].sort((a,b) => parseInt(a.number) - parseInt(b.number));
+            
+            sortedUsers.forEach(u => {
+                let row = `<tr><td class="col-sticky">${u.name}</td>`;
+                weekDates.forEach(d => {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${day}`;
+                    
+                    const rec = attendanceData[dateStr]?.[u.id];
+                    let cellContent = '-';
+                    let cellClass = 'week-cell cell-empty';
+                    
+                    if(rec && rec.status === 'present') {
+                        cellContent = `${rec.hours}h`;
+                        if(rec.hours == 8) cellClass = 'week-cell cell-green';
+                        else if(rec.hours > 8) cellClass = 'week-cell cell-blue';
+                        else cellClass = 'week-cell cell-red';
+                    }
+                    row += `<td class="${cellClass}" onclick="goToDate('${dateStr}')">${cellContent}</td>`;
+                });
+                row += '</tr>';
+                html += row;
+            });
+            html += '</tbody>';
+            table.innerHTML = html;
+        }
+
+        function toggleCheck(uid, isPresent) {
+            if(isPresent) {
+                selectedUserId = uid;
+                const u = users.find(x => x.id === uid);
+                document.getElementById('qa-user-name').textContent = u.name;
+                openModal('modal-quick-actions');
+            } else {
+                const defaultHours = document.getElementById('default-hours-input').value || 8;
+                setRecord(uid, 'present', defaultHours);
+            }
+        }
+
+        function changeDay(offset) {
+            const [y, m, d] = selectedDate.split('-');
+            const date = new Date(y, m-1, d);
+            date.setDate(date.getDate() + offset);
+            selectedDate = date.toISOString().split('T')[0];
+            updateDashboard();
+        }
+
+        function openModal(id) { document.getElementById(id).classList.add('active'); }
+        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+        function openAddUserModal() {
+            document.getElementById('user-form').reset();
+            document.getElementById('form-title').textContent = 'Nuevo Empleado';
+            document.getElementById('edit-user-id').value = '';
+            document.getElementById('btn-delete-user').style.display = 'none';
+            openModal('user-modal');
+        }
+
+        function openCalendar(uid) {
+            selectedUserId = uid;
+            const u = users.find(x => x.id === uid);
+            document.getElementById('cal-user-name').textContent = u.name;
+            calendarDate = new Date();
+            renderCalGrid();
+            openModal('modal-calendar');
+        }
+
+        function renderCalGrid() {
+            const y = calendarDate.getFullYear();
+            const m = calendarDate.getMonth();
+            const months = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+            document.getElementById('cal-month-year').textContent = `${months[m]} ${y}`;
+
+            const grid = document.getElementById('cal-grid');
+            grid.innerHTML = `
+                <div class="cal-header">DOM</div><div class="cal-header">LUN</div><div class="cal-header">MAR</div>
+                <div class="cal-header">MIE</div><div class="cal-header">JUE</div><div class="cal-header">VIE</div><div class="cal-header">SAB</div>
+            `;
+
+            const firstDay = new Date(y, m, 1).getDay();
+            const daysInMonth = new Date(y, m+1, 0).getDate();
+
+            for(let i=0; i<firstDay; i++) grid.innerHTML += `<div class="cal-day empty"></div>`;
+
+            let sN=0, sL=0, sE=0;
+
+            for(let d=1; d<=daysInMonth; d++) {
+                const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                const rec = attendanceData[dateStr]?.[selectedUserId];
+                let content = `${d}`;
+                let cls = 'cal-day';
+                let dots = '';
+                
+                if(rec && rec.status === 'present') {
+                    cls += ' has-data';
+                    let col = 'green';
+                    if(rec.hours < 8) { col = 'red'; sL++; }
+                    else if(rec.hours > 8) { col = 'blue'; sE++; }
+                    else sN++;
+                    
+                    dots = `<div class="dot ${col}"></div><div class="cal-hours">${rec.hours}h</div>`;
+                }
+                
+                grid.innerHTML += `<div class="${cls}" onclick="goToDate('${dateStr}')">${content}${dots}</div>`;
+            }
+            document.getElementById('stat-normal').textContent = sN;
+            document.getElementById('stat-less').textContent = sL;
+            document.getElementById('stat-extra').textContent = sE;
+        }
+
+        function goToDate(dateStr) {
+            selectedDate = dateStr;
+            if(document.getElementById('btn-mode-weekly').classList.contains('active')) {
+                setMode('daily');
+            }
+            updateDashboard();
+            closeModal('modal-calendar');
+        }
+
+        const slider = document.getElementById('hours-slider');
+        const display = document.getElementById('hours-display-val');
+        slider.oninput = function() { display.textContent = this.value; }
+
+        function setupEvents() {
+            document.getElementById('btn-prev-day').onclick = () => changeDay(-1);
+            document.getElementById('btn-next-day').onclick = () => changeDay(1);
+            document.getElementById('date-picker-trigger').onchange = (e) => {
+                if(e.target.value) { selectedDate = e.target.value; updateDashboard(); }
+            }
+
+            document.getElementById('search-input').oninput = renderList;
+            document.getElementById('search-employees').oninput = renderEmployeesList;
+
+            document.getElementById('qa-modify').onclick = () => {
+                closeModal('modal-quick-actions');
+                const rec = getRecord(selectedUserId);
+                const val = rec ? rec.hours : 8;
+                slider.value = val;
+                display.textContent = val;
+                const u = users.find(x => x.id === selectedUserId);
+                document.getElementById('hours-user-name').textContent = u.name;
+                openModal('modal-hours');
+            };
+            
+            document.getElementById('qa-delete').onclick = () => {
+                setRecord(selectedUserId, 'absent', 0);
+                closeModal('modal-quick-actions');
+            }
+
+            document.getElementById('btn-save-hours').onclick = () => {
+                setRecord(selectedUserId, 'present', slider.value);
+                closeModal('modal-hours');
+            }
+
+            document.getElementById('cal-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth()-1); renderCalGrid(); }
+            document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth()+1); renderCalGrid(); }
+            
+            document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
+
+            document.getElementById('user-form').onsubmit = (e) => {
+                e.preventDefault();
+                const id = document.getElementById('edit-user-id').value;
+                const name = document.getElementById('user-name').value;
+                const num = document.getElementById('user-number').value;
+                const pos = document.getElementById('user-position').value;
+
+                if(id) {
+                    const u = users.find(x => x.id === id);
+                    if(u) { u.name = name; u.number = num; u.position = pos; }
+                } else {
+                    users.push({ id: Date.now().toString(), name, number: num, position: pos });
+                }
+                saveData();
+                renderEmployeesList(); 
+                closeModal('user-modal');
+            }
+
+            document.getElementById('btn-delete-user').onclick = () => {
+                if(confirm('¿Eliminar permanentemente?')) {
+                    const id = document.getElementById('edit-user-id').value;
+                    users = users.filter(x => x.id !== id);
+                    saveData();
+                    renderEmployeesList();
+                    closeModal('user-modal');
+                }
+            }
+
+            document.getElementById('export-btn').onclick = () => openModal('export-menu');
+            
+            window.onclick = (e) => {
+                if(e.target.classList.contains('modal')) e.target.classList.remove('active');
+            }
+
+            // Listener para Importación de archivo
+            document.getElementById('qr-file-input').addEventListener('change', processQRImage);
+        }
+
+        function switchView(view) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            if(view === 'attendance') {
+                document.querySelector('.nav-tab:first-child').classList.add('active');
+                document.getElementById('attendance-view').classList.remove('hidden');
+                document.getElementById('employees-view').classList.add('hidden');
+                updateDashboard();
+            } else {
+                document.querySelector('.nav-tab:nth-child(2)').classList.add('active');
+                document.getElementById('attendance-view').classList.add('hidden');
+                document.getElementById('employees-view').classList.remove('hidden');
+                renderEmployeesList();
+            }
+        }
+
+        function renderEmployeesList() {
+            const container = document.getElementById('employees-container');
+            const search = document.getElementById('search-employees').value.toLowerCase();
+            const filtered = users.filter(u => u.name.toLowerCase().includes(search));
+            container.innerHTML = '';
+            
+            filtered.forEach(u => {
+                const div = document.createElement('div');
+                div.className = 'user-card';
+                div.innerHTML = `
+                    <div class="avatar-placeholder">${u.number}</div>
+                    <div class="user-info-area">
+                        <div class="user-details">
+                            <div class="user-name">${u.name}</div>
+                            <div class="user-role">${u.position || 'Sin cargo'}</div>
+                        </div>
+                    </div>
+                    <button class="export-btn" style="font-size:16px;" onclick="editUser('${u.id}')">✎</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        window.editUser = (id) => {
+            const u = users.find(x => x.id === id);
+            document.getElementById('form-title').textContent = 'Editar';
+            document.getElementById('edit-user-id').value = u.id;
+            document.getElementById('user-name').value = u.name;
+            document.getElementById('user-number').value = u.number;
+            document.getElementById('user-position').value = u.position || '';
+            document.getElementById('btn-delete-user').style.display = 'block';
+            openModal('user-modal');
+        }
+
+        window.handleExport = (type) => {
+            closeModal('export-menu');
+            let data = {};
+            
+            if(type === 'today') {
+                const records = attendanceData[selectedDate] || {};
+                const presentUsers = users.filter(u => records[u.id]);
+                data = { 
+                    type: 'daily',
+                    date: selectedDate, 
+                    att: records,
+                    users: presentUsers.map(u => ({id: u.id, name: u.name, number: u.number, position: u.position})) 
+                };
+                generateQR(data, "Asistencia Hoy");
+            } else if(type === 'week') {
+                data = { type: 'week', data: attendanceData, users: users }; 
+                generateQR(data, "Data Semanal");
+            } else {
+                downloadJSON();
+            }
+        }
+
+        function generateQR(data, title) {
+            document.getElementById('qr-title').textContent = title;
+            document.getElementById('qr-code').innerHTML = '';
+            if(typeof QRCode !== 'undefined') {
+                QRCode.toCanvas(JSON.stringify(data), { width: 350, margin: 1, errorCorrectionLevel: 'L' }, (err, cvs) => {
+                    if(!err) {
+                        document.getElementById('qr-code').appendChild(cvs);
+                        openModal('qr-container');
+                    } else {
+                        alert("Datos muy extensos para QR. Use respaldo JSON.");
+                    }
+                });
+            }
+        }
+
+        function downloadJSON() {
+            const blob = new Blob([JSON.stringify({users, attendance:attendanceData})], {type:'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `backup_${selectedDate}.json`;
+            a.click();
+        }
+
+        window.importFromQR = () => {
+            document.getElementById('qr-file-input').click();
+        }
+
+        function processQRImage(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const btnImport = document.querySelector('.export-option[onclick="importFromQR()"] div div:last-child');
+            const originalText = btnImport.textContent;
+            btnImport.textContent = "Procesando imagen...";
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    
+                    const MAX_SIZE = 800; 
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > MAX_SIZE) {
+                            height *= MAX_SIZE / width;
+                            width = MAX_SIZE;
+                        }
+                    } else {
+                        if (height > MAX_SIZE) {
+                            width *= MAX_SIZE / height;
+                            height = MAX_SIZE;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    context.drawImage(img, 0, 0, width, height);
+                    
+                    try {
+                        const imageData = context.getImageData(0, 0, width, height);
+                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                            inversionAttempts: "dontInvert",
+                        });
+
+                        if (code) {
+                            try {
+                                const data = JSON.parse(code.data);
+                                mergeImportData(data);
+                            } catch (err) {
+                                alert("El QR fue detectado pero los datos no son válidos o están corruptos.");
+                            }
+                        } else {
+                            alert("No se pudo detectar el código QR. Intenta:\n1. Acercar más la imagen\n2. Asegurar buena iluminación\n3. Enfocar bien el código");
+                        }
+                    } catch (e) {
+                        alert("Error procesando la imagen. Puede ser demasiado pesada.");
+                    }
+                    
+                    btnImport.textContent = originalText;
+                    closeModal('export-menu');
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            e.target.value = ''; // Reset input
+        }
+
+        function mergeImportData(data) {
+            let importedCount = 0;
+
+            if (data.users && Array.isArray(data.users)) {
+                data.users.forEach(impUser => {
+                    const exists = users.find(u => u.id === impUser.id || u.number === impUser.number);
+                    if (!exists) {
+                        users.push(impUser);
+                        importedCount++;
+                    }
+                });
+            }
+
+            if (data.type === 'daily' && data.date && data.att) {
+                if (!attendanceData[data.date]) attendanceData[data.date] = {};
+                Object.assign(attendanceData[data.date], data.att);
+                selectedDate = data.date; 
+                
+            } else if (data.type === 'week' && data.data) {
+                for (let date in data.data) {
+                    if (!attendanceData[date]) attendanceData[date] = {};
+                    Object.assign(attendanceData[date], data.data[date]);
+                }
+            } else if (data.attendance) {
+                attendanceData = data.attendance; 
+                for (let date in data.attendance) {
+                    if (!attendanceData[date]) attendanceData[date] = {};
+                    Object.assign(attendanceData[date], data.attendance[date]);
+                }
+            }
+
+            saveData();
+            alert(`Importación exitosa.\n${importedCount} usuarios nuevos agregados.`);
+            renderList();
+        }
+
+        init();
+    </script>
+</body>
+</html>
