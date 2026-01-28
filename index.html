@@ -6,11 +6,12 @@
     <title>Asistencia QR</title>
     <!-- Librería para generar QR -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-    <!-- Librería para LEER QR -->
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <!-- Librería POTENTE para LEER QR (Versión estable) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
         /* --- DEFINICIÓN DE TEMAS (VARIABLES CSS) --- */
         :root {
+            /* Tema por defecto (Oscuro/Original) */
             --bg-color: #0a0e27;
             --card-bg: #151b35;
             --accent-color: #00d4ff;
@@ -235,16 +236,41 @@
         .stat-card.active .stat-label { color: var(--text-color); }
 
         /* --- Config & Search --- */
+        .tools-grid {
+            display: grid; 
+            grid-template-columns: auto 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .whatsapp-cta {
+            background: var(--whatsapp-color);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 0 16px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.2);
+            transition: transform 0.2s;
+            height: 46px;
+        }
+        .whatsapp-cta:active { transform: scale(0.96); }
+
         .config-bar {
             display: flex; align-items: center; background: var(--card-bg);
             border: 1px solid var(--border-color); border-radius: 12px;
-            padding: 8px 12px; margin-bottom: 12px; gap: 12px;
+            padding: 0 12px; height: 46px; gap: 8px;
         }
-        .config-label { font-size: 14px; color: var(--text-muted); font-weight: 600; flex: 1; }
+        .config-label { font-size: 13px; color: var(--text-muted); font-weight: 600; flex: 1; white-space: nowrap;}
         
         .hours-input-global {
-            width: 60px; background: var(--input-bg); border: 1px solid var(--border-color);
-            color: var(--text-color); padding: 8px; border-radius: 8px;
+            width: 50px; background: var(--input-bg); border: 1px solid var(--border-color);
+            color: var(--text-color); padding: 6px; border-radius: 8px;
             text-align: center; font-weight: 700; font-size: 16px;
         }
         .hours-input-global:focus { outline: none; border-color: var(--accent-color); }
@@ -311,34 +337,17 @@
         .cell-empty { color: var(--text-muted); font-weight: 400; opacity: 0.3; }
 
         /* FAB */
-        .fab {
-            position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px;
-            border-radius: 20px; border: none; color: white; font-size: 32px;
-            cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            display: flex; align-items: center; justify-content: center;
-            transition: transform 0.2s, opacity 0.2s, visibility 0.2s;
-            z-index: 100;
-        }
+        .fab-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 16px; z-index: 100; align-items: center; }
+        .fab { width: 64px; height: 64px; border-radius: 20px; border: none; color: white; font-size: 32px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
         .fab:active { transform: scale(0.9); }
-        .fab.hidden { display: none; }
-
-        /* Botón Específico WhatsApp */
-        .fab-whatsapp {
-            background: var(--whatsapp-color);
-            box-shadow: 0 8px 24px rgba(37, 211, 102, 0.4);
-        }
-
-        /* Botón Específico Agregar */
-        .fab-add {
-            background: var(--accent-color);
-            color: #000;
-        }
-        
+        .fab-add { background: var(--accent-color); color: #000; }
         /* High contrast overrides for FAB text color */
         [data-theme="dark"] .fab-add { color: white; background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%); }
         [data-theme="ocean"] .fab-add { color: white; background: var(--accent-color); }
         [data-theme="light"] .fab-add { color: white; background: var(--accent-color); }
         [data-theme="contrast"] .fab-add { color: black; background: var(--accent-color); border: 2px solid white; }
+
+        .fab-share { background: var(--whatsapp-color); width: 56px; height: 56px; font-size: 24px; box-shadow: 0 8px 24px rgba(37, 211, 102, 0.3); }
 
         /* Modales */
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); z-index: 200; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.3s; }
@@ -396,6 +405,19 @@
         }
         .theme-btn.active { border-color: var(--accent-color); background: rgba(0, 212, 255, 0.05); }
         .theme-preview { width: 24px; height: 24px; border-radius: 50%; border: 1px solid white; }
+
+        /* Estilos Lector QR Video */
+        #scanner-modal .modal-content {
+            padding: 0;
+            overflow: hidden;
+            background: black;
+        }
+        #reader { width: 100%; height: 350px; background: black; }
+        .scanner-controls {
+            padding: 20px;
+            background: var(--card-bg);
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -449,9 +471,21 @@
                     </div>
                 </div>
 
-                <div class="config-bar">
-                    <div class="config-label">⏱️ Horas a marcar:</div>
-                    <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1" max="24">
+                <!-- HERRAMIENTAS: WHATSAPP Y CONFIGURACIÓN -->
+                <div class="tools-grid">
+                    <!-- Botón Enviar Reporte -->
+                    <button class="whatsapp-cta" onclick="shareToWhatsApp()">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                        </svg>
+                        Enviar Reporte
+                    </button>
+
+                    <!-- Configuración rápida -->
+                    <div class="config-bar">
+                        <div class="config-label">⏱️ Valor Check:</div>
+                        <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1" max="24">
+                    </div>
                 </div>
 
                 <div class="search-container">
@@ -461,13 +495,6 @@
             </div>
 
             <div class="users-list" id="users-container"></div>
-            
-            <!-- FAB WhatsApp Contextual (Solo aquí) -->
-            <button class="fab fab-whatsapp" id="fab-whatsapp" onclick="shareToWhatsApp()" style="position: fixed; bottom: 24px; right: 24px;">
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="white">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-                </svg>
-            </button>
         </div>
 
         <!-- MODO SEMANAL -->
@@ -604,6 +631,7 @@
         </div>
     </div>
 
+    <!-- Menú Gestión de Datos -->
     <div class="modal" id="export-menu">
         <div class="modal-content">
             <div class="modal-handle"></div>
@@ -623,7 +651,12 @@
                 </div>
                 <div class="export-option" onclick="importFromQR()">
                     <span style="font-size: 24px;">📥</span>
-                    <div><div style="font-weight: 600; color: var(--accent-color);">Importar desde QR</div><div style="font-size: 12px; color: var(--text-muted);">Leer imagen guardada</div></div>
+                    <div><div style="font-weight: 600; color: var(--accent-color);">Importar desde QR (Archivo)</div><div style="font-size: 12px; color: var(--text-muted);">Leer imagen guardada</div></div>
+                </div>
+                <!-- NUEVO: Botón ESCANEAR CON CAMARA -->
+                <div class="export-option" onclick="openCameraScanner()">
+                    <span style="font-size: 24px;">📷</span>
+                    <div><div style="font-weight: 600; color: var(--success-color);">Escanear con Cámara</div><div style="font-size: 12px; color: var(--text-muted);">Usa la cámara en vivo</div></div>
                 </div>
                 <input type="file" id="qr-file-input" accept="image/*">
             </div>
@@ -631,6 +664,7 @@
         </div>
     </div>
 
+    <!-- Modal QR Visual -->
     <div class="modal" id="qr-container">
         <div class="modal-content">
             <div class="modal-handle"></div>
@@ -641,6 +675,19 @@
         </div>
     </div>
 
+    <!-- MODAL DE ESCANER EN VIVO -->
+    <div class="modal" id="scanner-modal">
+        <div class="modal-content" style="padding: 0; background: black;">
+            <div id="reader" style="width: 100%;"></div>
+            <div class="scanner-controls">
+                <button class="btn-full btn-danger" onclick="stopCameraScan()">Cancelar Escaneo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden element for QrScanner temp -->
+    <div id="qr-reader-temp" style="display:none;"></div>
+
     <script>
         let users = [];
         let attendanceData = {}; 
@@ -650,6 +697,7 @@
         let selectedUserId = null;
         let calendarDate = new Date();
         let lastActionTime = "";
+        let html5QrcodeScanner = null; // Instancia global del scanner
 
         function init() {
             const today = new Date();
@@ -1156,8 +1204,6 @@
                     if(!err) {
                         document.getElementById('qr-code').appendChild(cvs);
                         openModal('qr-container');
-                    } else {
-                        alert("Datos muy extensos para QR. Use respaldo JSON.");
                     }
                 });
             }
@@ -1171,72 +1217,98 @@
             a.click();
         }
 
+        // --- IMPORTACIÓN Y LECTOR QR (MEJORADO) ---
         window.importFromQR = () => {
             document.getElementById('qr-file-input').click();
         }
 
+        // FUNCIÓN NUEVA: Lector de Cámara en Vivo
+        function openCameraScanner() {
+            closeModal('export-menu');
+            openModal('scanner-modal');
+            
+            if (!html5QrcodeScanner) {
+                html5QrcodeScanner = new Html5Qrcode("reader");
+            }
+            
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+            
+            // Preferir cámara trasera ('environment')
+            html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+            .catch(err => {
+                console.error("Error cámara:", err);
+                let errorMessage = "Error desconocido al iniciar la cámara.";
+                
+                // Detección de errores comunes para ayudar al usuario
+                if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError" || err.message?.includes("Permission denied")) {
+                    errorMessage = "🚫 Acceso a la cámara denegado.\n\nPosibles soluciones:\n1. Revisa el icono del candado 🔒 en la barra de dirección y permite la cámara.\n2. Asegúrate de estar usando HTTPS (la cámara no funciona en conexiones http inseguras).";
+                } else if (err.name === "NotFoundError") {
+                    errorMessage = "📷 No se detectó ninguna cámara en este dispositivo.";
+                } else if (err.name === "NotReadableError") {
+                    errorMessage = "⚠️ La cámara podría estar en uso por otra aplicación.";
+                } else {
+                    errorMessage += " (" + err.message + ")";
+                }
+
+                alert(errorMessage);
+                closeModal('scanner-modal');
+            });
+        }
+        
+        function stopCameraScan() {
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.stop().then(() => {
+                    closeModal('scanner-modal');
+                }).catch(err => {
+                    console.error(err);
+                    closeModal('scanner-modal'); // Force close
+                });
+            } else {
+                closeModal('scanner-modal');
+            }
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // Detener escaneo al encontrar código
+            html5QrcodeScanner.stop().then(() => {
+                closeModal('scanner-modal');
+                try {
+                    const data = JSON.parse(decodedText);
+                    mergeImportData(data);
+                } catch (err) {
+                    alert("Código detectado pero formato inválido.");
+                }
+            });
+        }
+        
+        function onScanFailure(error) {
+            // No hacer nada, sigue escaneando
+        }
+
+        // FUNCIÓN MEJORADA: Lector de Archivos (Upload)
+        // Usa Html5Qrcode para mejor detección en archivos también
         function processQRImage(e) {
             const file = e.target.files[0];
             if (!file) return;
 
-            const btnImport = document.querySelector('.export-option[onclick="importFromQR()"] div div:last-child');
-            const originalText = btnImport.textContent;
-            btnImport.textContent = "Procesando imagen...";
+            const html5QrCode = new Html5Qrcode("qr-reader-temp");
 
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    
-                    const MAX_SIZE = 800; 
-                    let width = img.width;
-                    let height = img.height;
-                    
-                    if (width > height) {
-                        if (width > MAX_SIZE) {
-                            height *= MAX_SIZE / width;
-                            width = MAX_SIZE;
-                        }
-                    } else {
-                        if (height > MAX_SIZE) {
-                            width *= MAX_SIZE / height;
-                            height = MAX_SIZE;
-                        }
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    context.drawImage(img, 0, 0, width, height);
-                    
-                    try {
-                        const imageData = context.getImageData(0, 0, width, height);
-                        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                            inversionAttempts: "dontInvert",
-                        });
-
-                        if (code) {
-                            try {
-                                const data = JSON.parse(code.data);
-                                mergeImportData(data);
-                            } catch (err) {
-                                alert("El QR fue detectado pero los datos no son válidos o están corruptos.");
-                            }
-                        } else {
-                            alert("No se pudo detectar el código QR. Intenta:\n1. Acercar más la imagen\n2. Asegurar buena iluminación\n3. Enfocar bien el código");
-                        }
-                    } catch (e) {
-                        alert("Error procesando la imagen. Puede ser demasiado pesada.");
-                    }
-                    
-                    btnImport.textContent = originalText;
-                    closeModal('export-menu');
-                };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-            e.target.value = ''; // Reset input
+            html5QrCode.scanFile(file, true)
+            .then(decodedText => {
+                try {
+                    const data = JSON.parse(decodedText);
+                    mergeImportData(data);
+                } catch (err) {
+                    alert("QR detectado pero datos corruptos.");
+                }
+                closeModal('export-menu');
+            })
+            .catch(err => {
+                alert("No se pudo detectar un código QR en esta imagen. Prueba el 'Escanear con Cámara' para mayor precisión.");
+                closeModal('export-menu');
+            });
+            
+            e.target.value = ''; // Reset
         }
 
         function mergeImportData(data) {
