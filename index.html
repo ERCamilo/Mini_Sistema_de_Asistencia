@@ -3,11 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Asistencia QR</title>
-    <!-- Librería para generar QR -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
-    <!-- Librería POTENTE para LEER QR (Versión estable) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <title>Mini Sistema de Asistencia</title>
+    <meta name="theme-color" content="#00d4ff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Asistencia">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="icon" type="image/svg+xml" href="icon.svg">
+    <link rel="manifest" href="manifest.json">
+
     <style>
         /* --- DEFINICIÓN DE TEMAS (VARIABLES CSS) --- */
         :root {
@@ -385,15 +390,12 @@
         .hours-display { font-size: 64px; font-weight: 800; text-align: center; margin: 30px 0; color: var(--text-color); letter-spacing: -2px; }
         .range-slider { width: 100%; margin-bottom: 20px; accent-color: var(--accent-color); }
         .hidden { display: none !important; }
-        .export-menu, .qr-container, .share-menu { z-index: 300; }
+        .export-menu { z-index: 300; }
         .export-options { display: grid; gap: 12px; }
         .export-option { background: var(--input-bg); padding: 16px; border-radius: 16px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--border-color); cursor: pointer; }
-        .qr-code { background: white; padding: 20px; border-radius: 20px; margin: 20px auto; display: flex; justify-content: center; }
-        .qr-code canvas { max-width: 100%; height: auto; }
         .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
         .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.3; }
-        
-        #qr-file-input { display: none; }
+
 
         /* Estilos Selector Temas */
         .theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -406,18 +408,6 @@
         .theme-btn.active { border-color: var(--accent-color); background: rgba(0, 212, 255, 0.05); }
         .theme-preview { width: 24px; height: 24px; border-radius: 50%; border: 1px solid white; }
 
-        /* Estilos Lector QR Video */
-        #scanner-modal .modal-content {
-            padding: 0;
-            overflow: hidden;
-            background: black;
-        }
-        #reader { width: 100%; height: 350px; background: black; }
-        .scanner-controls {
-            padding: 20px;
-            background: var(--card-bg);
-            text-align: center;
-        }
     </style>
 </head>
 <body>
@@ -637,56 +627,94 @@
             <div class="modal-handle"></div>
             <div class="modal-header"><div class="modal-title">Gestión de Datos</div></div>
             <div class="export-options">
-                <div class="export-option" onclick="handleExport('today')">
-                    <span style="font-size: 24px;">📅</span>
-                    <div><div style="font-weight: 600; color: var(--text-color);">Exportar Día (QR)</div><div style="font-size: 12px; color: var(--text-muted);">Compartir asistencia hoy</div></div>
-                </div>
-                <div class="export-option" onclick="handleExport('week')">
-                    <span style="font-size: 24px;">📊</span>
-                    <div><div style="font-weight: 600; color: var(--text-color);">Exportar Semana (QR)</div><div style="font-size: 12px; color: var(--text-muted);">Compartir semana actual</div></div>
-                </div>
-                <div class="export-option" onclick="handleExport('all')">
+                <div class="export-option" onclick="downloadJSON()">
                     <span style="font-size: 24px;">💾</span>
-                    <div><div style="font-weight: 600; color: var(--text-color);">Respaldo (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Guardar todo</div></div>
+                    <div><div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Descargar empleados y asistencia</div></div>
                 </div>
-                <div class="export-option" onclick="importFromQR()">
-                    <span style="font-size: 24px;">📥</span>
-                    <div><div style="font-weight: 600; color: var(--accent-color);">Importar desde QR (Archivo)</div><div style="font-size: 12px; color: var(--text-muted);">Leer imagen guardada</div></div>
+                <div class="export-option" onclick="openImportBackupModal()">
+                    <span style="font-size: 24px;">📂</span>
+                    <div><div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Pegar JSON de respaldo completo</div></div>
                 </div>
-                <!-- NUEVO: Botón ESCANEAR CON CAMARA -->
-                <div class="export-option" onclick="openCameraScanner()">
-                    <span style="font-size: 24px;">📷</span>
-                    <div><div style="font-weight: 600; color: var(--success-color);">Escanear con Cámara</div><div style="font-size: 12px; color: var(--text-muted);">Usa la cámara en vivo</div></div>
+                <div class="export-option" onclick="openImportEmployeesModal()">
+                    <span style="font-size: 24px;">👥</span>
+                    <div><div style="font-weight: 600; color: var(--warning-color);">Importar Empleados (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Pegar lista de empleados</div></div>
                 </div>
-                <input type="file" id="qr-file-input" accept="image/*">
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('export-menu')">Cancelar</button>
         </div>
     </div>
 
-    <!-- Modal QR Visual -->
-    <div class="modal" id="qr-container">
+    <!-- MODAL RESTAURAR RESPALDO -->
+    <div class="modal" id="modal-restore-backup">
         <div class="modal-content">
             <div class="modal-handle"></div>
-            <div class="modal-header"><div class="modal-title" id="qr-title">Código QR</div></div>
-            <div id="qr-code" class="qr-code"></div>
-            <div style="text-align:center; color:var(--text-muted); font-size:12px;">Haz captura para compartir</div>
-            <button class="btn-full btn-primary" onclick="closeModal('qr-container')">Cerrar</button>
-        </div>
-    </div>
-
-    <!-- MODAL DE ESCANER EN VIVO -->
-    <div class="modal" id="scanner-modal">
-        <div class="modal-content" style="padding: 0; background: black;">
-            <div id="reader" style="width: 100%;"></div>
-            <div class="scanner-controls">
-                <button class="btn-full btn-danger" onclick="stopCameraScan()">Cancelar Escaneo</button>
+            <div class="modal-header">
+                <div class="modal-title">&#x1F4C2; Restaurar Respaldo</div>
+                <div class="modal-subtitle">Pega el JSON del respaldo completo</div>
+            </div>
+            <textarea
+                id="restore-backup-textarea"
+                placeholder="Pega aqui el JSON de respaldo..."
+                style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
+                oninput="validateRestoreTextarea(this)"
+                onpaste="setTimeout(function(){validateRestoreTextarea(document.getElementById('restore-backup-textarea'))},50)"
+            ></textarea>
+            <div id="restore-validation-msg" style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
+            <div style="display:flex;gap:10px;">
+                <button type="button" style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;" onclick="closeModal('modal-restore-backup')">Cancelar</button>
+                <button type="button" id="btn-do-restore" data-ready="no" style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;" onclick="doRestoreBackup()">Restaurar</button>
             </div>
         </div>
     </div>
 
-    <!-- Hidden element for QrScanner temp -->
-    <div id="qr-reader-temp" style="display:none;"></div>
+    <!-- MODAL IMPORTAR EMPLEADOS (PEGAR JSON) -->
+    <div class="modal" id="modal-import-employees">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">&#x1F465; Importar Empleados</div>
+                <div class="modal-subtitle">Pega el JSON y presiona Importar</div>
+            </div>
+
+            <details style="margin-bottom:14px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:12px;">
+                <summary style="font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;">
+                    &#x25BA; Ver formato de ejemplo
+                </summary>
+                <pre style="margin-top:10px;font-size:11px;color:var(--accent-color);white-space:pre-wrap;word-break:break-all;line-height:1.6;">[
+  { "number": "1", "name": "Ana Garcia",   "position": "Gerente" },
+  { "number": "2", "name": "Carlos Perez", "position": "Dev" },
+  { "number": "3", "name": "Maria Lopez" }
+]</pre>
+            </details>
+
+            <textarea
+                id="import-employees-textarea"
+                placeholder="Pega aqui tu JSON..."
+                style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
+                oninput="validateImportTextarea(this)"
+                onpaste="setTimeout(function(){validateImportTextarea(document.getElementById('import-employees-textarea'))},50)"
+            ></textarea>
+
+            <div id="import-validation-msg" style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
+
+            <div style="display:flex;gap:10px;">
+                <button
+                    type="button"
+                    style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;"
+                    onclick="closeModal('modal-import-employees')">
+                    Cancelar
+                </button>
+                <button
+                    type="button"
+                    id="btn-do-import"
+                    data-ready="no"
+                    style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
+                    onclick="doImportEmployeesFromText()">
+                    Importar
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script>
         let users = [];
@@ -697,16 +725,22 @@
         let selectedUserId = null;
         let calendarDate = new Date();
         let lastActionTime = "";
-        let html5QrcodeScanner = null; // Instancia global del scanner
 
+
+        function initPWA() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js').catch(() => {});
+            }
+        }
         function init() {
             const today = new Date();
             const day = today.getDay();
             const diff = today.getDate() - day + (day === 0 ? -6 : 1);
             currentWeekStart = new Date(today.setDate(diff));
 
+            initPWA();
             loadData();
-            loadTheme(); // Cargar tema guardado
+            loadTheme();
             updateDashboard();
             setupEvents();
         }
@@ -1117,12 +1151,13 @@
 
             document.getElementById('export-btn').onclick = () => openModal('export-menu');
             
-            window.onclick = (e) => {
-                if(e.target.classList.contains('modal')) e.target.classList.remove('active');
-            }
+            // Cerrar modal solo cuando el clic es EXACTAMENTE en el overlay, no en hijos
+            document.querySelectorAll('.modal').forEach(m => {
+                m.addEventListener('click', function(e) {
+                    if (e.target === this) this.classList.remove('active');
+                });
+            });
 
-            // Listener para Importación de archivo
-            document.getElementById('qr-file-input').addEventListener('change', processQRImage);
         }
 
         function switchView(view) {
@@ -1174,177 +1209,177 @@
             openModal('user-modal');
         }
 
-        window.handleExport = (type) => {
-            closeModal('export-menu');
-            let data = {};
-            
-            if(type === 'today') {
-                const records = attendanceData[selectedDate] || {};
-                const presentUsers = users.filter(u => records[u.id]);
-                data = { 
-                    type: 'daily',
-                    date: selectedDate, 
-                    att: records,
-                    users: presentUsers.map(u => ({id: u.id, name: u.name, number: u.number, position: u.position})) 
-                };
-                generateQR(data, "Asistencia Hoy");
-            } else if(type === 'week') {
-                data = { type: 'week', data: attendanceData, users: users }; 
-                generateQR(data, "Data Semanal");
-            } else {
-                downloadJSON();
-            }
-        }
-
-        function generateQR(data, title) {
-            document.getElementById('qr-title').textContent = title;
-            document.getElementById('qr-code').innerHTML = '';
-            if(typeof QRCode !== 'undefined') {
-                QRCode.toCanvas(JSON.stringify(data), { width: 350, margin: 1, errorCorrectionLevel: 'L' }, (err, cvs) => {
-                    if(!err) {
-                        document.getElementById('qr-code').appendChild(cvs);
-                        openModal('qr-container');
-                    }
-                });
-            }
-        }
-
         function downloadJSON() {
-            const blob = new Blob([JSON.stringify({users, attendance:attendanceData})], {type:'application/json'});
+            const blob = new Blob([JSON.stringify({users, attendance:attendanceData}, null, 2)], {type:'application/json'});
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `backup_${selectedDate}.json`;
+            a.download = 'backup_asistencia_' + selectedDate + '.json';
             a.click();
         }
 
-        // --- IMPORTACIÓN Y LECTOR QR (MEJORADO) ---
-        window.importFromQR = () => {
-            document.getElementById('qr-file-input').click();
-        }
-
-        // FUNCIÓN NUEVA: Lector de Cámara en Vivo
-        function openCameraScanner() {
+        // --- RESTAURAR RESPALDO COMPLETO ---
+        window.openImportBackupModal = () => {
             closeModal('export-menu');
-            openModal('scanner-modal');
-            
-            if (!html5QrcodeScanner) {
-                html5QrcodeScanner = new Html5Qrcode("reader");
-            }
-            
-            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-            
-            // Preferir cámara trasera ('environment')
-            html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-            .catch(err => {
-                console.error("Error cámara:", err);
-                let errorMessage = "Error desconocido al iniciar la cámara.";
-                
-                // Detección de errores comunes para ayudar al usuario
-                if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError" || err.message?.includes("Permission denied")) {
-                    errorMessage = "🚫 Acceso a la cámara denegado.\n\nPosibles soluciones:\n1. Revisa el icono del candado 🔒 en la barra de dirección y permite la cámara.\n2. Asegúrate de estar usando HTTPS (la cámara no funciona en conexiones http inseguras).";
-                } else if (err.name === "NotFoundError") {
-                    errorMessage = "📷 No se detectó ninguna cámara en este dispositivo.";
-                } else if (err.name === "NotReadableError") {
-                    errorMessage = "⚠️ La cámara podría estar en uso por otra aplicación.";
-                } else {
-                    errorMessage += " (" + err.message + ")";
-                }
-
-                alert(errorMessage);
-                closeModal('scanner-modal');
-            });
+            const ta  = document.getElementById('restore-backup-textarea');
+            const btn = document.getElementById('btn-do-restore');
+            const msg = document.getElementById('restore-validation-msg');
+            ta.value = ''; ta.style.borderColor = ''; msg.innerHTML = '';
+            btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
+            btn.setAttribute('data-ready', 'no');
+            openModal('modal-restore-backup');
         }
-        
-        function stopCameraScan() {
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.stop().then(() => {
-                    closeModal('scanner-modal');
-                }).catch(err => {
-                    console.error(err);
-                    closeModal('scanner-modal'); // Force close
-                });
-            } else {
-                closeModal('scanner-modal');
+
+        window.validateRestoreTextarea = (ta) => {
+            const msg = document.getElementById('restore-validation-msg');
+            const btn = document.getElementById('btn-do-restore');
+            const raw = ta.value.trim();
+            if (!raw) {
+                ta.style.borderColor = ''; msg.innerHTML = '';
+                btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
+                btn.setAttribute('data-ready', 'no'); return;
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                const hasUsers = Array.isArray(parsed.users) && parsed.users.length > 0;
+                const hasAtt   = parsed.attendance && typeof parsed.attendance === 'object';
+                if (!hasUsers && !hasAtt) throw new Error('No se encontraron datos válidos de empleados ni asistencia.');
+                ta.style.borderColor = 'var(--success-color)';
+                msg.style.color = 'var(--success-color)';
+                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia.';
+                btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+                btn.setAttribute('data-ready', 'yes');
+            } catch(err) {
+                ta.style.borderColor = 'var(--danger-color)';
+                msg.style.color = 'var(--danger-color)';
+                msg.innerHTML = '&#x274C; ' + err.message;
+                btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
+                btn.setAttribute('data-ready', 'no');
             }
         }
 
-        function onScanSuccess(decodedText, decodedResult) {
-            // Detener escaneo al encontrar código
-            html5QrcodeScanner.stop().then(() => {
-                closeModal('scanner-modal');
-                try {
-                    const data = JSON.parse(decodedText);
-                    mergeImportData(data);
-                } catch (err) {
-                    alert("Código detectado pero formato inválido.");
-                }
-            });
-        }
-        
-        function onScanFailure(error) {
-            // No hacer nada, sigue escaneando
-        }
-
-        // FUNCIÓN MEJORADA: Lector de Archivos (Upload)
-        // Usa Html5Qrcode para mejor detección en archivos también
-        function processQRImage(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const html5QrCode = new Html5Qrcode("qr-reader-temp");
-
-            html5QrCode.scanFile(file, true)
-            .then(decodedText => {
-                try {
-                    const data = JSON.parse(decodedText);
-                    mergeImportData(data);
-                } catch (err) {
-                    alert("QR detectado pero datos corruptos.");
-                }
-                closeModal('export-menu');
-            })
-            .catch(err => {
-                alert("No se pudo detectar un código QR en esta imagen. Prueba el 'Escanear con Cámara' para mayor precisión.");
-                closeModal('export-menu');
-            });
-            
-            e.target.value = ''; // Reset
+        window.doRestoreBackup = () => {
+            const btn = document.getElementById('btn-do-restore');
+            if (btn.getAttribute('data-ready') !== 'yes') return;
+            const raw = document.getElementById('restore-backup-textarea').value.trim();
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed.users))       users = parsed.users;
+                if (parsed.attendance)                 attendanceData = parsed.attendance;
+                saveData();
+                closeModal('modal-restore-backup');
+                renderList(); renderEmployeesList();
+                document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
+            } catch(err) {
+                document.getElementById('restore-validation-msg').innerHTML = '&#x274C; Error: ' + err.message;
+            }
         }
 
-        function mergeImportData(data) {
-            let importedCount = 0;
+        // --- IMPORTAR EMPLEADOS DESDE CAMPO DE TEXTO ---
+        window.openImportEmployeesModal = () => {
+            closeModal('export-menu');
+            const ta  = document.getElementById('import-employees-textarea');
+            const btn = document.getElementById('btn-do-import');
+            const msg = document.getElementById('import-validation-msg');
+            ta.value = '';
+            ta.style.borderColor = '';
+            msg.innerHTML = '';
+            btn.style.opacity = '0.4';
+            btn.style.cursor  = 'not-allowed';
+            btn.setAttribute('data-ready', 'no');
+            openModal('modal-import-employees');
+        }
 
-            if (data.users && Array.isArray(data.users)) {
-                data.users.forEach(impUser => {
-                    const exists = users.find(u => u.id === impUser.id || u.number === impUser.number);
-                    if (!exists) {
-                        users.push(impUser);
-                        importedCount++;
-                    }
-                });
+        window.validateImportTextarea = (ta) => {
+            const msg = document.getElementById('import-validation-msg');
+            const btn = document.getElementById('btn-do-import');
+            const raw = ta.value.trim();
+
+            if (!raw) {
+                ta.style.borderColor = '';
+                msg.innerHTML = '';
+                btn.style.opacity = '0.4';
+                btn.style.cursor  = 'not-allowed';
+                btn.setAttribute('data-ready', 'no');
+                return;
             }
 
-            if (data.type === 'daily' && data.date && data.att) {
-                if (!attendanceData[data.date]) attendanceData[data.date] = {};
-                Object.assign(attendanceData[data.date], data.att);
-                selectedDate = data.date; 
-                
-            } else if (data.type === 'week' && data.data) {
-                for (let date in data.data) {
-                    if (!attendanceData[date]) attendanceData[date] = {};
-                    Object.assign(attendanceData[date], data.data[date]);
-                }
-            } else if (data.attendance) {
-                attendanceData = data.attendance; 
-                for (let date in data.attendance) {
-                    if (!attendanceData[date]) attendanceData[date] = {};
-                    Object.assign(attendanceData[date], data.attendance[date]);
-                }
-            }
+            try {
+                const parsed = JSON.parse(raw);
+                const arr = Array.isArray(parsed)
+                    ? parsed
+                    : (Array.isArray(parsed.employees) ? parsed.employees : null);
 
-            saveData();
-            alert(`Importación exitosa.\n${importedCount} usuarios nuevos agregados.`);
-            renderList();
+                if (!arr) throw new Error('Debe ser un array [ ] o un objeto con clave "employees".');
+
+                const valid   = arr.filter(e => e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== '');
+                const skipped = arr.length - valid.length;
+                if (valid.length === 0) throw new Error('Ningún objeto tiene los campos "name" y "number".');
+
+                ta.style.borderColor = 'var(--success-color)';
+                msg.style.color      = 'var(--success-color)';
+                msg.innerHTML = '&#x2705; ' + valid.length + ' empleado(s) válidos' + (skipped > 0 ? ' (' + skipped + ' se omitirán).' : '.');
+                btn.style.opacity = '1';
+                btn.style.cursor  = 'pointer';
+                btn.setAttribute('data-ready', 'yes');
+
+            } catch (err) {
+                ta.style.borderColor = 'var(--danger-color)';
+                msg.style.color      = 'var(--danger-color)';
+                msg.innerHTML = '&#x274C; ' + err.message;
+                btn.style.opacity = '0.4';
+                btn.style.cursor  = 'not-allowed';
+                btn.setAttribute('data-ready', 'no');
+            }
+        }
+
+        window.doImportEmployeesFromText = () => {
+            const btn = document.getElementById('btn-do-import');
+
+            // Guard: solo actuar si la validación fue exitosa
+            if (btn.getAttribute('data-ready') !== 'yes') return;
+
+            const raw = document.getElementById('import-employees-textarea').value.trim();
+
+            try {
+                const parsed = JSON.parse(raw);
+                let incoming = Array.isArray(parsed)
+                    ? parsed
+                    : (Array.isArray(parsed.employees) ? parsed.employees : null);
+
+                incoming = incoming.filter(e =>
+                    e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== ''
+                );
+
+                if (incoming.length === 0) {
+                    document.getElementById('import-validation-msg').innerHTML =
+                        '&#x274C; No se encontraron empleados válidos.';
+                    return;
+                }
+
+                // Normalizar y guardar
+                users = incoming.map(emp => ({
+                    id:       emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
+                    name:     String(emp.name).trim(),
+                    number:   String(emp.number).trim(),
+                    position: emp.position ? String(emp.position).trim() : ''
+                }));
+
+                saveData();
+                closeModal('modal-import-employees');
+
+                // Refrescar vistas
+                renderList();
+                renderEmployeesList();
+
+                // Feedback final (sin confirm ni alert bloqueante)
+                const msg = document.getElementById('import-validation-msg');
+                msg.style.color   = 'var(--success-color)';
+                msg.innerHTML = '&#x2705; ' + users.length + ' empleados importados correctamente.';
+
+            } catch (err) {
+                document.getElementById('import-validation-msg').innerHTML =
+                    '&#x274C; Error: ' + err.message;
+            }
         }
 
         init();
