@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es" data-theme="dark">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -81,7 +82,12 @@
             --nav-bg: rgba(15, 23, 42, 0.95);
         }
 
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -127,7 +133,7 @@
             color: var(--text-color);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-        
+
         [data-theme="contrast"] .nav-tab.active {
             background: var(--accent-color);
             color: black;
@@ -149,11 +155,15 @@
             justify-content: center;
             transition: all 0.2s;
         }
-        
-        .menu-btn:active { transform: scale(0.95); }
+
+        .menu-btn:active {
+            transform: scale(0.95);
+        }
 
         /* --- Selector de Vista --- */
-        .view-selector { padding: 16px 16px 8px 16px; }
+        .view-selector {
+            padding: 16px 16px 8px 16px;
+        }
 
         .view-mode-pills {
             display: flex;
@@ -182,67 +192,167 @@
         .view-btn.active {
             background: var(--accent-color);
             color: white;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
-        
-        [data-theme="light"] .view-btn.active { color: white; }
-        [data-theme="contrast"] .view-btn.active { color: black; font-weight: 800; }
+
+        [data-theme="light"] .view-btn.active {
+            color: white;
+        }
+
+        [data-theme="contrast"] .view-btn.active {
+            color: black;
+            font-weight: 800;
+        }
 
         /* --- Panel de Control --- */
-        .dashboard-panel { padding: 16px; background: var(--bg-color); transition: background-color 0.3s ease; }
+        .dashboard-panel {
+            padding: 16px;
+            background: var(--bg-color);
+            transition: background-color 0.3s ease;
+        }
 
         .date-nav {
-            display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 16px; background: var(--card-bg);
-            padding: 6px; border-radius: 16px; border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            background: var(--card-bg);
+            padding: 6px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
         }
 
         .nav-arrow {
-            background: transparent; border: none; color: var(--accent-color);
-            font-size: 20px; width: 44px; height: 44px; cursor: pointer;
-            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            background: transparent;
+            border: none;
+            color: var(--accent-color);
+            font-size: 20px;
+            width: 44px;
+            height: 44px;
+            cursor: pointer;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .nav-arrow:active { background: var(--border-color); }
 
-        .current-date-wrapper { position: relative; flex: 1; text-align: center; height: 44px; display: flex; align-items: center; justify-content: center; }
-        .current-date-display { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
-        #date-picker-trigger { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; }
+        .nav-arrow:active {
+            background: var(--border-color);
+        }
+
+        .current-date-wrapper {
+            position: relative;
+            flex: 1;
+            text-align: center;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .current-date-display {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        #date-picker-trigger {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+        }
 
         /* --- Stats --- */
-        .stats-filters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+        .stats-filters {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
 
         .stat-card {
-            background: var(--card-bg); border: 1px solid var(--border-color);
-            border-radius: 14px; padding: 12px 2px; text-align: center;
-            cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 12px 2px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
         }
-        .stat-card:active { transform: scale(0.95); }
+
+        .stat-card:active {
+            transform: scale(0.95);
+        }
 
         .stat-card.active {
             background: var(--input-bg);
             border-color: var(--accent-color);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         .stat-card.active::after {
-            content: ''; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
-            width: 40%; height: 3px; background: var(--accent-color); border-radius: 3px 3px 0 0;
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40%;
+            height: 3px;
+            background: var(--accent-color);
+            border-radius: 3px 3px 0 0;
         }
 
-        .stat-card[data-filter="present"].active { border-color: var(--success-color); }
-        .stat-card[data-filter="present"].active::after { background: var(--success-color); }
-        .stat-card[data-filter="extra"].active { border-color: var(--extra-color); }
-        .stat-card[data-filter="extra"].active::after { background: var(--extra-color); }
-        .stat-card[data-filter="absent"].active { border-color: var(--danger-color); }
-        .stat-card[data-filter="absent"].active::after { background: var(--danger-color); }
+        .stat-card[data-filter="present"].active {
+            border-color: var(--success-color);
+        }
 
-        .stat-value { font-size: 18px; font-weight: 800; margin-bottom: 2px; line-height: 1; }
-        .stat-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; }
-        .stat-card.active .stat-label { color: var(--text-color); }
+        .stat-card[data-filter="present"].active::after {
+            background: var(--success-color);
+        }
+
+        .stat-card[data-filter="extra"].active {
+            border-color: var(--extra-color);
+        }
+
+        .stat-card[data-filter="extra"].active::after {
+            background: var(--extra-color);
+        }
+
+        .stat-card[data-filter="absent"].active {
+            border-color: var(--danger-color);
+        }
+
+        .stat-card[data-filter="absent"].active::after {
+            background: var(--danger-color);
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 800;
+            margin-bottom: 2px;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .stat-card.active .stat-label {
+            color: var(--text-color);
+        }
 
         /* --- Config & Search --- */
         .tools-grid {
-            display: grid; 
+            display: grid;
             grid-template-columns: auto 1fr;
             gap: 12px;
             margin-bottom: 12px;
@@ -264,164 +374,747 @@
             transition: transform 0.2s;
             height: 46px;
         }
-        .whatsapp-cta:active { transform: scale(0.96); }
+
+        .whatsapp-cta:active {
+            transform: scale(0.96);
+        }
 
         .config-bar {
-            display: flex; align-items: center; background: var(--card-bg);
-            border: 1px solid var(--border-color); border-radius: 12px;
-            padding: 0 12px; height: 46px; gap: 8px;
+            display: flex;
+            align-items: center;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0 12px;
+            height: 46px;
+            gap: 8px;
         }
-        .config-label { font-size: 13px; color: var(--text-muted); font-weight: 600; flex: 1; white-space: nowrap;}
-        
-        .hours-input-global {
-            width: 50px; background: var(--input-bg); border: 1px solid var(--border-color);
-            color: var(--text-color); padding: 6px; border-radius: 8px;
-            text-align: center; font-weight: 700; font-size: 16px;
-        }
-        .hours-input-global:focus { outline: none; border-color: var(--accent-color); }
 
-        .search-container { position: relative; margin-bottom: 8px; }
-        .search-input {
-            width: 100%; background: var(--card-bg); border: 1px solid var(--border-color);
-            border-radius: 14px; padding: 14px 16px 14px 44px; color: var(--text-color);
-            font-size: 16px; transition: border-color 0.2s;
+        .config-label {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 600;
+            flex: 1;
+            white-space: nowrap;
         }
-        .search-input:focus { outline: none; border-color: var(--accent-color); }
-        .search-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 18px; opacity: 0.5; pointer-events: none; color: var(--text-color); }
+
+        .hours-input-global {
+            width: 50px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 6px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        .hours-input-global:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .search-container {
+            position: relative;
+            margin-bottom: 8px;
+        }
+
+        .search-input {
+            width: 100%;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 14px 16px 14px 44px;
+            color: var(--text-color);
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 18px;
+            opacity: 0.5;
+            pointer-events: none;
+            color: var(--text-color);
+        }
 
         /* --- Lista --- */
-        .users-list { padding: 0 16px; display: flex; flex-direction: column; gap: 10px; }
-        .user-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 8px; display: flex; align-items: center; gap: 12px; min-height: 72px; transition: background-color 0.3s ease; }
-        .user-info-area { flex: 1; display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 4px; }
-        
-        .avatar-placeholder {
-            width: 40px; height: 40px; background: var(--input-bg); color: var(--text-muted);
-            border-radius: 12px; display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 14px; border: 1px solid var(--border-color);
+        .users-list {
+            padding: 0 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
-        .user-details { display: flex; flex-direction: column; gap: 2px; }
-        .user-name { font-size: 16px; font-weight: 600; color: var(--text-color); }
-        .user-role { font-size: 12px; color: var(--text-muted); }
+        .user-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 72px;
+            transition: background-color 0.3s ease;
+        }
 
-        .hours-badge { background: var(--input-bg); color: var(--text-muted); padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 700; border: 1px solid var(--border-color); }
-        .hours-badge.green { color: var(--success-color); border-color: var(--success-color); }
-        .hours-badge.blue { color: var(--extra-color); border-color: var(--extra-color); }
-        .hours-badge.red { color: var(--danger-color); border-color: var(--danger-color); }
+        .user-info-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            padding: 4px;
+        }
 
-        .check-box { width: 56px; height: 56px; border-radius: 14px; background: transparent; border: 2px solid var(--border-color); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; color: transparent; transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); flex-shrink: 0; }
-        .check-box:active { transform: scale(0.9); }
-        .check-box.checked { color: white; border: none; }
-        .check-box.checked.green { background: var(--success-color); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
-        .check-box.checked.blue { background: var(--extra-color); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
-        .check-box.checked.red { background: var(--danger-color); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+        .avatar-placeholder {
+            width: 40px;
+            height: 40px;
+            background: var(--input-bg);
+            color: var(--text-muted);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            border: 1px solid var(--border-color);
+        }
+
+        .user-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .user-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .user-role {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .hours-badge {
+            background: var(--input-bg);
+            color: var(--text-muted);
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1px solid var(--border-color);
+        }
+
+        .hours-badge.green {
+            color: var(--success-color);
+            border-color: var(--success-color);
+        }
+
+        .hours-badge.blue {
+            color: var(--extra-color);
+            border-color: var(--extra-color);
+        }
+
+        .hours-badge.red {
+            color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        .check-box {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: transparent;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: transparent;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            flex-shrink: 0;
+        }
+
+        .check-box:active {
+            transform: scale(0.9);
+        }
+
+        .check-box.checked {
+            color: white;
+            border: none;
+        }
+
+        .check-box.checked.green {
+            background: var(--success-color);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .check-box.checked.blue {
+            background: var(--extra-color);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .check-box.checked.red {
+            background: var(--danger-color);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
 
         /* --- Tabla Semanal --- */
-        .week-view-container { padding: 0 16px 100px; }
-        .week-table-wrapper { background: var(--card-bg); border-radius: 16px; border: 1px solid var(--border-color); overflow: hidden; position: relative; }
-        .week-scroll-area { overflow-x: auto; position: relative; }
-        .week-table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        .week-table th, .week-table td { padding: 12px 8px; text-align: center; border-bottom: 1px solid var(--border-color); white-space: nowrap; }
-        
-        .week-table th { background: var(--input-bg); color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; }
-        
-        .col-sticky {
-            position: sticky; left: 0; background: inherit; z-index: 10;
-            text-align: left !important; padding-left: 16px !important;
-            border-right: 1px solid var(--border-color); min-width: 120px; max-width: 120px;
-            overflow: hidden; text-overflow: ellipsis; color: var(--text-color);
+        .week-view-container {
+            padding: 0 16px 100px;
         }
-        
-        .week-table thead .col-sticky { background: var(--input-bg); z-index: 20; }
-        .week-table tbody .col-sticky { background: var(--card-bg); }
 
-        .week-cell { font-size: 13px; font-weight: 700; cursor: pointer; }
-        .cell-green { color: var(--success-color); }
-        .cell-blue { color: var(--extra-color); }
-        .cell-red { color: var(--danger-color); }
-        .cell-empty { color: var(--text-muted); font-weight: 400; opacity: 0.3; }
+        .week-table-wrapper {
+            background: var(--card-bg);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .week-scroll-area {
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .week-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 600px;
+        }
+
+        .week-table th,
+        .week-table td {
+            padding: 12px 8px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+
+        .week-table th {
+            background: var(--input-bg);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .col-sticky {
+            position: sticky;
+            left: 0;
+            background: inherit;
+            z-index: 10;
+            text-align: left !important;
+            padding-left: 16px !important;
+            border-right: 1px solid var(--border-color);
+            min-width: 120px;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-color);
+        }
+
+        .week-table thead .col-sticky {
+            background: var(--input-bg);
+            z-index: 20;
+        }
+
+        .week-table tbody .col-sticky {
+            background: var(--card-bg);
+        }
+
+        .week-cell {
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .cell-green {
+            color: var(--success-color);
+        }
+
+        .cell-blue {
+            color: var(--extra-color);
+        }
+
+        .cell-red {
+            color: var(--danger-color);
+        }
+
+        .cell-empty {
+            color: var(--text-muted);
+            font-weight: 400;
+            opacity: 0.3;
+        }
 
         /* FAB */
-        .fab-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 16px; z-index: 100; align-items: center; }
-        .fab { width: 64px; height: 64px; border-radius: 20px; border: none; color: white; font-size: 32px; cursor: pointer; box-shadow: 0 8px 24px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; transition: transform 0.2s; }
-        .fab:active { transform: scale(0.9); }
-        .fab-add { background: var(--accent-color); color: #000; }
-        /* High contrast overrides for FAB text color */
-        [data-theme="dark"] .fab-add { color: white; background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%); }
-        [data-theme="ocean"] .fab-add { color: white; background: var(--accent-color); }
-        [data-theme="light"] .fab-add { color: white; background: var(--accent-color); }
-        [data-theme="contrast"] .fab-add { color: black; background: var(--accent-color); border: 2px solid white; }
+        .fab-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            z-index: 100;
+            align-items: center;
+        }
 
-        .fab-share { background: var(--whatsapp-color); width: 56px; height: 56px; font-size: 24px; box-shadow: 0 8px 24px rgba(37, 211, 102, 0.3); }
+        .fab {
+            width: 64px;
+            height: 64px;
+            border-radius: 20px;
+            border: none;
+            color: white;
+            font-size: 32px;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .fab:active {
+            transform: scale(0.9);
+        }
+
+        .fab-add {
+            background: var(--accent-color);
+            color: #000;
+        }
+
+        /* High contrast overrides for FAB text color */
+        [data-theme="dark"] .fab-add {
+            color: white;
+            background: linear-gradient(135deg, #00d4ff 0%, #0099ff 100%);
+        }
+
+        [data-theme="ocean"] .fab-add {
+            color: white;
+            background: var(--accent-color);
+        }
+
+        [data-theme="light"] .fab-add {
+            color: white;
+            background: var(--accent-color);
+        }
+
+        [data-theme="contrast"] .fab-add {
+            color: black;
+            background: var(--accent-color);
+            border: 2px solid white;
+        }
+
+        .fab-share {
+            background: var(--whatsapp-color);
+            width: 56px;
+            height: 56px;
+            font-size: 24px;
+            box-shadow: 0 8px 24px rgba(37, 211, 102, 0.3);
+        }
 
         /* Modales */
-        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); z-index: 200; align-items: flex-end; justify-content: center; opacity: 0; transition: opacity 0.3s; }
-        .modal.active { display: flex; opacity: 1; }
-        .modal-content { background: var(--card-bg); border-top-left-radius: 28px; border-top-right-radius: 28px; padding: 24px 20px 40px; width: 100%; max-width: 600px; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.1, 0.7, 0.1, 1); border-top: 1px solid var(--border-color); box-shadow: 0 -10px 40px rgba(0,0,0,0.5); }
-        .modal.active .modal-content { transform: translateY(0); }
-        @media(min-width: 600px) { .modal { align-items: center; } .modal-content { border-radius: 28px; max-width: 400px; padding-bottom: 24px; border: 1px solid var(--border-color); } }
-        .modal-handle { width: 40px; height: 4px; background: var(--border-color); border-radius: 2px; margin: 0 auto 20px; }
-        .modal-header { text-align: center; margin-bottom: 24px; }
-        .modal-title { font-size: 20px; font-weight: 700; color: var(--text-color); }
-        .modal-subtitle { font-size: 14px; color: var(--text-muted); margin-top: 4px; }
-        
-        .btn-full { width: 100%; padding: 16px; border-radius: 16px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 12px; }
-        .btn-primary { background: var(--accent-color); color: #ffffff; }
-        [data-theme="contrast"] .btn-primary { color: #000000; }
-        .btn-secondary { background: var(--input-bg); color: var(--text-muted); border: 1px solid var(--border-color); }
-        .btn-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger-color); }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+            align-items: flex-end;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
 
-        .action-item { background: var(--input-bg); padding: 18px; border-radius: 16px; display: flex; align-items: center; gap: 16px; margin-bottom: 10px; font-weight: 500; font-size: 16px; border: 1px solid var(--border-color); color: var(--text-color); }
-        .action-item:active { opacity: 0.8; }
+        .modal.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: var(--card-bg);
+            border-top-left-radius: 28px;
+            border-top-right-radius: 28px;
+            padding: 24px 20px 40px;
+            width: 100%;
+            max-width: 600px;
+            transform: translateY(100%);
+            transition: transform 0.3s cubic-bezier(0.1, 0.7, 0.1, 1);
+            border-top: 1px solid var(--border-color);
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.active .modal-content {
+            transform: translateY(0);
+        }
+
+        @media(min-width: 600px) {
+            .modal {
+                align-items: center;
+            }
+
+            .modal-content {
+                border-radius: 28px;
+                max-width: 400px;
+                padding-bottom: 24px;
+                border: 1px solid var(--border-color);
+            }
+        }
+
+        .modal-handle {
+            width: 40px;
+            height: 4px;
+            background: var(--border-color);
+            border-radius: 2px;
+            margin: 0 auto 20px;
+        }
+
+        .modal-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .modal-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        .btn-full {
+            width: 100%;
+            padding: 16px;
+            border-radius: 16px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: #ffffff;
+        }
+
+        [data-theme="contrast"] .btn-primary {
+            color: #000000;
+        }
+
+        .btn-secondary {
+            background: var(--input-bg);
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--danger-color);
+        }
+
+        .action-item {
+            background: var(--input-bg);
+            padding: 18px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 10px;
+            font-weight: 500;
+            font-size: 16px;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+        }
+
+        .action-item:active {
+            opacity: 0.8;
+        }
 
         /* Calendario */
-        .calendar-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .cal-nav-btn { width: 40px; height: 40px; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-color); font-size: 18px; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; margin-bottom: 20px; }
-        .cal-header { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 10px; }
-        .cal-day { aspect-ratio: 1; border-radius: 10px; font-size: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--input-bg); position: relative; color: var(--text-color); border: 1px solid transparent; }
-        .cal-day.has-data { background: var(--input-bg); border-color: var(--border-color); font-weight: 700; }
-        .dot { width: 5px; height: 5px; border-radius: 50%; margin-top: 4px; }
-        .dot.green { background: var(--success-color); }
-        .dot.red { background: var(--danger-color); }
-        .dot.blue { background: var(--extra-color); }
-        .cal-hours { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+        .calendar-nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
 
-        .hours-display { font-size: 64px; font-weight: 800; text-align: center; margin: 30px 0; color: var(--text-color); letter-spacing: -2px; }
-        .range-slider { width: 100%; margin-bottom: 20px; accent-color: var(--accent-color); }
-        .hidden { display: none !important; }
-        .export-menu { z-index: 300; }
-        .export-options { display: grid; gap: 12px; }
-        .export-option { background: var(--input-bg); padding: 16px; border-radius: 16px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--border-color); cursor: pointer; }
-        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-        .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.3; }
+        .cal-nav-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            font-size: 18px;
+        }
 
-<<<<<<< HEAD
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .cal-header {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .cal-day {
+            aspect-ratio: 1;
+            border-radius: 10px;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--input-bg);
+            position: relative;
+            color: var(--text-color);
+            border: 1px solid transparent;
+        }
+
+        .cal-day.has-data {
+            background: var(--input-bg);
+            border-color: var(--border-color);
+            font-weight: 700;
+        }
+
+        .dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            margin-top: 4px;
+        }
+
+        .dot.green {
+            background: var(--success-color);
+        }
+
+        .dot.red {
+            background: var(--danger-color);
+        }
+
+        .dot.blue {
+            background: var(--extra-color);
+        }
+
+        .cal-hours {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .hours-display {
+            font-size: 64px;
+            font-weight: 800;
+            text-align: center;
+            margin: 30px 0;
+            color: var(--text-color);
+            letter-spacing: -2px;
+        }
+
+        .range-slider {
+            width: 100%;
+            margin-bottom: 20px;
+            accent-color: var(--accent-color);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .export-menu {
+            z-index: 300;
+        }
+
+        .export-options {
+            display: grid;
+            gap: 12px;
+        }
+
+        .export-option {
+            background: var(--input-bg);
+            padding: 16px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+            opacity: 0.3;
+        }
+
         .export-btn {
-            width: 40px; height: 40px; border-radius: 12px;
-            background: var(--input-bg); border: 1px solid var(--border-color);
-            color: var(--text-muted); cursor: pointer; display: flex;
-            align-items: center; justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             transition: all 0.2s;
         }
-        .export-btn:active { transform: scale(0.9); background: var(--border-color); }
 
-=======
->>>>>>> origin/main
+        .export-btn:active {
+            transform: scale(0.9);
+            background: var(--border-color);
+        }
+
 
         /* Estilos Selector Temas */
-        .theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .theme-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
         .theme-btn {
-            padding: 16px; border-radius: 16px; border: 2px solid var(--border-color);
-            background: var(--input-bg); color: var(--text-color); cursor: pointer;
-            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            padding: 16px;
+            border-radius: 16px;
+            border: 2px solid var(--border-color);
+            background: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
             font-weight: 600;
         }
-        .theme-btn.active { border-color: var(--accent-color); background: rgba(0, 212, 255, 0.05); }
-        .theme-preview { width: 24px; height: 24px; border-radius: 50%; border: 1px solid white; }
 
+        .theme-btn.active {
+            border-color: var(--accent-color);
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .theme-preview {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid white;
+        }
+
+        /* --- Reminder Toggle --- */
+        .reminder-config {
+            background: var(--input-bg);
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+        }
+        .reminder-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .reminder-row + .reminder-row {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+        .reminder-label {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+        .reminder-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 28px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border-color);
+            border-radius: 28px;
+            transition: background 0.2s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--accent-color);
+        }
+        .toggle-switch input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+        .time-input {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: inherit;
+        }
+        .time-input:focus {
+            outline: none;
+            border-color: var(--accent-color);
+        }
     </style>
 </head>
+
 <body>
 
     <div class="top-nav">
@@ -478,7 +1171,8 @@
                     <!-- Botón Enviar Reporte -->
                     <button class="whatsapp-cta" onclick="shareToWhatsApp()">
                         <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
-                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                            <path
+                                d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
                         </svg>
                         Enviar Reporte
                     </button>
@@ -486,7 +1180,8 @@
                     <!-- Configuración rápida -->
                     <div class="config-bar">
                         <div class="config-label">⏱️ Valor Check:</div>
-                        <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1" max="24">
+                        <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1"
+                            max="24">
                     </div>
                 </div>
 
@@ -510,7 +1205,7 @@
                     <button class="nav-arrow" onclick="changeWeek(1)">❯</button>
                 </div>
             </div>
-            
+
             <div class="week-table-wrapper">
                 <div class="week-scroll-area">
                     <table class="week-table" id="week-table"></table>
@@ -528,9 +1223,10 @@
             </div>
         </div>
         <div class="users-list" id="employees-container"></div>
-        
+
         <!-- FAB Agregar Usuario Contextual (Solo aquí) -->
-        <button class="fab fab-add" id="fab-add-user" onclick="openAddUserModal()" style="position: fixed; bottom: 24px; right: 24px;">＋</button>
+        <button class="fab fab-add" id="fab-add-user" onclick="openAddUserModal()"
+            style="position: fixed; bottom: 24px; right: 24px;">＋</button>
     </div>
 
     <!-- MODAL DE TEMAS (NUEVO) -->
@@ -573,7 +1269,9 @@
             </div>
             <div class="action-list">
                 <div class="action-item" id="qa-modify"><span>⏱️</span> Modificar Horas</div>
-                <div class="action-item" id="qa-delete" style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span>🗑️</span> Marcar como Ausente</div>
+                <div class="action-item" id="qa-delete"
+                    style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span>🗑️</span> Marcar como
+                    Ausente</div>
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('modal-quick-actions')">Cancelar</button>
         </div>
@@ -608,10 +1306,17 @@
                 <button class="cal-nav-btn" id="cal-next">❯</button>
             </div>
             <div class="calendar-grid" id="cal-grid"></div>
-            <div style="display: flex; justify-content: space-around; font-size: 12px; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--border-color);">
-                <div style="text-align: center;"><span style="color: var(--success-color); font-weight: 800; font-size: 16px; display: block;" id="stat-normal">0</span>Normal</div>
-                <div style="text-align: center;"><span style="color: var(--danger-color); font-weight: 800; font-size: 16px; display: block;" id="stat-less">0</span>Menos</div>
-                <div style="text-align: center;"><span style="color: var(--extra-color); font-weight: 800; font-size: 16px; display: block;" id="stat-extra">0</span>Extras</div>
+            <div
+                style="display: flex; justify-content: space-around; font-size: 12px; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--border-color);">
+                <div style="text-align: center;"><span
+                        style="color: var(--success-color); font-weight: 800; font-size: 16px; display: block;"
+                        id="stat-normal">0</span>Normal</div>
+                <div style="text-align: center;"><span
+                        style="color: var(--danger-color); font-weight: 800; font-size: 16px; display: block;"
+                        id="stat-less">0</span>Menos</div>
+                <div style="text-align: center;"><span
+                        style="color: var(--extra-color); font-weight: 800; font-size: 16px; display: block;"
+                        id="stat-extra">0</span>Extras</div>
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('modal-calendar')">Cerrar</button>
         </div>
@@ -620,15 +1325,22 @@
     <div class="modal" id="user-modal">
         <div class="modal-content">
             <div class="modal-handle"></div>
-            <div class="modal-header"><div class="modal-title" id="form-title">Nuevo Empleado</div></div>
+            <div class="modal-header">
+                <div class="modal-title" id="form-title">Nuevo Empleado</div>
+            </div>
             <form id="user-form">
                 <input type="hidden" id="edit-user-id">
-                <div style="margin-bottom: 16px;"><input type="text" id="user-name" placeholder="Nombre Completo" class="search-input" required></div>
-                <div style="margin-bottom: 16px;"><input type="number" id="user-number" placeholder="Número de empleado" class="search-input" required></div>
-                <div style="margin-bottom: 24px;"><input type="text" id="user-position" placeholder="Cargo / Puesto (Opcional)" class="search-input"></div>
+                <div style="margin-bottom: 16px;"><input type="text" id="user-name" placeholder="Nombre Completo"
+                        class="search-input" required></div>
+                <div style="margin-bottom: 16px;"><input type="number" id="user-number" placeholder="Número de empleado"
+                        class="search-input" required></div>
+                <div style="margin-bottom: 24px;"><input type="text" id="user-position"
+                        placeholder="Cargo / Puesto (Opcional)" class="search-input"></div>
                 <button type="submit" class="btn-full btn-primary">Guardar Empleado</button>
-                <button type="button" id="btn-delete-user" class="btn-full btn-danger" style="display: none; margin-top: 12px;">Eliminar</button>
-                <button type="button" class="btn-full btn-secondary" id="cancel-btn" style="margin-top: 12px;">Cancelar</button>
+                <button type="button" id="btn-delete-user" class="btn-full btn-danger"
+                    style="display: none; margin-top: 12px;">Eliminar</button>
+                <button type="button" class="btn-full btn-secondary" id="cancel-btn"
+                    style="margin-top: 12px;">Cancelar</button>
             </form>
         </div>
     </div>
@@ -637,28 +1349,62 @@
     <div class="modal" id="export-menu">
         <div class="modal-content">
             <div class="modal-handle"></div>
-            <div class="modal-header"><div class="modal-title">Gestión de Datos</div></div>
+            <div class="modal-header">
+                <div class="modal-title">Gestión de Datos</div>
+            </div>
             <div class="export-options">
                 <div class="export-option" onclick="downloadJSON()">
                     <span style="font-size: 24px;">💾</span>
-                    <div><div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Descargar empleados y asistencia</div></div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados y asistencia</div>
+                    </div>
                 </div>
                 <div class="export-option" onclick="openImportBackupModal()">
                     <span style="font-size: 24px;">📂</span>
-                    <div><div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Pegar JSON de respaldo completo</div></div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Pegar JSON de respaldo completo</div>
+                    </div>
                 </div>
                 <div class="export-option" onclick="openImportEmployeesModal()">
                     <span style="font-size: 24px;">👥</span>
-                    <div><div style="font-weight: 600; color: var(--warning-color);">Importar Empleados (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Pegar lista de empleados</div></div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--warning-color);">Importar Empleados (JSON)</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Pegar lista de empleados</div>
+                    </div>
                 </div>
-<<<<<<< HEAD
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
-                <div class="export-option" id="btn-install-pwa" onclick="installPWA()" style="opacity:0.4; cursor:not-allowed;">
+                <div class="export-option" id="btn-install-pwa" onclick="installPWA()"
+                    style="opacity:0.4; cursor:not-allowed;">
                     <span style="font-size: 24px;">📲</span>
-                    <div><div style="font-weight: 600; color: var(--text-color);" id="install-pwa-label">Instalar App</div><div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando disponibilidad...</div></div>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text-color);" id="install-pwa-label">Instalar App
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando
+                            disponibilidad...</div>
+                    </div>
                 </div>
-=======
->>>>>>> origin/main
+                <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
+                <div class="reminder-config">
+                    <div class="reminder-row">
+                        <div>
+                            <div class="reminder-label">Recordatorio diario</div>
+                            <div class="reminder-hint" id="reminder-status">Desactivado</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="reminder-toggle" onchange="toggleReminder(this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="reminder-row" id="reminder-time-row" style="display:none;">
+                        <div>
+                            <div class="reminder-label">Hora del recordatorio</div>
+                            <div class="reminder-hint">Te avisaremos si no hay asistencia</div>
+                        </div>
+                        <input type="time" id="reminder-time" class="time-input" value="09:00" onchange="updateReminderTime(this.value)">
+                    </div>
+                </div>
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('export-menu')">Cancelar</button>
         </div>
@@ -672,17 +1418,19 @@
                 <div class="modal-title">&#x1F4C2; Restaurar Respaldo</div>
                 <div class="modal-subtitle">Pega el JSON del respaldo completo</div>
             </div>
-            <textarea
-                id="restore-backup-textarea"
-                placeholder="Pega aqui el JSON de respaldo..."
+            <textarea id="restore-backup-textarea" placeholder="Pega aqui el JSON de respaldo..."
                 style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
                 oninput="validateRestoreTextarea(this)"
-                onpaste="setTimeout(function(){validateRestoreTextarea(document.getElementById('restore-backup-textarea'))},50)"
-            ></textarea>
-            <div id="restore-validation-msg" style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
+                onpaste="setTimeout(function(){validateRestoreTextarea(document.getElementById('restore-backup-textarea'))},50)"></textarea>
+            <div id="restore-validation-msg"
+                style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
             <div style="display:flex;gap:10px;">
-                <button type="button" style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;" onclick="closeModal('modal-restore-backup')">Cancelar</button>
-                <button type="button" id="btn-do-restore" data-ready="no" style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;" onclick="doRestoreBackup()">Restaurar</button>
+                <button type="button"
+                    style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;"
+                    onclick="closeModal('modal-restore-backup')">Cancelar</button>
+                <button type="button" id="btn-do-restore" data-ready="no"
+                    style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
+                    onclick="doRestoreBackup()">Restaurar</button>
             </div>
         </div>
     </div>
@@ -696,38 +1444,34 @@
                 <div class="modal-subtitle">Pega el JSON y presiona Importar</div>
             </div>
 
-            <details style="margin-bottom:14px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:12px;">
+            <details
+                style="margin-bottom:14px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;padding:12px;">
                 <summary style="font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer;">
                     &#x25BA; Ver formato de ejemplo
                 </summary>
-                <pre style="margin-top:10px;font-size:11px;color:var(--accent-color);white-space:pre-wrap;word-break:break-all;line-height:1.6;">[
+                <pre
+                    style="margin-top:10px;font-size:11px;color:var(--accent-color);white-space:pre-wrap;word-break:break-all;line-height:1.6;">[
   { "number": "1", "name": "Ana Garcia",   "position": "Gerente" },
   { "number": "2", "name": "Carlos Perez", "position": "Dev" },
   { "number": "3", "name": "Maria Lopez" }
 ]</pre>
             </details>
 
-            <textarea
-                id="import-employees-textarea"
-                placeholder="Pega aqui tu JSON..."
+            <textarea id="import-employees-textarea" placeholder="Pega aqui tu JSON..."
                 style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
                 oninput="validateImportTextarea(this)"
-                onpaste="setTimeout(function(){validateImportTextarea(document.getElementById('import-employees-textarea'))},50)"
-            ></textarea>
+                onpaste="setTimeout(function(){validateImportTextarea(document.getElementById('import-employees-textarea'))},50)"></textarea>
 
-            <div id="import-validation-msg" style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
+            <div id="import-validation-msg"
+                style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
 
             <div style="display:flex;gap:10px;">
-                <button
-                    type="button"
+                <button type="button"
                     style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;"
                     onclick="closeModal('modal-import-employees')">
                     Cancelar
                 </button>
-                <button
-                    type="button"
-                    id="btn-do-import"
-                    data-ready="no"
+                <button type="button" id="btn-do-import" data-ready="no"
                     style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
                     onclick="doImportEmployeesFromText()">
                     Importar
@@ -738,15 +1482,14 @@
 
     <script>
         let users = [];
-        let attendanceData = {}; 
-        let currentFilter = 'all'; 
+        let attendanceData = {};
+        let currentFilter = 'all';
         let selectedDate = new Date().toISOString().split('T')[0];
-        let currentWeekStart = new Date(); 
+        let currentWeekStart = new Date();
         let selectedUserId = null;
         let calendarDate = new Date();
         let lastActionTime = "";
 
-<<<<<<< HEAD
         function esc(str) {
             const d = document.createElement('div');
             d.textContent = str;
@@ -755,14 +1498,11 @@
 
 
         let deferredInstallPrompt = null;
-=======
->>>>>>> origin/main
 
         function initPWA() {
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js').catch(() => {});
+                navigator.serviceWorker.register('./sw.js').catch(() => { });
             }
-<<<<<<< HEAD
 
             // Si ya esta instalada (modo standalone), marcarlo
             if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
@@ -816,9 +1556,134 @@
                 deferredInstallPrompt = null;
             });
             closeModal('export-menu');
-=======
->>>>>>> origin/main
         }
+
+        // --- SISTEMA DE RECORDATORIOS ---
+        let reminderTimeout = null;
+
+        function initReminder() {
+            const config = getReminderConfig();
+            const toggle = document.getElementById('reminder-toggle');
+            const timeInput = document.getElementById('reminder-time');
+            const timeRow = document.getElementById('reminder-time-row');
+            const status = document.getElementById('reminder-status');
+
+            toggle.checked = config.enabled;
+            timeInput.value = config.time;
+
+            if (config.enabled) {
+                timeRow.style.display = 'flex';
+                status.textContent = 'Activo - ' + formatTime12h(config.time);
+                scheduleReminder(config.time);
+            }
+        }
+
+        function getReminderConfig() {
+            const saved = localStorage.getItem('reminderConfig');
+            if (saved) return JSON.parse(saved);
+            return { enabled: false, time: '09:00' };
+        }
+
+        function saveReminderConfig(config) {
+            localStorage.setItem('reminderConfig', JSON.stringify(config));
+        }
+
+        function toggleReminder(enabled) {
+            const config = getReminderConfig();
+            const timeRow = document.getElementById('reminder-time-row');
+            const status = document.getElementById('reminder-status');
+
+            if (enabled) {
+                // Pedir permiso de notificacion
+                if (!('Notification' in window)) {
+                    alert('Este navegador no soporta notificaciones.');
+                    document.getElementById('reminder-toggle').checked = false;
+                    return;
+                }
+
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        config.enabled = true;
+                        saveReminderConfig(config);
+                        timeRow.style.display = 'flex';
+                        status.textContent = 'Activo - ' + formatTime12h(config.time);
+                        scheduleReminder(config.time);
+                    } else {
+                        document.getElementById('reminder-toggle').checked = false;
+                        status.textContent = 'Permiso denegado';
+                        status.style.color = 'var(--danger-color)';
+                        setTimeout(() => {
+                            status.textContent = 'Desactivado';
+                            status.style.color = '';
+                        }, 3000);
+                    }
+                });
+            } else {
+                config.enabled = false;
+                saveReminderConfig(config);
+                timeRow.style.display = 'none';
+                status.textContent = 'Desactivado';
+                if (reminderTimeout) {
+                    clearTimeout(reminderTimeout);
+                    reminderTimeout = null;
+                }
+            }
+        }
+
+        function updateReminderTime(time) {
+            const config = getReminderConfig();
+            config.time = time;
+            saveReminderConfig(config);
+            document.getElementById('reminder-status').textContent = 'Activo - ' + formatTime12h(time);
+
+            // Reprogramar
+            if (reminderTimeout) clearTimeout(reminderTimeout);
+            scheduleReminder(time);
+        }
+
+        function scheduleReminder(timeStr) {
+            if (reminderTimeout) clearTimeout(reminderTimeout);
+
+            const [hours, minutes] = timeStr.split(':').map(Number);
+            const now = new Date();
+            const target = new Date();
+            target.setHours(hours, minutes, 0, 0);
+
+            // Si la hora ya paso hoy, programar para manana
+            if (target <= now) {
+                target.setDate(target.getDate() + 1);
+            }
+
+            const ms = target - now;
+            reminderTimeout = setTimeout(() => {
+                checkAndNotify();
+                // Reprogramar para el dia siguiente
+                scheduleReminder(timeStr);
+            }, ms);
+        }
+
+        function checkAndNotify() {
+            const today = new Date().toISOString().split('T')[0];
+            const records = attendanceData[today] || {};
+            const hasAnyRecord = Object.keys(records).length > 0;
+
+            if (!hasAnyRecord && Notification.permission === 'granted') {
+                new Notification('Asistencia pendiente', {
+                    body: 'No has registrado asistencia hoy. Abre la app para registrar.',
+                    icon: './icon-192.png',
+                    tag: 'asistencia-reminder',
+                    requireInteraction: true
+                });
+            }
+        }
+
+        function formatTime12h(timeStr) {
+            const [h, m] = timeStr.split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const hour12 = h % 12 || 12;
+            return hour12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
+        }
+
         function init() {
             const today = new Date();
             const day = today.getDay();
@@ -828,6 +1693,7 @@
             initPWA();
             loadData();
             loadTheme();
+            initReminder();
             updateDashboard();
             setupEvents();
         }
@@ -847,14 +1713,14 @@
         function loadData() {
             const u = localStorage.getItem('users');
             const a = localStorage.getItem('weeklyAttendance');
-            const t = localStorage.getItem('lastUpdateTimestamp'); 
-            
+            const t = localStorage.getItem('lastUpdateTimestamp');
+
             if (u) users = JSON.parse(u);
             if (a) {
                 const parsed = JSON.parse(a);
-                for(let d in parsed) {
-                    if(!attendanceData[d]) attendanceData[d] = {};
-                    for(let id in parsed[d]) {
+                for (let d in parsed) {
+                    if (!attendanceData[d]) attendanceData[d] = {};
+                    for (let id in parsed[d]) {
                         let rec = parsed[d][id];
                         attendanceData[d][id] = (typeof rec === 'string') ? { status: rec, hours: 8 } : rec;
                     }
@@ -866,30 +1732,30 @@
         function saveData() {
             localStorage.setItem('users', JSON.stringify(users));
             localStorage.setItem('weeklyAttendance', JSON.stringify(attendanceData));
-            localStorage.setItem('lastUpdateTimestamp', lastActionTime); 
+            localStorage.setItem('lastUpdateTimestamp', lastActionTime);
             updateDashboard();
         }
 
         function getRecord(uid, date = selectedDate) { return attendanceData[date]?.[uid]; }
 
         function setRecord(uid, status, hours) {
-            if(!attendanceData[selectedDate]) attendanceData[selectedDate] = {};
-            if(status === 'absent' || status === 'pending') {
+            if (!attendanceData[selectedDate]) attendanceData[selectedDate] = {};
+            if (status === 'absent' || status === 'pending') {
                 delete attendanceData[selectedDate][uid];
             } else {
                 attendanceData[selectedDate][uid] = { status: 'present', hours: parseFloat(hours) };
             }
-            
+
             const now = new Date();
-            lastActionTime = now.toLocaleTimeString('es-ES', {hour: 'numeric', minute:'2-digit', hour12: true});
-            
+            lastActionTime = now.toLocaleTimeString('es-ES', { hour: 'numeric', minute: '2-digit', hour12: true });
+
             saveData();
         }
 
         function shareToWhatsApp() {
             const records = attendanceData[selectedDate] || {};
-            const presentUsers = users.filter(u => records[u.id]).sort((a,b) => parseInt(a.number) - parseInt(b.number));
-            
+            const presentUsers = users.filter(u => records[u.id]).sort((a, b) => parseInt(a.number) - parseInt(b.number));
+
             if (presentUsers.length === 0) {
                 alert("No hay asistencia registrada para hoy.");
                 return;
@@ -897,8 +1763,8 @@
 
             const [y, m, d] = selectedDate.split('-');
             const dateObj = new Date(y, m - 1, d);
-            const dateStr = dateObj.toLocaleDateString('es-ES', {weekday: 'long', day: 'numeric', month: 'long'});
-            
+            const dateStr = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
             let message = `*Asistencia de hoy ${dateStr}*\n`;
             message += `_Última actualización: ${lastActionTime || 'Reciente'}_\n\n`;
 
@@ -913,7 +1779,7 @@
 
         function updateDashboard() {
             const [y, m, d] = selectedDate.split('-');
-            const dateObj = new Date(y, m-1, d);
+            const dateObj = new Date(y, m - 1, d);
             const options = { weekday: 'short', day: 'numeric', month: 'short' };
             document.getElementById('header-date').textContent = dateObj.toLocaleDateString('es-ES', options).replace('.', '');
             document.getElementById('date-picker-trigger').value = selectedDate;
@@ -930,7 +1796,7 @@
                     if (r.hours > 8) extraCount++;
                 }
             }
-            
+
             const absentCount = total - presentCount;
 
             document.getElementById('stat-total').textContent = total;
@@ -952,8 +1818,8 @@
         function setMode(mode) {
             document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`btn-mode-${mode}`).classList.add('active');
-            
-            if(mode === 'daily') {
+
+            if (mode === 'daily') {
                 document.getElementById('daily-view').classList.remove('hidden');
                 document.getElementById('weekly-view').classList.add('hidden');
             } else {
@@ -973,7 +1839,7 @@
                 const record = getRecord(u.id);
                 const isPresent = !!record;
                 const hours = isPresent ? record.hours : 0;
-                
+
                 let matchesFilter = true;
                 if (currentFilter === 'present') matchesFilter = isPresent;
                 if (currentFilter === 'absent') matchesFilter = !isPresent;
@@ -987,7 +1853,7 @@
                 return;
             }
 
-            filtered.sort((a,b) => parseInt(a.number) - parseInt(b.number));
+            filtered.sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
             filtered.forEach(u => {
                 const record = getRecord(u.id);
@@ -995,16 +1861,15 @@
                 const hours = isPresent ? record.hours : 0;
 
                 let colorClass = '';
-                if(isPresent) {
-                    if(hours == 8) colorClass = 'green';
-                    else if(hours > 8) colorClass = 'blue';
+                if (isPresent) {
+                    if (hours == 8) colorClass = 'green';
+                    else if (hours > 8) colorClass = 'blue';
                     else colorClass = 'red';
                 }
 
                 const div = document.createElement('div');
                 div.className = 'user-card';
                 div.innerHTML = `
-<<<<<<< HEAD
                     <div class="avatar-placeholder">${esc(u.number)}</div>
                     <div class="user-info-area" onclick="openCalendar('${esc(u.id)}')">
                         <div class="user-details">
@@ -1014,17 +1879,6 @@
                         ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
                     </div>
                     <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}', ${isPresent})">
-=======
-                    <div class="avatar-placeholder">${u.number}</div>
-                    <div class="user-info-area" onclick="openCalendar('${u.id}')">
-                        <div class="user-details">
-                            <div class="user-name">${u.name}</div>
-                            <div class="user-role">${u.position || 'Sin cargo'}</div>
-                        </div>
-                        ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
-                    </div>
-                    <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${u.id}', ${isPresent})">
->>>>>>> origin/main
                         ${isPresent ? '✓' : ''}
                     </div>
                 `;
@@ -1039,48 +1893,44 @@
 
         function renderWeeklyTable() {
             const table = document.getElementById('week-table');
-            
+
             const weekDates = [];
             const curr = new Date(currentWeekStart);
-            for(let i=0; i<7; i++) {
+            for (let i = 0; i < 7; i++) {
                 weekDates.push(new Date(curr));
                 curr.setDate(curr.getDate() + 1);
             }
 
-            const startStr = weekDates[0].toLocaleDateString('es-ES', {day:'numeric', month:'short'});
-            const endStr = weekDates[6].toLocaleDateString('es-ES', {day:'numeric', month:'short'});
+            const startStr = weekDates[0].toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+            const endStr = weekDates[6].toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
             document.getElementById('week-range-display').textContent = `${startStr} - ${endStr}`;
 
             const daysHeader = weekDates.map(d => {
-                const dayName = d.toLocaleDateString('es-ES', {weekday:'short'}).replace('.','');
+                const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '');
                 const dayNum = d.getDate();
                 return `<th>${dayName}<br><small>${dayNum}</small></th>`;
             }).join('');
 
             let html = `<thead><tr><th class="col-sticky">Empleado</th>${daysHeader}</tr></thead><tbody>`;
 
-            const sortedUsers = [...users].sort((a,b) => parseInt(a.number) - parseInt(b.number));
-            
+            const sortedUsers = [...users].sort((a, b) => parseInt(a.number) - parseInt(b.number));
+
             sortedUsers.forEach(u => {
-<<<<<<< HEAD
                 let row = `<tr><td class="col-sticky">${esc(u.name)}</td>`;
-=======
-                let row = `<tr><td class="col-sticky">${u.name}</td>`;
->>>>>>> origin/main
                 weekDates.forEach(d => {
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const day = String(d.getDate()).padStart(2, '0');
                     const dateStr = `${year}-${month}-${day}`;
-                    
+
                     const rec = attendanceData[dateStr]?.[u.id];
                     let cellContent = '-';
                     let cellClass = 'week-cell cell-empty';
-                    
-                    if(rec && rec.status === 'present') {
+
+                    if (rec && rec.status === 'present') {
                         cellContent = `${rec.hours}h`;
-                        if(rec.hours == 8) cellClass = 'week-cell cell-green';
-                        else if(rec.hours > 8) cellClass = 'week-cell cell-blue';
+                        if (rec.hours == 8) cellClass = 'week-cell cell-green';
+                        else if (rec.hours > 8) cellClass = 'week-cell cell-blue';
                         else cellClass = 'week-cell cell-red';
                     }
                     row += `<td class="${cellClass}" onclick="goToDate('${dateStr}')">${cellContent}</td>`;
@@ -1093,7 +1943,7 @@
         }
 
         function toggleCheck(uid, isPresent) {
-            if(isPresent) {
+            if (isPresent) {
                 selectedUserId = uid;
                 const u = users.find(x => x.id === uid);
                 document.getElementById('qa-user-name').textContent = u.name;
@@ -1106,7 +1956,7 @@
 
         function changeDay(offset) {
             const [y, m, d] = selectedDate.split('-');
-            const date = new Date(y, m-1, d);
+            const date = new Date(y, m - 1, d);
             date.setDate(date.getDate() + offset);
             selectedDate = date.toISOString().split('T')[0];
             updateDashboard();
@@ -1135,7 +1985,7 @@
         function renderCalGrid() {
             const y = calendarDate.getFullYear();
             const m = calendarDate.getMonth();
-            const months = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             document.getElementById('cal-month-year').textContent = `${months[m]} ${y}`;
 
             const grid = document.getElementById('cal-grid');
@@ -1145,29 +1995,29 @@
             `;
 
             const firstDay = new Date(y, m, 1).getDay();
-            const daysInMonth = new Date(y, m+1, 0).getDate();
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
 
-            for(let i=0; i<firstDay; i++) grid.innerHTML += `<div class="cal-day empty"></div>`;
+            for (let i = 0; i < firstDay; i++) grid.innerHTML += `<div class="cal-day empty"></div>`;
 
-            let sN=0, sL=0, sE=0;
+            let sN = 0, sL = 0, sE = 0;
 
-            for(let d=1; d<=daysInMonth; d++) {
-                const dateStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const rec = attendanceData[dateStr]?.[selectedUserId];
                 let content = `${d}`;
                 let cls = 'cal-day';
                 let dots = '';
-                
-                if(rec && rec.status === 'present') {
+
+                if (rec && rec.status === 'present') {
                     cls += ' has-data';
                     let col = 'green';
-                    if(rec.hours < 8) { col = 'red'; sL++; }
-                    else if(rec.hours > 8) { col = 'blue'; sE++; }
+                    if (rec.hours < 8) { col = 'red'; sL++; }
+                    else if (rec.hours > 8) { col = 'blue'; sE++; }
                     else sN++;
-                    
+
                     dots = `<div class="dot ${col}"></div><div class="cal-hours">${rec.hours}h</div>`;
                 }
-                
+
                 grid.innerHTML += `<div class="${cls}" onclick="goToDate('${dateStr}')">${content}${dots}</div>`;
             }
             document.getElementById('stat-normal').textContent = sN;
@@ -1177,7 +2027,7 @@
 
         function goToDate(dateStr) {
             selectedDate = dateStr;
-            if(document.getElementById('btn-mode-weekly').classList.contains('active')) {
+            if (document.getElementById('btn-mode-weekly').classList.contains('active')) {
                 setMode('daily');
             }
             updateDashboard();
@@ -1186,13 +2036,13 @@
 
         const slider = document.getElementById('hours-slider');
         const display = document.getElementById('hours-display-val');
-        slider.oninput = function() { display.textContent = this.value; }
+        slider.oninput = function () { display.textContent = this.value; }
 
         function setupEvents() {
             document.getElementById('btn-prev-day').onclick = () => changeDay(-1);
             document.getElementById('btn-next-day').onclick = () => changeDay(1);
             document.getElementById('date-picker-trigger').onchange = (e) => {
-                if(e.target.value) { selectedDate = e.target.value; updateDashboard(); }
+                if (e.target.value) { selectedDate = e.target.value; updateDashboard(); }
             }
 
             document.getElementById('search-input').oninput = renderList;
@@ -1208,7 +2058,7 @@
                 document.getElementById('hours-user-name').textContent = u.name;
                 openModal('modal-hours');
             };
-            
+
             document.getElementById('qa-delete').onclick = () => {
                 setRecord(selectedUserId, 'absent', 0);
                 closeModal('modal-quick-actions');
@@ -1219,9 +2069,9 @@
                 closeModal('modal-hours');
             }
 
-            document.getElementById('cal-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth()-1); renderCalGrid(); }
-            document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth()+1); renderCalGrid(); }
-            
+            document.getElementById('cal-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalGrid(); }
+            document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalGrid(); }
+
             document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
 
             document.getElementById('user-form').onsubmit = (e) => {
@@ -1231,19 +2081,19 @@
                 const num = document.getElementById('user-number').value;
                 const pos = document.getElementById('user-position').value;
 
-                if(id) {
+                if (id) {
                     const u = users.find(x => x.id === id);
-                    if(u) { u.name = name; u.number = num; u.position = pos; }
+                    if (u) { u.name = name; u.number = num; u.position = pos; }
                 } else {
                     users.push({ id: Date.now().toString(), name, number: num, position: pos });
                 }
                 saveData();
-                renderEmployeesList(); 
+                renderEmployeesList();
                 closeModal('user-modal');
             }
 
             document.getElementById('btn-delete-user').onclick = () => {
-                if(confirm('¿Eliminar permanentemente?')) {
+                if (confirm('¿Eliminar permanentemente?')) {
                     const id = document.getElementById('edit-user-id').value;
                     users = users.filter(x => x.id !== id);
                     saveData();
@@ -1253,10 +2103,10 @@
             }
 
             document.getElementById('export-btn').onclick = () => openModal('export-menu');
-            
+
             // Cerrar modal solo cuando el clic es EXACTAMENTE en el overlay, no en hijos
             document.querySelectorAll('.modal').forEach(m => {
-                m.addEventListener('click', function(e) {
+                m.addEventListener('click', function (e) {
                     if (e.target === this) this.classList.remove('active');
                 });
             });
@@ -1265,7 +2115,7 @@
 
         function switchView(view) {
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-            if(view === 'attendance') {
+            if (view === 'attendance') {
                 document.querySelector('.nav-tab:first-child').classList.add('active');
                 document.getElementById('attendance-view').classList.remove('hidden');
                 document.getElementById('employees-view').classList.add('hidden');
@@ -1283,12 +2133,11 @@
             const search = document.getElementById('search-employees').value.toLowerCase();
             const filtered = users.filter(u => u.name.toLowerCase().includes(search));
             container.innerHTML = '';
-            
+
             filtered.forEach(u => {
                 const div = document.createElement('div');
                 div.className = 'user-card';
                 div.innerHTML = `
-<<<<<<< HEAD
                     <div class="avatar-placeholder">${esc(u.number)}</div>
                     <div class="user-info-area">
                         <div class="user-details">
@@ -1297,16 +2146,6 @@
                         </div>
                     </div>
                     <button class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')">✎</button>
-=======
-                    <div class="avatar-placeholder">${u.number}</div>
-                    <div class="user-info-area">
-                        <div class="user-details">
-                            <div class="user-name">${u.name}</div>
-                            <div class="user-role">${u.position || 'Sin cargo'}</div>
-                        </div>
-                    </div>
-                    <button class="export-btn" style="font-size:16px;" onclick="editUser('${u.id}')">✎</button>
->>>>>>> origin/main
                 `;
                 container.appendChild(div);
             });
@@ -1324,7 +2163,7 @@
         }
 
         function downloadJSON() {
-            const blob = new Blob([JSON.stringify({users, attendance:attendanceData}, null, 2)], {type:'application/json'});
+            const blob = new Blob([JSON.stringify({ users, attendance: attendanceData }, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = 'backup_asistencia_' + selectedDate + '.json';
@@ -1334,7 +2173,7 @@
         // --- RESTAURAR RESPALDO COMPLETO ---
         window.openImportBackupModal = () => {
             closeModal('export-menu');
-            const ta  = document.getElementById('restore-backup-textarea');
+            const ta = document.getElementById('restore-backup-textarea');
             const btn = document.getElementById('btn-do-restore');
             const msg = document.getElementById('restore-validation-msg');
             ta.value = ''; ta.style.borderColor = ''; msg.innerHTML = '';
@@ -1355,14 +2194,14 @@
             try {
                 const parsed = JSON.parse(raw);
                 const hasUsers = Array.isArray(parsed.users) && parsed.users.length > 0;
-                const hasAtt   = parsed.attendance && typeof parsed.attendance === 'object';
+                const hasAtt = parsed.attendance && typeof parsed.attendance === 'object';
                 if (!hasUsers && !hasAtt) throw new Error('No se encontraron datos válidos de empleados ni asistencia.');
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
                 msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia.';
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
-            } catch(err) {
+            } catch (err) {
                 ta.style.borderColor = 'var(--danger-color)';
                 msg.style.color = 'var(--danger-color)';
                 msg.innerHTML = '&#x274C; ' + err.message;
@@ -1377,13 +2216,13 @@
             const raw = document.getElementById('restore-backup-textarea').value.trim();
             try {
                 const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed.users))       users = parsed.users;
-                if (parsed.attendance)                 attendanceData = parsed.attendance;
+                if (Array.isArray(parsed.users)) users = parsed.users;
+                if (parsed.attendance) attendanceData = parsed.attendance;
                 saveData();
                 closeModal('modal-restore-backup');
                 renderList(); renderEmployeesList();
                 document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
-            } catch(err) {
+            } catch (err) {
                 document.getElementById('restore-validation-msg').innerHTML = '&#x274C; Error: ' + err.message;
             }
         }
@@ -1391,14 +2230,14 @@
         // --- IMPORTAR EMPLEADOS DESDE CAMPO DE TEXTO ---
         window.openImportEmployeesModal = () => {
             closeModal('export-menu');
-            const ta  = document.getElementById('import-employees-textarea');
+            const ta = document.getElementById('import-employees-textarea');
             const btn = document.getElementById('btn-do-import');
             const msg = document.getElementById('import-validation-msg');
             ta.value = '';
             ta.style.borderColor = '';
             msg.innerHTML = '';
             btn.style.opacity = '0.4';
-            btn.style.cursor  = 'not-allowed';
+            btn.style.cursor = 'not-allowed';
             btn.setAttribute('data-ready', 'no');
             openModal('modal-import-employees');
         }
@@ -1412,7 +2251,7 @@
                 ta.style.borderColor = '';
                 msg.innerHTML = '';
                 btn.style.opacity = '0.4';
-                btn.style.cursor  = 'not-allowed';
+                btn.style.cursor = 'not-allowed';
                 btn.setAttribute('data-ready', 'no');
                 return;
             }
@@ -1425,23 +2264,23 @@
 
                 if (!arr) throw new Error('Debe ser un array [ ] o un objeto con clave "employees".');
 
-                const valid   = arr.filter(e => e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== '');
+                const valid = arr.filter(e => e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== '');
                 const skipped = arr.length - valid.length;
                 if (valid.length === 0) throw new Error('Ningún objeto tiene los campos "name" y "number".');
 
                 ta.style.borderColor = 'var(--success-color)';
-                msg.style.color      = 'var(--success-color)';
+                msg.style.color = 'var(--success-color)';
                 msg.innerHTML = '&#x2705; ' + valid.length + ' empleado(s) válidos' + (skipped > 0 ? ' (' + skipped + ' se omitirán).' : '.');
                 btn.style.opacity = '1';
-                btn.style.cursor  = 'pointer';
+                btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
 
             } catch (err) {
                 ta.style.borderColor = 'var(--danger-color)';
-                msg.style.color      = 'var(--danger-color)';
+                msg.style.color = 'var(--danger-color)';
                 msg.innerHTML = '&#x274C; ' + err.message;
                 btn.style.opacity = '0.4';
-                btn.style.cursor  = 'not-allowed';
+                btn.style.cursor = 'not-allowed';
                 btn.setAttribute('data-ready', 'no');
             }
         }
@@ -1472,9 +2311,9 @@
 
                 // Normalizar y guardar
                 users = incoming.map(emp => ({
-                    id:       emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
-                    name:     String(emp.name).trim(),
-                    number:   String(emp.number).trim(),
+                    id: emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
+                    name: String(emp.name).trim(),
+                    number: String(emp.number).trim(),
                     position: emp.position ? String(emp.position).trim() : ''
                 }));
 
@@ -1487,7 +2326,7 @@
 
                 // Feedback final (sin confirm ni alert bloqueante)
                 const msg = document.getElementById('import-validation-msg');
-                msg.style.color   = 'var(--success-color)';
+                msg.style.color = 'var(--success-color)';
                 msg.innerHTML = '&#x2705; ' + users.length + ' empleados importados correctamente.';
 
             } catch (err) {
@@ -1499,4 +2338,5 @@
         init();
     </script>
 </body>
+
 </html>
