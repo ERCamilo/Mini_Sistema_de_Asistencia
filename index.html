@@ -1041,46 +1041,57 @@
             border-radius: 16px;
             border: 1px solid var(--border-color);
         }
+
         .reminder-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
         }
-        .reminder-row + .reminder-row {
+
+        .reminder-row+.reminder-row {
             margin-top: 12px;
             padding-top: 12px;
             border-top: 1px solid var(--border-color);
         }
+
         .reminder-label {
             font-weight: 600;
             font-size: 14px;
             color: var(--text-color);
         }
+
         .reminder-hint {
             font-size: 12px;
             color: var(--text-muted);
             margin-top: 2px;
         }
+
         .toggle-switch {
             position: relative;
             width: 48px;
             height: 28px;
             flex-shrink: 0;
         }
+
         .toggle-switch input {
             opacity: 0;
             width: 0;
             height: 0;
         }
+
         .toggle-slider {
             position: absolute;
             cursor: pointer;
-            top: 0; left: 0; right: 0; bottom: 0;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: var(--border-color);
             border-radius: 28px;
             transition: background 0.2s;
         }
+
         .toggle-slider::before {
             content: '';
             position: absolute;
@@ -1092,12 +1103,15 @@
             border-radius: 50%;
             transition: transform 0.2s;
         }
-        .toggle-switch input:checked + .toggle-slider {
+
+        .toggle-switch input:checked+.toggle-slider {
             background: var(--accent-color);
         }
-        .toggle-switch input:checked + .toggle-slider::before {
+
+        .toggle-switch input:checked+.toggle-slider::before {
             transform: translateX(20px);
         }
+
         .time-input {
             background: var(--input-bg);
             border: 1px solid var(--border-color);
@@ -1108,6 +1122,7 @@
             font-weight: 600;
             font-family: inherit;
         }
+
         .time-input:focus {
             outline: none;
             border-color: var(--accent-color);
@@ -1402,7 +1417,8 @@
                             <div class="reminder-label">Hora del recordatorio</div>
                             <div class="reminder-hint">Te avisaremos si no hay asistencia</div>
                         </div>
-                        <input type="time" id="reminder-time" class="time-input" value="09:00" onchange="updateReminderTime(this.value)">
+                        <input type="time" id="reminder-time" class="time-input" value="09:00"
+                            onchange="updateReminderTime(this.value)">
                     </div>
                 </div>
             </div>

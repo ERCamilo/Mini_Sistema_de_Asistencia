@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2';
+const CACHE_VERSION = 'asistencia-v2.0.1';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
