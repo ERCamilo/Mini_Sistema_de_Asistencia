@@ -396,6 +396,7 @@
         .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
         .empty-icon { font-size: 48px; margin-bottom: 10px; opacity: 0.3; }
 
+<<<<<<< HEAD
         .export-btn {
             width: 40px; height: 40px; border-radius: 12px;
             background: var(--input-bg); border: 1px solid var(--border-color);
@@ -405,6 +406,8 @@
         }
         .export-btn:active { transform: scale(0.9); background: var(--border-color); }
 
+=======
+>>>>>>> origin/main
 
         /* Estilos Selector Temas */
         .theme-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -648,11 +651,14 @@
                     <span style="font-size: 24px;">👥</span>
                     <div><div style="font-weight: 600; color: var(--warning-color);">Importar Empleados (JSON)</div><div style="font-size: 12px; color: var(--text-muted);">Pegar lista de empleados</div></div>
                 </div>
+<<<<<<< HEAD
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
                 <div class="export-option" id="btn-install-pwa" onclick="installPWA()" style="opacity:0.4; cursor:not-allowed;">
                     <span style="font-size: 24px;">📲</span>
                     <div><div style="font-weight: 600; color: var(--text-color);" id="install-pwa-label">Instalar App</div><div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando disponibilidad...</div></div>
                 </div>
+=======
+>>>>>>> origin/main
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('export-menu')">Cancelar</button>
         </div>
@@ -740,6 +746,7 @@
         let calendarDate = new Date();
         let lastActionTime = "";
 
+<<<<<<< HEAD
         function esc(str) {
             const d = document.createElement('div');
             d.textContent = str;
@@ -748,11 +755,14 @@
 
 
         let deferredInstallPrompt = null;
+=======
+>>>>>>> origin/main
 
         function initPWA() {
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('./sw.js').catch(() => {});
             }
+<<<<<<< HEAD
 
             // Si ya esta instalada (modo standalone), marcarlo
             if (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone) {
@@ -806,6 +816,8 @@
                 deferredInstallPrompt = null;
             });
             closeModal('export-menu');
+=======
+>>>>>>> origin/main
         }
         function init() {
             const today = new Date();
@@ -992,6 +1004,7 @@
                 const div = document.createElement('div');
                 div.className = 'user-card';
                 div.innerHTML = `
+<<<<<<< HEAD
                     <div class="avatar-placeholder">${esc(u.number)}</div>
                     <div class="user-info-area" onclick="openCalendar('${esc(u.id)}')">
                         <div class="user-details">
@@ -1001,6 +1014,17 @@
                         ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
                     </div>
                     <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}', ${isPresent})">
+=======
+                    <div class="avatar-placeholder">${u.number}</div>
+                    <div class="user-info-area" onclick="openCalendar('${u.id}')">
+                        <div class="user-details">
+                            <div class="user-name">${u.name}</div>
+                            <div class="user-role">${u.position || 'Sin cargo'}</div>
+                        </div>
+                        ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
+                    </div>
+                    <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${u.id}', ${isPresent})">
+>>>>>>> origin/main
                         ${isPresent ? '✓' : ''}
                     </div>
                 `;
@@ -1038,7 +1062,11 @@
             const sortedUsers = [...users].sort((a,b) => parseInt(a.number) - parseInt(b.number));
             
             sortedUsers.forEach(u => {
+<<<<<<< HEAD
                 let row = `<tr><td class="col-sticky">${esc(u.name)}</td>`;
+=======
+                let row = `<tr><td class="col-sticky">${u.name}</td>`;
+>>>>>>> origin/main
                 weekDates.forEach(d => {
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -1260,6 +1288,7 @@
                 const div = document.createElement('div');
                 div.className = 'user-card';
                 div.innerHTML = `
+<<<<<<< HEAD
                     <div class="avatar-placeholder">${esc(u.number)}</div>
                     <div class="user-info-area">
                         <div class="user-details">
@@ -1268,6 +1297,16 @@
                         </div>
                     </div>
                     <button class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')">✎</button>
+=======
+                    <div class="avatar-placeholder">${u.number}</div>
+                    <div class="user-info-area">
+                        <div class="user-details">
+                            <div class="user-name">${u.name}</div>
+                            <div class="user-role">${u.position || 'Sin cargo'}</div>
+                        </div>
+                    </div>
+                    <button class="export-btn" style="font-size:16px;" onclick="editUser('${u.id}')">✎</button>
+>>>>>>> origin/main
                 `;
                 container.appendChild(div);
             });
