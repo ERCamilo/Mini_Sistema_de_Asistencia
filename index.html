@@ -398,21 +398,58 @@
             white-space: nowrap;
         }
 
-        .hours-input-global {
-            width: 50px;
+        .stepper-control {
+            display: flex;
+            align-items: center;
             background: var(--input-bg);
-            border: 1px solid var(--border-color);
-            color: var(--text-color);
-            padding: 6px;
             border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            height: 32px;
+        }
+
+        .stepper-btn {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 28px;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .stepper-btn:hover {
+            background: var(--border-color);
+        }
+
+        .hours-input-global {
+            width: 28px;
+            background: none;
+            border: none;
+            border-left: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            color: var(--text-color);
             text-align: center;
             font-weight: 700;
-            font-size: 16px;
+            font-size: 14px;
+            -moz-appearance: textfield;
+            padding: 0;
+            border-radius: 0;
         }
 
         .hours-input-global:focus {
             outline: none;
-            border-color: var(--accent-color);
+        }
+
+        .hours-input-global::-webkit-outer-spin-button,
+        .hours-input-global::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
         }
 
         .search-container {
@@ -1195,8 +1232,11 @@
                     <!-- Configuración rápida -->
                     <div class="config-bar">
                         <div class="config-label">⏱️ Valor Check:</div>
-                        <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1"
-                            max="24">
+                        <div class="stepper-control">
+                            <button class="stepper-btn" onclick="updateDefaultHours(-1)" aria-label="Menos">-</button>
+                            <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1" max="24" readonly>
+                            <button class="stepper-btn" onclick="updateDefaultHours(1)" aria-label="Más">+</button>
+                        </div>
                     </div>
                 </div>
 
@@ -1976,6 +2016,15 @@
             date.setDate(date.getDate() + offset);
             selectedDate = date.toISOString().split('T')[0];
             updateDashboard();
+        }
+
+        function updateDefaultHours(delta) {
+            const input = document.getElementById('default-hours-input');
+            let val = parseInt(input.value) || 8;
+            val += delta;
+            if (val < 1) val = 1;
+            if (val > 24) val = 24;
+            input.value = val;
         }
 
         function openModal(id) { document.getElementById(id).classList.add('active'); }
