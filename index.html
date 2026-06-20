@@ -1400,6 +1400,21 @@
         </div>
     </div>
 
+    <div class="modal" id="employee-number-conflict-modal" role="dialog" aria-modal="true"
+        aria-labelledby="employee-number-conflict-title">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="employee-number-conflict-title">Número de empleado en uso</div>
+                <div class="modal-subtitle" id="conflict-employee-details"></div>
+            </div>
+            <button type="button" class="btn-full btn-primary" id="btn-conflict-suggest">Usar número sugerido</button>
+            <button type="button" class="btn-full btn-primary" id="btn-conflict-swap">Intercambiar números</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-conflict-edit-existing">Editar empleado existente</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-conflict-return">Volver al formulario</button>
+        </div>
+    </div>
+
     <!-- Menú Gestión de Datos -->
     <div class="modal" id="export-menu">
         <div class="modal-content">
@@ -1536,6 +1551,8 @@
         </div>
     </div>
 
+    <script src="./employee-number-rules.js"></script>
+    <script src="./employee-number-modal.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -1545,6 +1562,17 @@
         let selectedUserId = null;
         let calendarDate = new Date();
         let lastActionTime = "";
+        let pendingEmployeeConflict = null;
+
+        const {
+            initializeEmployeeNumberState,
+            resolveEmployeeNumberConflict,
+            saveEmployeeDraft
+        } = window.EmployeeNumberRules;
+        const employeeNumberModal = window.EmployeeNumberModal.createEmployeeNumberModal({
+            document,
+            modalId: 'employee-number-conflict-modal'
+        });
 
         function esc(str) {
             const d = document.createElement('div');
@@ -1748,6 +1776,7 @@
 
             initPWA();
             loadData();
+            ({ users, pendingConflict: pendingEmployeeConflict } = initializeEmployeeNumberState(users));
             loadTheme();
             initReminder();
             updateDashboard();
@@ -2027,8 +2056,81 @@
             input.value = val;
         }
 
-        function openModal(id) { document.getElementById(id).classList.add('active'); }
-        function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+        function openModal(id) {
+            if (id === 'employee-number-conflict-modal') {
+                employeeNumberModal.open();
+                return;
+            }
+            document.getElementById(id).classList.add('active');
+        }
+
+        function closeModal(id) {
+            if (id === 'employee-number-conflict-modal') employeeNumberModal.close();
+            else document.getElementById(id).classList.remove('active');
+            if (id === 'employee-number-conflict-modal' || id === 'user-modal') {
+                pendingEmployeeConflict = null;
+            }
+        }
+
+        function handleModalKeyboard(event) {
+            if (employeeNumberModal.handleKeydown(event) === 'closed') pendingEmployeeConflict = null;
+        }
+
+        function readEmployeeDraft() {
+            return {
+                id: document.getElementById('edit-user-id').value,
+                name: document.getElementById('user-name').value.trim(),
+                number: document.getElementById('user-number').value,
+                position: document.getElementById('user-position').value.trim()
+            };
+        }
+
+        function refreshEmployeeViews() {
+            saveData();
+            renderEmployeesList();
+        }
+
+        function showEmployeeNumberConflict(conflict) {
+            pendingEmployeeConflict = conflict;
+            document.getElementById('conflict-employee-details').textContent = conflict.message;
+            const isCreate = conflict.operation === 'create';
+            const suggestionButton = document.getElementById('btn-conflict-suggest');
+            suggestionButton.style.display = isCreate ? 'block' : 'none';
+            suggestionButton.textContent = `Usar número sugerido (${conflict.suggestedNumber})`;
+            document.getElementById('btn-conflict-edit-existing').style.display = isCreate ? 'block' : 'none';
+            document.getElementById('btn-conflict-swap').style.display = isCreate ? 'none' : 'block';
+            openModal('employee-number-conflict-modal');
+        }
+
+        function returnToEmployeeForm() {
+            closeModal('employee-number-conflict-modal');
+            document.getElementById('user-number').focus();
+        }
+
+        function useSuggestedEmployeeNumber() {
+            if (!pendingEmployeeConflict || pendingEmployeeConflict.operation !== 'create') return;
+            const result = resolveEmployeeNumberConflict(users, pendingEmployeeConflict, 'suggest');
+            document.getElementById('user-number').value = result.draft.number;
+            returnToEmployeeForm();
+        }
+
+        function editConflictingEmployee() {
+            if (!pendingEmployeeConflict || pendingEmployeeConflict.operation !== 'create') return;
+            const result = resolveEmployeeNumberConflict(users, pendingEmployeeConflict, 'edit-existing');
+            closeModal('employee-number-conflict-modal');
+            closeModal('user-modal');
+            window.editUser(result.editEmployeeId);
+        }
+
+        function confirmEmployeeNumberSwap() {
+            if (!pendingEmployeeConflict || pendingEmployeeConflict.operation !== 'edit') return;
+
+            const result = resolveEmployeeNumberConflict(users, pendingEmployeeConflict, 'swap');
+            users = result.users;
+            refreshEmployeeViews();
+            closeModal('employee-number-conflict-modal');
+            closeModal('user-modal');
+        }
 
         function openAddUserModal() {
             document.getElementById('user-form').reset();
@@ -2138,22 +2240,24 @@
             document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalGrid(); }
 
             document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
+            document.getElementById('btn-conflict-return').onclick = returnToEmployeeForm;
+            document.getElementById('btn-conflict-suggest').onclick = useSuggestedEmployeeNumber;
+            document.getElementById('btn-conflict-edit-existing').onclick = editConflictingEmployee;
+            document.getElementById('btn-conflict-swap').onclick = confirmEmployeeNumberSwap;
+            document.addEventListener('keydown', handleModalKeyboard);
 
             document.getElementById('user-form').onsubmit = (e) => {
                 e.preventDefault();
-                const id = document.getElementById('edit-user-id').value;
-                const name = document.getElementById('user-name').value;
-                const num = document.getElementById('user-number').value;
-                const pos = document.getElementById('user-position').value;
+                const draft = readEmployeeDraft();
+                const result = saveEmployeeDraft(users, draft, Date.now().toString());
 
-                if (id) {
-                    const u = users.find(x => x.id === id);
-                    if (u) { u.name = name; u.number = num; u.position = pos; }
-                } else {
-                    users.push({ id: Date.now().toString(), name, number: num, position: pos });
+                if (result.status === 'conflict') {
+                    showEmployeeNumberConflict(result.conflict);
+                    return;
                 }
-                saveData();
-                renderEmployeesList();
+
+                users = result.users;
+                refreshEmployeeViews();
                 closeModal('user-modal');
             }
 
@@ -2172,7 +2276,7 @@
             // Cerrar modal solo cuando el clic es EXACTAMENTE en el overlay, no en hijos
             document.querySelectorAll('.modal').forEach(m => {
                 m.addEventListener('click', function (e) {
-                    if (e.target === this) this.classList.remove('active');
+                    if (e.target === this) closeModal(this.id);
                 });
             });
 
@@ -2218,6 +2322,7 @@
 
         window.editUser = (id) => {
             const u = users.find(x => x.id === id);
+            if (!u) return;
             document.getElementById('form-title').textContent = 'Editar';
             document.getElementById('edit-user-id').value = u.id;
             document.getElementById('user-name').value = u.name;
