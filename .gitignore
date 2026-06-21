@@ -1,0 +1,5 @@
+# Generated knowledge-graph output (regenerable via /graphify)
+graphify-out/
+
+# Node
+node_modules/
