@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es2019",
+    "module": "none",
+    "ignoreDeprecations": "6.0",
+    "strict": true,
+    "esModuleInterop": false,
+    "declaration": false,
+    "removeComments": false,
+    "rootDir": "src",
+    "outDir": ".",
+    "lib": ["es2019", "dom"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
+}
