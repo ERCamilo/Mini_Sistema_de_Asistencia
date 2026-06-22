@@ -2493,7 +2493,9 @@
         function renderEmployeesList() {
             const container = document.getElementById('employees-container');
             const search = document.getElementById('search-employees').value.toLowerCase();
-            const filtered = users.filter(u => u.name.toLowerCase().includes(search));
+            const filtered = users
+                .filter(u => u.name.toLowerCase().includes(search))
+                .sort((a, b) => parseInt(a.number) - parseInt(b.number));
             container.innerHTML = '';
 
             filtered.forEach(u => {
