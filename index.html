@@ -1413,7 +1413,24 @@
             <button type="button" class="btn-full btn-primary" id="btn-conflict-suggest">Usar número sugerido</button>
             <button type="button" class="btn-full btn-primary" id="btn-conflict-swap">Intercambiar números</button>
             <button type="button" class="btn-full btn-secondary" id="btn-conflict-edit-existing">Editar empleado existente</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-conflict-proceed" style="display:none;">Mantener de todas formas</button>
+            <button type="button" class="btn-full btn-danger" id="btn-conflict-discard-new" style="display:none;">Eliminar nuevo registro</button>
             <button type="button" class="btn-full btn-secondary" id="btn-conflict-return">Volver al formulario</button>
+        </div>
+    </div>
+
+    <!-- MODAL AGREGAR VARIOS EMPLEADOS (DRAFT IMPORT) -->
+    <div class="modal" id="modal-draft-import" role="dialog" aria-modal="true" aria-labelledby="draft-import-title">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="draft-import-title">Agregar varios empleados</div>
+                <div class="modal-subtitle" id="draft-import-msg"></div>
+            </div>
+            <div id="draft-import-rows" style="max-height:50vh;overflow-y:auto;margin-bottom:12px;"></div>
+            <button type="button" class="btn-full btn-secondary" id="btn-draft-add-row">+ Agregar fila</button>
+            <button type="button" class="btn-full btn-primary" id="btn-draft-commit">Guardar todos</button>
+            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-draft-import')">Cancelar</button>
         </div>
     </div>
 
@@ -1444,6 +1461,13 @@
                     <div>
                         <div style="font-weight: 600; color: var(--warning-color);">Importar Empleados (JSON)</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Pegar lista de empleados</div>
+                    </div>
+                </div>
+                <div class="export-option" onclick="openDraftImportModal()">
+                    <span style="font-size: 24px;">➕</span>
+                    <div>
+                        <div style="font-weight: 600; color: var(--accent-color);">Agregar varios</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Crear varios empleados a mano</div>
                     </div>
                 </div>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
@@ -1555,6 +1579,7 @@
 
     <script src="./employee-number-rules.js"></script>
     <script src="./employee-number-modal.js"></script>
+    <script src="./draft-import.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -1565,6 +1590,8 @@
         let calendarDate = new Date();
         let lastActionTime = "";
         let pendingEmployeeConflict = null;
+        let draftSession = null;
+        let pendingDraftConflict = null;
 
         const {
             initializeEmployeeNumberState,
@@ -1575,6 +1602,7 @@
             document,
             modalId: 'employee-number-conflict-modal'
         });
+        const draftImport = window.DraftImport.createDraftImport(window.EmployeeNumberRules);
 
         function esc(str) {
             const d = document.createElement('div');
@@ -2072,10 +2100,16 @@
             if (id === 'employee-number-conflict-modal' || id === 'user-modal') {
                 pendingEmployeeConflict = null;
             }
+            if (id === 'employee-number-conflict-modal' || id === 'modal-draft-import') {
+                pendingDraftConflict = null;
+            }
         }
 
         function handleModalKeyboard(event) {
-            if (employeeNumberModal.handleKeydown(event) === 'closed') pendingEmployeeConflict = null;
+            if (employeeNumberModal.handleKeydown(event) === 'closed') {
+                pendingEmployeeConflict = null;
+                pendingDraftConflict = null;
+            }
         }
 
         function readEmployeeDraft() {
@@ -2102,6 +2136,8 @@
             suggestionButton.textContent = `Usar número sugerido (${conflict.suggestedNumber})`;
             document.getElementById('btn-conflict-edit-existing').style.display = isCreate ? 'block' : 'none';
             document.getElementById('btn-conflict-swap').style.display = isCreate ? 'none' : 'block';
+            document.getElementById('btn-conflict-proceed').style.display = 'none';
+            document.getElementById('btn-conflict-discard-new').style.display = 'none';
             openModal('employee-number-conflict-modal');
         }
 
@@ -2110,7 +2146,19 @@
             document.getElementById('user-number').focus();
         }
 
+        function handleConflictReturn() {
+            if (pendingDraftConflict) {
+                resolveDraftConflictAndContinue('return');
+                return;
+            }
+            returnToEmployeeForm();
+        }
+
         function useSuggestedEmployeeNumber() {
+            if (pendingDraftConflict) {
+                resolveDraftConflictAndContinue('suggest');
+                return;
+            }
             if (!pendingEmployeeConflict || pendingEmployeeConflict.operation !== 'create') return;
             const result = resolveEmployeeNumberConflict(users, pendingEmployeeConflict, 'suggest');
             document.getElementById('user-number').value = result.draft.number;
@@ -2133,6 +2181,138 @@
             refreshEmployeeViews();
             closeModal('employee-number-conflict-modal');
             closeModal('user-modal');
+        }
+
+        // --- AGREGAR VARIOS EMPLEADOS (DRAFT IMPORT) ---
+        function generateDraftEmployeeId() {
+            return 'u' + Date.now() + Math.random().toString(36).slice(2);
+        }
+
+        window.openDraftImportModal = () => {
+            closeModal('export-menu');
+            draftSession = draftImport.createSession(users);
+            draftSession = draftImport.addRow(draftSession);
+            document.getElementById('draft-import-msg').textContent = '';
+            renderDraftImportRows();
+            openModal('modal-draft-import');
+        }
+
+        function renderDraftImportRows() {
+            const container = document.getElementById('draft-import-rows');
+            const incompleteRowIds = draftImport.validateDraft(draftSession).incompleteRowIds;
+            container.innerHTML = '';
+
+            draftSession.rows.forEach(row => {
+                const isFlagged = draftSession.queue.flaggedRowIds.includes(row.rowId);
+                const isIncomplete = incompleteRowIds.includes(row.rowId);
+                const div = document.createElement('div');
+                div.className = 'action-item';
+                div.style.flexDirection = 'column';
+                div.style.alignItems = 'stretch';
+                div.style.gap = '8px';
+                if (isFlagged) div.style.border = '2px solid var(--danger-color)';
+                div.innerHTML = `
+                    <input type="text" class="search-input" placeholder="Nombre" value="${esc(row.name)}" data-field="name" data-row-id="${esc(row.rowId)}">
+                    <input type="text" class="search-input" placeholder="Número" value="${esc(row.number)}" data-field="number" data-row-id="${esc(row.rowId)}">
+                    <input type="text" class="search-input" placeholder="Posición" value="${esc(row.position)}" data-field="position" data-row-id="${esc(row.rowId)}" style="${isIncomplete ? 'border-color:var(--danger-color);' : ''}">
+                    <input type="text" class="search-input" placeholder="Sueldo (opcional)" value="${esc(row.sueldo)}" data-field="sueldo" data-row-id="${esc(row.rowId)}">
+                    ${isFlagged ? '<div style="color:var(--danger-color);font-size:12px;font-weight:600;">Resolvé el número manualmente</div>' : ''}
+                    <button type="button" class="btn-full btn-danger" data-remove-row-id="${esc(row.rowId)}" style="margin-top:0;">Quitar fila</button>
+                `;
+                container.appendChild(div);
+            });
+
+            container.querySelectorAll('input[data-field]').forEach(input => {
+                input.oninput = (e) => {
+                    const rowId = e.target.getAttribute('data-row-id');
+                    const field = e.target.getAttribute('data-field');
+                    draftSession = draftImport.updateRow(draftSession, rowId, { [field]: e.target.value });
+                };
+            });
+            container.querySelectorAll('button[data-remove-row-id]').forEach(btn => {
+                btn.onclick = (e) => {
+                    const rowId = e.target.getAttribute('data-remove-row-id');
+                    draftSession = draftImport.removeRow(draftSession, rowId);
+                    renderDraftImportRows();
+                };
+            });
+        }
+
+        function addDraftImportRow() {
+            draftSession = draftImport.addRow(draftSession);
+            renderDraftImportRows();
+        }
+
+        function showDraftConflictModal(conflict) {
+            pendingDraftConflict = conflict;
+            const isExisting = conflict.ownerKind === 'existing';
+            let details = conflict.message;
+            if (isExisting && conflict.ownerDetails) {
+                const d = conflict.ownerDetails;
+                details += ` Empleado existente: número ${d.number}` +
+                    (d.position ? `, ${d.position}` : '') +
+                    (d.sueldo ? `, $${d.sueldo}` : '') + '.';
+            }
+            document.getElementById('conflict-employee-details').textContent = details;
+
+            document.getElementById('btn-conflict-suggest').style.display = 'block';
+            document.getElementById('btn-conflict-suggest').textContent = `Usar número sugerido (${conflict.suggestedNumber})`;
+            document.getElementById('btn-conflict-swap').style.display = 'none';
+            document.getElementById('btn-conflict-edit-existing').style.display = 'none';
+            document.getElementById('btn-conflict-proceed').style.display = conflict.actions.includes('proceed') ? 'block' : 'none';
+            document.getElementById('btn-conflict-discard-new').style.display = conflict.actions.includes('discard-new') ? 'block' : 'none';
+
+            openModal('employee-number-conflict-modal');
+        }
+
+        function resolveDraftConflictAndContinue(action) {
+            if (!pendingDraftConflict) return;
+            draftSession = draftImport.resolveActiveConflict(draftSession, action);
+            pendingDraftConflict = null;
+
+            if (draftSession.queue.active !== null) {
+                showDraftConflictModal(draftSession.queue.active);
+                return;
+            }
+
+            closeModal('employee-number-conflict-modal');
+
+            if (draftSession.queue.terminated) {
+                renderDraftImportRows();
+                document.getElementById('draft-import-msg').textContent = 'Resolvé el número manualmente';
+                return;
+            }
+
+            attemptDraftCommit();
+        }
+
+        function attemptDraftCommit() {
+            const validation = draftImport.validateDraft(draftSession);
+            if (!validation.ok) {
+                renderDraftImportRows();
+                document.getElementById('draft-import-msg').textContent = 'Falta posición';
+                return;
+            }
+
+            draftSession = draftImport.detectConflicts(draftSession);
+            if (draftSession.queue.active !== null) {
+                showDraftConflictModal(draftSession.queue.active);
+                return;
+            }
+
+            const plan = draftImport.buildCommitPlan(draftSession, generateDraftEmployeeId);
+            if (!plan.ok) {
+                renderDraftImportRows();
+                document.getElementById('draft-import-msg').textContent =
+                    plan.reason === 'gate' ? 'Falta posición' : 'Resolvé el número manualmente';
+                return;
+            }
+
+            users = plan.finalUsers;
+            saveData();
+            refreshEmployeeViews();
+            closeModal('modal-draft-import');
+            draftSession = null;
         }
 
         function openAddUserModal() {
@@ -2243,10 +2423,14 @@
             document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalGrid(); }
 
             document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
-            document.getElementById('btn-conflict-return').onclick = returnToEmployeeForm;
+            document.getElementById('btn-conflict-return').onclick = handleConflictReturn;
             document.getElementById('btn-conflict-suggest').onclick = useSuggestedEmployeeNumber;
             document.getElementById('btn-conflict-edit-existing').onclick = editConflictingEmployee;
             document.getElementById('btn-conflict-swap').onclick = confirmEmployeeNumberSwap;
+            document.getElementById('btn-conflict-proceed').onclick = () => resolveDraftConflictAndContinue('proceed');
+            document.getElementById('btn-conflict-discard-new').onclick = () => resolveDraftConflictAndContinue('discard-new');
+            document.getElementById('btn-draft-add-row').onclick = addDraftImportRow;
+            document.getElementById('btn-draft-commit').onclick = attemptDraftCommit;
             document.addEventListener('keydown', handleModalKeyboard);
 
             document.getElementById('user-form').onsubmit = (e) => {

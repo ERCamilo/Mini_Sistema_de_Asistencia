@@ -75,16 +75,16 @@ Ask the user which chain strategy (`stacked-to-main` or `feature-branch-chain`) 
 
 ## Phase 8: Editable Draft-List UI (PR 3)
 
-- [ ] 8.1 Add "Agregar varios" entry point in `index.html` that calls `DraftImport.createSession(users)` and opens the draft-list view.
-- [ ] 8.2 Render `draftSession.rows` as editable rows (número, nombre, posición, sueldo); wire field edits to `DraftImport.updateRow`, "add row" to `addRow`, "remove" to `removeRow`, re-rendering after each call.
-- [ ] 8.3 Wire "Save/Commit" button: call `validateDraft` first (block + highlight `incompleteRowIds` with "Falta posición" if `!ok`), else proceed to conflict detection (Phase 9).
+- [x] 8.1 Add "Agregar varios" entry point in `index.html` that calls `DraftImport.createSession(users)` and opens the draft-list view.
+- [x] 8.2 Render `draftSession.rows` as editable rows (número, nombre, posición, sueldo); wire field edits to `DraftImport.updateRow`, "add row" to `addRow`, "remove" to `removeRow`, re-rendering after each call.
+- [x] 8.3 Wire "Save/Commit" button: call `validateDraft` first (block + highlight `incompleteRowIds` with "Falta posición" if `!ok`), else proceed to conflict detection (Phase 9).
 
 ## Phase 9: Conflict Modal Mapping (PR 3)
 
-- [ ] 9.1 Hold `draftSession` in a module-level variable (sibling to existing `pendingEmployeeConflict`).
-- [ ] 9.2 Reuse the singleton `employee-number-conflict-modal` to render the ONE `queue.active` conflict: existing-owner conflicts show `ownerDetails` (número/posición/sueldo) plus `suggest`/`discard-new`/`return` buttons; draft-owner conflicts show `suggest`/`proceed`/`return` buttons (new "Mantener de todas formas" control for `proceed`).
-- [ ] 9.3 On each button click call `DraftImport.resolveActiveConflict(...)`, replace `draftSession`, then re-render the modal with the next `active` conflict (chained case) or close it and return to the draft list when `active === null`.
-- [ ] 9.4 On commit: after gate + no active conflict, call `buildCommitPlan(draftSession, shellGenerateId)`; if `ok`, set `users = plan.finalUsers`, call `saveData()`, re-render, close the draft view.
+- [x] 9.1 Hold `draftSession` in a module-level variable (sibling to existing `pendingEmployeeConflict`).
+- [x] 9.2 Reuse the singleton `employee-number-conflict-modal` to render the ONE `queue.active` conflict: existing-owner conflicts show `ownerDetails` (número/posición/sueldo) plus `suggest`/`discard-new`/`return` buttons; draft-owner conflicts show `suggest`/`proceed`/`return` buttons (new "Mantener de todas formas" control for `proceed`).
+- [x] 9.3 On each button click call `DraftImport.resolveActiveConflict(...)`, replace `draftSession`, then re-render the modal with the next `active` conflict (chained case) or close it and return to the draft list when `active === null`.
+- [x] 9.4 On commit: after gate + no active conflict, call `buildCommitPlan(draftSession, shellGenerateId)`; if `ok`, set `users = plan.finalUsers`, call `saveData()`, re-render, close the draft view.
 
 ## Phase 10: Destructive Reset Separation (PR 4)
 
