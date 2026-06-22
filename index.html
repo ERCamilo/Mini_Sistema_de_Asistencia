@@ -1459,8 +1459,8 @@
                 <div class="export-option" onclick="openImportEmployeesModal()">
                     <span style="font-size: 24px;">👥</span>
                     <div>
-                        <div style="font-weight: 600; color: var(--warning-color);">Importar Empleados (JSON)</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Pegar lista de empleados</div>
+                        <div style="font-weight: 600; color: var(--danger-color);">Borrar y reemplazar todo</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Reemplaza TODA la lista con un JSON (peligroso)</div>
                     </div>
                 </div>
                 <div class="export-option" onclick="openDraftImportModal()">
@@ -1537,8 +1537,8 @@
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
-                <div class="modal-title">&#x1F465; Importar Empleados</div>
-                <div class="modal-subtitle">Pega el JSON y presiona Importar</div>
+                <div class="modal-title">&#x26A0;&#xFE0F; Borrar y reemplazar todo</div>
+                <div class="modal-subtitle">Esto BORRA todos los empleados y los reemplaza con el JSON pegado</div>
             </div>
 
             <details
@@ -1569,9 +1569,9 @@
                     Cancelar
                 </button>
                 <button type="button" id="btn-do-import" data-ready="no"
-                    style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
+                    style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--danger-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
                     onclick="doImportEmployeesFromText()">
-                    Importar
+                    Borrar y reemplazar
                 </button>
             </div>
         </div>
@@ -2648,6 +2648,9 @@
 
             // Guard: solo actuar si la validación fue exitosa
             if (btn.getAttribute('data-ready') !== 'yes') return;
+
+            // Confirmación explícita: acción destructiva (reemplaza TODA la lista).
+            if (!confirm('Esto BORRARÁ los ' + users.length + ' empleados actuales y los reemplazará con la lista pegada. Esta acción no se puede deshacer. ¿Continuar?')) return;
 
             const raw = document.getElementById('import-employees-textarea').value.trim();
 
