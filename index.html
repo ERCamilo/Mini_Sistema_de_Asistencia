@@ -1435,6 +1435,8 @@
                 <div class="modal-subtitle" id="draft-import-msg"></div>
             </div>
             <div id="draft-import-rows" style="max-height:50vh;overflow-y:auto;margin-bottom:12px;"></div>
+            <input type="file" id="ocr-photo-input" accept="image/*" capture="environment" style="display:none;">
+            <button type="button" class="btn-full btn-secondary" id="btn-draft-photo">📷 Importar de foto</button>
             <button type="button" class="btn-full btn-secondary" id="btn-draft-add-row">+ Agregar fila</button>
             <button type="button" class="btn-full btn-primary" id="btn-draft-commit">Guardar todos</button>
             <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-draft-import')">Cancelar</button>
@@ -2251,6 +2253,73 @@
             renderDraftImportRows();
         }
 
+        const OCR_WEBHOOK_URL = 'https://n8n.erlin.do/webhook/asistencia-empleados-ocr';
+        const OCR_API_KEY = '9O079A-ufyMefqGd8v4oDJcU5mvMGwMstH89p1h3ImA';
+
+        function compressImageToBase64(file, maxWidth, quality) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const scale = Math.min(1, maxWidth / img.width);
+                        const canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
+                    };
+                    img.onerror = reject;
+                    img.src = reader.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleOcrPhoto(e) {
+            const file = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+            const msg = document.getElementById('draft-import-msg');
+            const btn = document.getElementById('btn-draft-photo');
+            msg.textContent = 'Procesando foto...';
+            btn.disabled = true;
+            try {
+                const imageBase64 = await compressImageToBase64(file, 1600, 0.7);
+                const resp = await fetch(OCR_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': OCR_API_KEY },
+                    body: JSON.stringify({ imageBase64: imageBase64 })
+                });
+                if (!resp.ok) throw new Error('el servidor OCR respondió ' + resp.status);
+                const data = await resp.json();
+                if (!data || !data.ok || !Array.isArray(data.employees)) {
+                    throw new Error((data && data.error) || 'respuesta inválida');
+                }
+                if (data.employees.length === 0) {
+                    msg.textContent = 'No se detectaron empleados en la foto';
+                    return;
+                }
+                data.employees.forEach(emp => {
+                    draftSession = draftImport.addRow(draftSession, {
+                        name: emp.name || '', number: emp.number || '',
+                        position: emp.position || '', sueldo: emp.sueldo || ''
+                    });
+                });
+                const emptyIds = draftSession.rows
+                    .filter(r => !r.name && !r.number && !r.position && !r.sueldo)
+                    .map(r => r.rowId);
+                emptyIds.forEach(id => { draftSession = draftImport.removeRow(draftSession, id); });
+                renderDraftImportRows();
+                msg.textContent = data.employees.length + ' empleado(s) importados — revisalos antes de guardar';
+            } catch (err) {
+                msg.textContent = 'No se pudo leer la foto: ' + err.message + ' (el OCR necesita internet)';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
         function showDraftConflictModal(conflict) {
             pendingDraftConflict = conflict;
             const isExisting = conflict.ownerKind === 'existing';
@@ -2447,6 +2516,8 @@
             document.getElementById('btn-conflict-discard-new').onclick = () => resolveDraftConflictAndContinue('discard-new');
             document.getElementById('btn-draft-add-row').onclick = addDraftImportRow;
             document.getElementById('btn-draft-commit').onclick = attemptDraftCommit;
+            document.getElementById('btn-draft-photo').onclick = () => document.getElementById('ocr-photo-input').click();
+            document.getElementById('ocr-photo-input').onchange = handleOcrPhoto;
             document.addEventListener('keydown', handleModalKeyboard);
 
             document.getElementById('user-form').onsubmit = (e) => {
