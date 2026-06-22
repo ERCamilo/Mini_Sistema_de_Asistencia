@@ -2197,6 +2197,7 @@
 
         window.openDraftImportModal = () => {
             closeModal('export-menu');
+            populatePositionOptions();
             draftSession = draftImport.createSession(users);
             draftSession = draftImport.addRow(draftSession);
             document.getElementById('draft-import-msg').textContent = '';
@@ -2221,7 +2222,7 @@
                 div.innerHTML = `
                     <input type="text" class="search-input" placeholder="Nombre" value="${esc(row.name)}" data-field="name" data-row-id="${esc(row.rowId)}">
                     <input type="text" class="search-input" placeholder="Número" value="${esc(row.number)}" data-field="number" data-row-id="${esc(row.rowId)}">
-                    <input type="text" class="search-input" placeholder="Posición" value="${esc(row.position)}" data-field="position" data-row-id="${esc(row.rowId)}" style="${isIncomplete ? 'border-color:var(--danger-color);' : ''}">
+                    <input type="text" class="search-input" placeholder="Posición" list="position-options" value="${esc(row.position)}" data-field="position" data-row-id="${esc(row.rowId)}" style="${isIncomplete ? 'border-color:var(--danger-color);' : ''}">
                     <input type="text" class="search-input" placeholder="Sueldo (opcional)" value="${esc(row.sueldo)}" data-field="sueldo" data-row-id="${esc(row.rowId)}">
                     ${isFlagged ? '<div style="color:var(--danger-color);font-size:12px;font-weight:600;">Resolvé el número manualmente</div>' : ''}
                     <button type="button" class="btn-full btn-danger" data-remove-row-id="${esc(row.rowId)}" style="margin-top:0;">Quitar fila</button>
