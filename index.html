@@ -1389,8 +1389,10 @@
                         class="search-input" required></div>
                 <div style="margin-bottom: 16px;"><input type="number" id="user-number" placeholder="Número de empleado"
                         class="search-input" required></div>
-                <div style="margin-bottom: 24px;"><input type="text" id="user-position"
+                <div style="margin-bottom: 16px;"><input type="text" id="user-position"
                         placeholder="Cargo / Puesto (Opcional)" class="search-input"></div>
+                <div style="margin-bottom: 24px;"><input type="text" id="user-sueldo"
+                        placeholder="Sueldo (Opcional)" class="search-input"></div>
                 <button type="submit" class="btn-full btn-primary">Guardar Empleado</button>
                 <button type="button" id="btn-delete-user" class="btn-full btn-danger"
                     style="display: none; margin-top: 12px;">Eliminar</button>
@@ -1959,7 +1961,7 @@
                     <div class="user-info-area" onclick="openCalendar('${esc(u.id)}')">
                         <div class="user-details">
                             <div class="user-name">${esc(u.name)}</div>
-                            <div class="user-role">${esc(u.position || 'Sin cargo')}</div>
+                            <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
                         ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
                     </div>
@@ -2081,7 +2083,8 @@
                 id: document.getElementById('edit-user-id').value,
                 name: document.getElementById('user-name').value.trim(),
                 number: document.getElementById('user-number').value,
-                position: document.getElementById('user-position').value.trim()
+                position: document.getElementById('user-position').value.trim(),
+                sueldo: document.getElementById('user-sueldo').value.trim()
             };
         }
 
@@ -2311,7 +2314,7 @@
                     <div class="user-info-area">
                         <div class="user-details">
                             <div class="user-name">${esc(u.name)}</div>
-                            <div class="user-role">${esc(u.position || 'Sin cargo')}</div>
+                            <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
                     </div>
                     <button class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')">✎</button>
@@ -2328,6 +2331,7 @@
             document.getElementById('user-name').value = u.name;
             document.getElementById('user-number').value = u.number;
             document.getElementById('user-position').value = u.position || '';
+            document.getElementById('user-sueldo').value = u.sueldo || '';
             document.getElementById('btn-delete-user').style.display = 'block';
             openModal('user-modal');
         }
