@@ -785,6 +785,12 @@
             opacity: 1;
         }
 
+        /* Conflict resolution is a sub-dialog opened over the draft-import modal:
+           it must always stack above any other open modal so it stays accessible. */
+        #employee-number-conflict-modal {
+            z-index: 250;
+        }
+
         .modal-content {
             background: var(--card-bg);
             border-top-left-radius: 28px;
