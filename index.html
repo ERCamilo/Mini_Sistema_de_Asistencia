@@ -1286,6 +1286,8 @@
         <div class="users-list" id="employees-container"></div>
 
         <!-- FAB Agregar Usuario Contextual (Solo aquí) -->
+        <button class="fab fab-add" id="fab-photo-import" onclick="openPhotoImport()"
+            style="position: fixed; bottom: 92px; right: 24px;" title="Importar de foto">📷</button>
         <button class="fab fab-add" id="fab-add-user" onclick="openAddUserModal()"
             style="position: fixed; bottom: 24px; right: 24px;">＋</button>
     </div>
@@ -2396,6 +2398,11 @@
             const positions = [...new Set(users.map(u => (u.position || '').trim()).filter(Boolean))].sort();
             document.getElementById('position-options').innerHTML =
                 positions.map(p => `<option value="${esc(p)}"></option>`).join('');
+        }
+
+        function openPhotoImport() {
+            openDraftImportModal();
+            document.getElementById('ocr-photo-input').click();
         }
 
         function openAddUserModal() {
