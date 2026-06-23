@@ -1586,6 +1586,13 @@
                             disponibilidad...</div>
                     </div>
                 </div>
+                <div class="export-option" onclick="clearCacheAndReload()">
+                    <span style="font-size: 24px;">🔄</span>
+                    <div>
+                        <div style="font-weight: 600;">Buscar actualización</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Limpia el caché y carga la última versión</div>
+                    </div>
+                </div>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
                 <div class="reminder-config">
                     <div class="reminder-row">
@@ -1790,6 +1797,21 @@
                 btn.style.cursor = 'not-allowed';
                 hint.textContent = 'No disponible en este navegador';
             }
+        }
+
+        async function clearCacheAndReload() {
+            if (!confirm('Esto limpia el caché y recarga para traer la última versión. Tus empleados y asistencia NO se borran. ¿Continuar?')) return;
+            try {
+                if ('serviceWorker' in navigator) {
+                    const regs = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(regs.map(r => r.unregister()));
+                }
+                if (window.caches) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                }
+            } catch (e) { /* sin caché disponible, igual recargamos */ }
+            location.reload();
         }
 
         function installPWA() {
