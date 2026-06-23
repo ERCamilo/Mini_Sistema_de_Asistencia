@@ -733,6 +733,51 @@
             color: #000;
         }
 
+        /* FAB speed-dial sub-buttons (manual / camara / galeria) */
+        .fab-sub {
+            position: fixed;
+            right: 28px;
+            width: 56px;
+            height: 56px;
+            border-radius: 18px;
+            border: none;
+            font-size: 26px;
+            cursor: pointer;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-bg);
+            color: var(--text-color);
+            z-index: 99;
+            opacity: 0;
+            transform: translateY(24px) scale(0.6);
+            pointer-events: none;
+            transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        #fab-manual { bottom: 96px; }
+        #fab-camera { bottom: 164px; }
+        #fab-gallery { bottom: 232px; }
+
+        body.fab-menu-open .fab-sub {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        body.fab-menu-open #fab-camera { transition-delay: 0.05s; }
+        body.fab-menu-open #fab-gallery { transition-delay: 0.1s; }
+
+        #fab-add-user .fab-glyph {
+            display: inline-block;
+            transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        body.fab-menu-open #fab-add-user .fab-glyph {
+            transform: rotate(135deg);
+        }
+
         /* High contrast overrides for FAB text color */
         [data-theme="dark"] .fab-add {
             color: white;
@@ -1285,11 +1330,14 @@
         </div>
         <div class="users-list" id="employees-container"></div>
 
-        <!-- FAB Agregar Usuario Contextual (Solo aquí) -->
-        <button class="fab fab-add" id="fab-photo-import" onclick="openPhotoImport()"
-            style="position: fixed; bottom: 92px; right: 24px;" title="Importar de foto">📷</button>
-        <button class="fab fab-add" id="fab-add-user" onclick="openAddUserModal()"
-            style="position: fixed; bottom: 24px; right: 24px;">＋</button>
+        <!-- FAB speed-dial: + despliega manual / cámara / galería -->
+        <button class="fab-sub" id="fab-gallery" onclick="chooseFromGallery()" title="Desde galería">🖼️</button>
+        <button class="fab-sub" id="fab-camera" onclick="takePhoto()" title="Tomar foto">📷</button>
+        <button class="fab-sub" id="fab-manual" onclick="addOneManual()" title="Agregar uno">✏️</button>
+        <button class="fab fab-add" id="fab-add-user" onclick="toggleAddMenu()" aria-label="Agregar empleado"
+            style="position: fixed; bottom: 24px; right: 24px;"><span class="fab-glyph">＋</span></button>
+        <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none;">
+        <input type="file" id="gal-input" accept="image/*" style="display:none;">
     </div>
 
     <!-- MODAL DE TEMAS (NUEVO) -->
@@ -2400,9 +2448,32 @@
                 positions.map(p => `<option value="${esc(p)}"></option>`).join('');
         }
 
-        function openPhotoImport() {
+        function toggleAddMenu() {
+            document.body.classList.toggle('fab-menu-open');
+        }
+
+        function closeAddMenu() {
+            document.body.classList.remove('fab-menu-open');
+        }
+
+        function addOneManual() {
+            closeAddMenu();
+            openAddUserModal();
+        }
+
+        function takePhoto() {
+            closeAddMenu();
+            document.getElementById('cam-input').click();
+        }
+
+        function chooseFromGallery() {
+            closeAddMenu();
+            document.getElementById('gal-input').click();
+        }
+
+        function onFabPhotoChosen(e) {
             openDraftImportModal();
-            document.getElementById('ocr-photo-input').click();
+            handleOcrPhoto(e);
         }
 
         function openAddUserModal() {
@@ -2525,6 +2596,8 @@
             document.getElementById('btn-draft-commit').onclick = attemptDraftCommit;
             document.getElementById('btn-draft-photo').onclick = () => document.getElementById('ocr-photo-input').click();
             document.getElementById('ocr-photo-input').onchange = handleOcrPhoto;
+            document.getElementById('cam-input').onchange = onFabPhotoChosen;
+            document.getElementById('gal-input').onchange = onFabPhotoChosen;
             document.addEventListener('keydown', handleModalKeyboard);
 
             document.getElementById('user-form').onsubmit = (e) => {
