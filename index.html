@@ -1572,7 +1572,7 @@
                     <span style="font-size: 24px;">📊</span>
                     <div>
                         <div style="font-weight: 600;">Reporte de asistencia</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Excel por rango de fechas</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">PDF o Excel por rango de fechas</div>
                     </div>
                 </div>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
@@ -1702,6 +1702,7 @@
                 <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Horas de un día completo</label>
                 <input type="number" id="report-expected" class="search-input" value="8" min="1" step="0.5">
             </div>
+            <button type="button" class="btn-full btn-primary" id="btn-report-pdf">Generar PDF</button>
             <button type="button" class="btn-full btn-primary" id="btn-report-excel">Generar Excel</button>
             <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-report')">Cancelar</button>
         </div>
@@ -2703,6 +2704,88 @@
             }
         }
 
+        async function loadJsPDF() {
+            if (!window.jspdf || !window.jspdf.jsPDF) await loadScript('./vendor/jspdf.umd.min.js');
+            await loadScript('./vendor/jspdf.plugin.autotable.min.js');
+            return window.jspdf.jsPDF;
+        }
+
+        function stripAccents(s) {
+            return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+        }
+
+        async function generatePdfReport() {
+            const p = readReportParams();
+            const msg = document.getElementById('report-msg');
+            if (p.error) { msg.textContent = p.error; return; }
+            showOcrLoading('Generando PDF...');
+            try {
+                const JsPDF = await loadJsPDF();
+                const report = AttendanceReport.buildAttendanceReport(users, attendanceData, p.from, p.to, p.expected);
+                const doc = new JsPDF({ orientation: 'landscape', format: 'a4' });
+                const sunFill = [255, 217, 201];
+
+                doc.setFontSize(14);
+                doc.text('Reporte de asistencia', 14, 14);
+                doc.setFontSize(10);
+                doc.text(p.from + '  a  ' + p.to + '   (dia completo = ' + p.expected + 'h)', 14, 20);
+
+                doc.autoTable({
+                    startY: 25,
+                    head: [['Numero', 'Nombre', 'Posicion', 'Dias', 'Horas', 'Extra', 'Ratio']],
+                    body: report.rows.map(r => [
+                        r.employee.number, stripAccents(r.employee.name), stripAccents(r.employee.position || ''),
+                        r.daysPresent, r.totalHours, r.overtimeHours, r.totalRatio
+                    ]),
+                    styles: { fontSize: 9 },
+                    headStyles: { fillColor: [60, 60, 60] }
+                });
+
+                // Detalle de horas, paginado por mes (max 31 columnas-dia por hoja)
+                const months = {};
+                report.days.forEach((d, i) => { const k = d.date.slice(0, 7); (months[k] = months[k] || []).push(i); });
+                Object.keys(months).forEach(monthKey => {
+                    const idxs = months[monthKey];
+                    const sundayCols = new Set();
+                    idxs.forEach((i, pos) => { if (report.days[i].isSunday) sundayCols.add(pos + 1); });
+                    doc.addPage();
+                    doc.setFontSize(12);
+                    doc.text('Detalle de horas - ' + monthKey, 14, 14);
+                    const head = [
+                        ['Empleado', ...idxs.map(i => stripAccents(report.days[i].weekdayLabel)), 'Total'],
+                        ['', ...idxs.map(i => report.days[i].dateLabel), '']
+                    ];
+                    const body = report.rows.map(r => {
+                        const vals = idxs.map(i => (r.hours[i] == null ? '' : r.hours[i]));
+                        const tot = idxs.reduce((s, i) => s + (r.hours[i] || 0), 0);
+                        return [stripAccents(r.employee.name), ...vals, Math.round(tot * 100) / 100];
+                    });
+                    doc.autoTable({
+                        startY: 19,
+                        head: head,
+                        body: body,
+                        styles: { fontSize: 7, cellPadding: 1, halign: 'center' },
+                        columnStyles: { 0: { halign: 'left', cellWidth: 26 } },
+                        headStyles: { fillColor: [60, 60, 60], fontSize: 7 },
+                        didParseCell: (data) => {
+                            if (sundayCols.has(data.column.index)) {
+                                data.cell.styles.fillColor = sunFill;
+                                if (data.section === 'head') data.cell.styles.textColor = [0, 0, 0];
+                            }
+                        }
+                    });
+                });
+
+                const blob = doc.output('blob');
+                const res = await shareOrDownload(blob, 'asistencia_' + p.from + '_a_' + p.to + '.pdf', 'application/pdf');
+                msg.textContent = res === 'shared' ? 'Compartido ✓' : res === 'cancelled' ? 'Cancelado' : 'Descargado ✓';
+            } catch (err) {
+                msg.textContent = 'Error: ' + err.message;
+            } finally {
+                hideOcrLoading();
+            }
+        }
+
         function openAddUserModal() {
             document.getElementById('user-form').reset();
             document.getElementById('form-title').textContent = 'Nuevo Empleado';
@@ -2826,6 +2909,7 @@
             document.getElementById('cam-input').onchange = onFabPhotoChosen;
             document.getElementById('gal-input').onchange = onFabPhotoChosen;
             document.getElementById('btn-report-excel').onclick = generateExcelReport;
+            document.getElementById('btn-report-pdf').onclick = generatePdfReport;
             document.addEventListener('keydown', handleModalKeyboard);
 
             document.getElementById('user-form').onsubmit = (e) => {
