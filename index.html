@@ -778,6 +778,41 @@
             transform: rotate(135deg);
         }
 
+        /* OCR loading overlay */
+        .ocr-loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(4px);
+            z-index: 400;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .ocr-loading-overlay.active { display: flex; }
+
+        .ocr-spinner {
+            width: 52px;
+            height: 52px;
+            border: 5px solid rgba(255, 255, 255, 0.22);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: ocr-spin 0.8s linear infinite;
+        }
+
+        @keyframes ocr-spin { to { transform: rotate(360deg); } }
+
+        .ocr-loading-text {
+            color: #fff;
+            font-weight: 600;
+            font-size: 15px;
+            text-align: center;
+            padding: 0 24px;
+        }
+
         /* High contrast overrides for FAB text color */
         [data-theme="dark"] .fab-add {
             color: white;
@@ -1337,7 +1372,11 @@
         <button class="fab fab-add" id="fab-add-user" onclick="toggleAddMenu()" aria-label="Agregar empleado"
             style="position: fixed; bottom: 24px; right: 24px;"><span class="fab-glyph">＋</span></button>
         <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none;">
-        <input type="file" id="gal-input" accept="image/*" style="display:none;">
+        <input type="file" id="gal-input" accept="image/*" multiple style="display:none;">
+        <div class="ocr-loading-overlay" id="ocr-loading">
+            <div class="ocr-spinner"></div>
+            <div class="ocr-loading-text" id="ocr-loading-text">Leyendo la foto...</div>
+        </div>
     </div>
 
     <!-- MODAL DE TEMAS (NUEVO) -->
@@ -2327,46 +2366,75 @@
             });
         }
 
+        function showOcrLoading(text) {
+            document.getElementById('ocr-loading-text').textContent = text || 'Procesando...';
+            document.getElementById('ocr-loading').classList.add('active');
+        }
+
+        function setOcrLoading(text) {
+            document.getElementById('ocr-loading-text').textContent = text;
+        }
+
+        function hideOcrLoading() {
+            document.getElementById('ocr-loading').classList.remove('active');
+        }
+
+        async function ocrSinglePhoto(file) {
+            const imageBase64 = await compressImageToBase64(file, 1600, 0.7);
+            const resp = await fetch(OCR_WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-API-Key': OCR_API_KEY },
+                body: JSON.stringify({ imageBase64: imageBase64 })
+            });
+            if (!resp.ok) throw new Error('el servidor OCR respondió ' + resp.status);
+            const data = await resp.json();
+            if (!data || !data.ok || !Array.isArray(data.employees)) {
+                throw new Error((data && data.error) || 'respuesta inválida');
+            }
+            return data.employees;
+        }
+
         async function handleOcrPhoto(e) {
-            const file = e.target.files && e.target.files[0];
+            const files = e.target.files ? Array.from(e.target.files) : [];
             e.target.value = '';
-            if (!file) return;
+            if (!files.length) return;
             const msg = document.getElementById('draft-import-msg');
-            const btn = document.getElementById('btn-draft-photo');
-            msg.textContent = 'Procesando foto...';
-            btn.disabled = true;
+            const multi = files.length > 1;
+            showOcrLoading(multi ? 'Leyendo ' + files.length + ' fotos...' : 'Leyendo la foto...');
+            let added = 0, failed = 0;
             try {
-                const imageBase64 = await compressImageToBase64(file, 1600, 0.7);
-                const resp = await fetch(OCR_WEBHOOK_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-API-Key': OCR_API_KEY },
-                    body: JSON.stringify({ imageBase64: imageBase64 })
-                });
-                if (!resp.ok) throw new Error('el servidor OCR respondió ' + resp.status);
-                const data = await resp.json();
-                if (!data || !data.ok || !Array.isArray(data.employees)) {
-                    throw new Error((data && data.error) || 'respuesta inválida');
+                for (let i = 0; i < files.length; i++) {
+                    if (multi) setOcrLoading('Procesando foto ' + (i + 1) + ' de ' + files.length + '...');
+                    try {
+                        const employees = await ocrSinglePhoto(files[i]);
+                        employees.forEach(emp => {
+                            draftSession = draftImport.addRow(draftSession, {
+                                name: emp.name || '', number: emp.number || '',
+                                position: emp.position || '', sueldo: emp.sueldo || ''
+                            });
+                            added++;
+                        });
+                    } catch (err) {
+                        failed++;
+                    }
                 }
-                if (data.employees.length === 0) {
-                    msg.textContent = 'No se detectaron empleados en la foto';
-                    return;
-                }
-                data.employees.forEach(emp => {
-                    draftSession = draftImport.addRow(draftSession, {
-                        name: emp.name || '', number: emp.number || '',
-                        position: emp.position || '', sueldo: emp.sueldo || ''
-                    });
-                });
                 const emptyIds = draftSession.rows
                     .filter(r => !r.name && !r.number && !r.position && !r.sueldo)
                     .map(r => r.rowId);
                 emptyIds.forEach(id => { draftSession = draftImport.removeRow(draftSession, id); });
                 renderDraftImportRows();
-                msg.textContent = data.employees.length + ' empleado(s) importados — revisalos antes de guardar';
-            } catch (err) {
-                msg.textContent = 'No se pudo leer la foto: ' + err.message + ' (el OCR necesita internet)';
+                let result;
+                if (added === 0) {
+                    result = 'No se detectaron empleados' + (failed ? ' (' + failed + ' foto(s) fallaron)' : '');
+                } else {
+                    result = added + ' empleado(s) importados';
+                    if (multi) result += ' de ' + files.length + ' fotos';
+                    if (failed) result += ' (' + failed + ' foto(s) fallaron)';
+                    result += ' — revisalos antes de guardar';
+                }
+                msg.textContent = result;
             } finally {
-                btn.disabled = false;
+                hideOcrLoading();
             }
         }
 
