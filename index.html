@@ -1568,6 +1568,13 @@
                         <div style="font-size: 12px; color: var(--text-muted);">Crear varios empleados a mano</div>
                     </div>
                 </div>
+                <div class="export-option" onclick="openReportModal()">
+                    <span style="font-size: 24px;">📊</span>
+                    <div>
+                        <div style="font-weight: 600;">Reporte de asistencia</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Excel por rango de fechas</div>
+                    </div>
+                </div>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
                 <div class="export-option" id="btn-install-pwa" onclick="installPWA()"
                     style="opacity:0.4; cursor:not-allowed;">
@@ -1675,9 +1682,35 @@
         </div>
     </div>
 
+    <!-- MODAL REPORTE DE ASISTENCIA -->
+    <div class="modal" id="modal-report">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">📊 Reporte de asistencia</div>
+                <div class="modal-subtitle" id="report-msg">Elegí el rango de fechas</div>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Desde</label>
+                <input type="date" id="report-from" class="search-input">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Hasta</label>
+                <input type="date" id="report-to" class="search-input">
+            </div>
+            <div style="margin-bottom:18px;">
+                <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Horas de un día completo</label>
+                <input type="number" id="report-expected" class="search-input" value="8" min="1" step="0.5">
+            </div>
+            <button type="button" class="btn-full btn-primary" id="btn-report-excel">Generar Excel</button>
+            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-report')">Cancelar</button>
+        </div>
+    </div>
+
     <script src="./employee-number-rules.js"></script>
     <script src="./employee-number-modal.js"></script>
     <script src="./draft-import.js"></script>
+    <script src="./attendance-report.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -2544,6 +2577,132 @@
             handleOcrPhoto(e);
         }
 
+        // --- REPORTE DE ASISTENCIA ---
+        const REPORT_MAX_DAYS = 92;
+        const _reportLibs = {};
+
+        function loadScript(src) {
+            if (_reportLibs[src]) return _reportLibs[src];
+            _reportLibs[src] = new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.onload = () => resolve();
+                s.onerror = () => reject(new Error('No se pudo cargar la librería (la 1ª vez necesita internet)'));
+                document.head.appendChild(s);
+            });
+            return _reportLibs[src];
+        }
+
+        async function loadXLSX() {
+            if (!window.XLSX) await loadScript('./vendor/xlsx-js-style.min.js');
+            return window.XLSX;
+        }
+
+        window.openReportModal = () => {
+            closeModal('export-menu');
+            const today = new Date();
+            const first = new Date(today.getFullYear(), today.getMonth(), 1);
+            const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            document.getElementById('report-from').value = fmt(first);
+            document.getElementById('report-to').value = fmt(today);
+            document.getElementById('report-expected').value = localStorage.getItem('expectedHoursPerDay') || '8';
+            document.getElementById('report-msg').textContent = 'Elegí el rango de fechas';
+            openModal('modal-report');
+        }
+
+        function readReportParams() {
+            const from = document.getElementById('report-from').value;
+            const to = document.getElementById('report-to').value;
+            const expected = parseFloat(document.getElementById('report-expected').value) || 8;
+            if (!from || !to) return { error: 'Elegí ambas fechas' };
+            if (from > to) return { error: '"Desde" es posterior a "Hasta"' };
+            if (AttendanceReport.rangeDays(from, to) > REPORT_MAX_DAYS) return { error: 'Máximo 3 meses (92 días)' };
+            if (!users.length) return { error: 'No hay empleados cargados' };
+            localStorage.setItem('expectedHoursPerDay', String(expected));
+            return { from, to, expected };
+        }
+
+        function reportSummarySheet(XLSX, report) {
+            const aoa = [['Número', 'Nombre', 'Posición', 'Días pres.', 'Horas totales', 'Horas extra', 'Ratio total']];
+            report.rows.forEach(r => aoa.push([
+                r.employee.number, r.employee.name, r.employee.position || '',
+                r.daysPresent, r.totalHours, r.overtimeHours, r.totalRatio
+            ]));
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!cols'] = [{ wch: 8 }, { wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 13 }, { wch: 11 }, { wch: 11 }];
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let C = 0; C <= range.e.c; C++) {
+                const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+                if (ws[addr]) ws[addr].s = { font: { bold: true } };
+            }
+            return ws;
+        }
+
+        function reportDetailSheet(XLSX, days, rows, valueKey) {
+            const aoa = [];
+            aoa.push(['', ...days.map(d => d.weekdayLabel), '']);
+            aoa.push(['Empleado', ...days.map(d => d.dateLabel), 'Total']);
+            rows.forEach(r => {
+                const vals = r[valueKey].map(v => (v == null ? '' : v));
+                const total = valueKey === 'hours' ? r.totalHours : r.totalRatio;
+                aoa.push([r.employee.name, ...vals, total]);
+            });
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!cols'] = [{ wch: 18 }, ...days.map(() => ({ wch: 5 })), { wch: 8 }];
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let R = 0; R <= range.e.r; R++) {
+                for (let C = 0; C <= range.e.c; C++) {
+                    const addr = XLSX.utils.encode_cell({ r: R, c: C });
+                    const cell = ws[addr];
+                    if (!cell) continue;
+                    const dayIdx = C - 1;
+                    const isSun = dayIdx >= 0 && dayIdx < days.length && days[dayIdx].isSunday;
+                    const st = {};
+                    if (R < 2) { st.font = { bold: true }; st.alignment = { horizontal: 'center' }; }
+                    if (isSun) st.fill = { fgColor: { rgb: 'FFD9C9' } };
+                    if (st.font || st.fill) cell.s = st;
+                }
+            }
+            return ws;
+        }
+
+        async function shareOrDownload(blob, filename, mime) {
+            const file = new File([blob], filename, { type: mime });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                try { await navigator.share({ files: [file], title: filename }); return 'shared'; }
+                catch (e) { if (e && e.name === 'AbortError') return 'cancelled'; }
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            return 'downloaded';
+        }
+
+        async function generateExcelReport() {
+            const p = readReportParams();
+            const msg = document.getElementById('report-msg');
+            if (p.error) { msg.textContent = p.error; return; }
+            showOcrLoading('Generando Excel...');
+            try {
+                const XLSX = await loadXLSX();
+                const report = AttendanceReport.buildAttendanceReport(users, attendanceData, p.from, p.to, p.expected);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, reportSummarySheet(XLSX, report), 'Resumen');
+                XLSX.utils.book_append_sheet(wb, reportDetailSheet(XLSX, report.days, report.rows, 'hours'), 'Detalle Horas');
+                XLSX.utils.book_append_sheet(wb, reportDetailSheet(XLSX, report.days, report.rows, 'ratio'), 'Detalle Ratio');
+                const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const res = await shareOrDownload(blob, 'asistencia_' + p.from + '_a_' + p.to + '.xlsx', blob.type);
+                msg.textContent = res === 'shared' ? 'Compartido ✓' : res === 'cancelled' ? 'Cancelado' : 'Descargado ✓';
+            } catch (err) {
+                msg.textContent = 'Error: ' + err.message;
+            } finally {
+                hideOcrLoading();
+            }
+        }
+
         function openAddUserModal() {
             document.getElementById('user-form').reset();
             document.getElementById('form-title').textContent = 'Nuevo Empleado';
@@ -2666,6 +2825,7 @@
             document.getElementById('ocr-photo-input').onchange = handleOcrPhoto;
             document.getElementById('cam-input').onchange = onFabPhotoChosen;
             document.getElementById('gal-input').onchange = onFabPhotoChosen;
+            document.getElementById('btn-report-excel').onclick = generateExcelReport;
             document.addEventListener('keydown', handleModalKeyboard);
 
             document.getElementById('user-form').onsubmit = (e) => {
