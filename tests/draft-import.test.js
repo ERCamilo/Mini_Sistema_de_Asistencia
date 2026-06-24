@@ -13,8 +13,76 @@ const {
   validateDraft,
   detectConflicts,
   resolveActiveConflict,
-  buildCommitPlan
+  buildCommitPlan,
+  autoAssignNumbers,
+  rowStatuses,
+  summarize,
+  commitClean
 } = draftImport;
+
+// ---------------------------------------------------------------------------
+// Setup-flow helpers: autoAssignNumbers / summarize / rowStatuses / commitClean
+// ---------------------------------------------------------------------------
+
+function rowsSession(existing, rowData) {
+  let s = createSession(existing);
+  rowData.forEach(d => { s = addRow(s, d); });
+  return s;
+}
+let _gen = 0;
+const genId = () => 'gen' + (++_gen);
+
+test('autoAssignNumbers fills only the rows missing a valid number', () => {
+  const s = rowsSession(
+    [{ id: 'e1', name: 'Ana', number: '5' }],
+    [{ name: 'Beto', number: '' }, { name: 'Cora', number: '7' }, { name: 'Dina', number: '' }]
+  );
+  const out = autoAssignNumbers(s);
+  assert.equal(out.rows[1].number, '7'); // kept
+  const set = new Set(out.rows.map(r => rules.normalizeEmployeeNumber(r.number)));
+  assert.equal(set.size, 3);     // all unique
+  assert.equal(set.has(null), false); // none missing now
+  assert.equal(set.has(5), false);    // never reuse an existing number
+});
+
+test('summarize counts fields and conflicts', () => {
+  const s = rowsSession(
+    [{ id: 'e1', name: 'Ana', number: '7' }],
+    [{ name: 'Beto', number: '7', position: 'Ops', sueldo: '500' }, { name: 'Cora', number: '8' }, { name: '', number: '9' }]
+  );
+  const sum = summarize(s);
+  assert.deepEqual(
+    [sum.total, sum.withName, sum.withNumber, sum.withPosition, sum.withSueldo, sum.conflicts, sum.missingName],
+    [3, 2, 3, 1, 1, 1, 1]
+  );
+});
+
+test('rowStatuses classifies ok / conflict / missing-name', () => {
+  const s = rowsSession(
+    [{ id: 'e1', name: 'Ana', number: '7' }],
+    [{ name: 'Beto', number: '7' }, { name: 'Cora', number: '8' }, { name: '', number: '9' }]
+  );
+  const st = rowStatuses(s);
+  assert.equal(st[0].status, 'conflict');
+  assert.equal(st[0].conflictWith, 'Ana');
+  assert.equal(st[1].status, 'ok');
+  assert.equal(st[2].status, 'missing-name');
+});
+
+test('commitClean saves clean rows (position optional) and keeps the rest', () => {
+  const s = rowsSession(
+    [{ id: 'e1', name: 'Ana', number: '7', position: 'Admin' }],
+    [{ name: 'Beto', number: '8', position: '' }, { name: 'Cora', number: '7' }, { name: '', number: '9' }]
+  );
+  const res = commitClean(s, genId);
+  assert.equal(res.committedCount, 1);
+  assert.equal(res.finalUsers.length, 2);
+  assert.equal(res.finalUsers[0].id, 'e1');       // existing preserved by identity
+  assert.equal(res.finalUsers[1].name, 'Beto');
+  assert.equal(res.finalUsers[1].position, '');   // committed without a position
+  assert.equal(res.session.rows.length, 2);       // conflict + missing-name stay
+  assert.equal(res.session.existingUsers.length, 2);
+});
 
 // ---------------------------------------------------------------------------
 // Phase 1/2: Draft-List Lifecycle

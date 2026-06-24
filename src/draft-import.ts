@@ -95,6 +95,30 @@ interface CommitPlan {
   finalUsers: DraftEmployee[];
 }
 
+interface DraftSummary {
+  total: number;
+  withName: number;
+  withNumber: number;
+  withPosition: number;
+  withSueldo: number;
+  conflicts: number;
+  missingName: number;
+}
+
+type DraftRowStatusKind = 'ok' | 'missing-name' | 'conflict';
+
+interface DraftRowStatus {
+  rowId: string;
+  status: DraftRowStatusKind;
+  conflictWith: string | null;
+}
+
+interface CommitCleanResult {
+  finalUsers: DraftEmployee[];
+  committedCount: number;
+  session: DraftSession;
+}
+
 interface DraftImportApi {
   createSession(existingUsers: DraftEmployee[]): DraftSession;
   addRow(session: DraftSession, partial?: Partial<DraftRow>): DraftSession;
@@ -104,6 +128,10 @@ interface DraftImportApi {
   detectConflicts(session: DraftSession): DraftSession;
   resolveActiveConflict(session: DraftSession, action: DraftConflictAction): DraftSession;
   buildCommitPlan(session: DraftSession, generateId: () => DraftEmployeeId): CommitPlan;
+  autoAssignNumbers(session: DraftSession): DraftSession;
+  rowStatuses(session: DraftSession): DraftRowStatus[];
+  summarize(session: DraftSession): DraftSummary;
+  commitClean(session: DraftSession, generateId: () => DraftEmployeeId): CommitCleanResult;
 }
 
 (function exposeDraftImport(root: any, factory: (rules: EmployeeNumberRules) => DraftImportApi) {
@@ -443,6 +471,70 @@ interface DraftImportApi {
       };
     }
 
+    function autoAssignNumbers(session: DraftSession): DraftSession {
+      const used = new Set<number>();
+      session.existingUsers.forEach(u => { const n = rules.normalizeEmployeeNumber(u.number); if (n !== null) used.add(n); });
+      session.rows.forEach(r => { const n = rules.normalizeEmployeeNumber(r.number); if (n !== null) used.add(n); });
+      let next = 1;
+      function nextFree(): number { while (used.has(next)) next += 1; used.add(next); return next; }
+      const rows = session.rows.map(row => {
+        if (rules.normalizeEmployeeNumber(row.number) !== null) return row;
+        return { ...row, number: String(nextFree()) };
+      });
+      return { ...session, rows };
+    }
+
+    function rowConflictOwner(session: DraftSession, row: DraftRow): string | null {
+      const n = rules.normalizeEmployeeNumber(row.number);
+      if (n === null) return null;
+      const existing = rules.findEmployeeNumberConflict(session.existingUsers, row.number);
+      if (existing) return existing.name;
+      const draftOwner = session.rows.find(r => r.rowId !== row.rowId && rules.normalizeEmployeeNumber(r.number) === n);
+      if (draftOwner) return draftOwner.name || 'otra fila';
+      return null;
+    }
+
+    function rowStatuses(session: DraftSession): DraftRowStatus[] {
+      return session.rows.map((row): DraftRowStatus => {
+        if (String(row.name).trim() === '') return { rowId: row.rowId, status: 'missing-name', conflictWith: null };
+        const owner = rowConflictOwner(session, row);
+        if (owner) return { rowId: row.rowId, status: 'conflict', conflictWith: owner };
+        return { rowId: row.rowId, status: 'ok', conflictWith: null };
+      });
+    }
+
+    function summarize(session: DraftSession): DraftSummary {
+      const statuses = rowStatuses(session);
+      const has = (v: string) => String(v).trim() !== '';
+      return {
+        total: session.rows.length,
+        withName: session.rows.filter(r => has(r.name)).length,
+        withNumber: session.rows.filter(r => rules.normalizeEmployeeNumber(r.number) !== null).length,
+        withPosition: session.rows.filter(r => has(r.position)).length,
+        withSueldo: session.rows.filter(r => has(r.sueldo)).length,
+        conflicts: statuses.filter(s => s.status === 'conflict').length,
+        missingName: statuses.filter(s => s.status === 'missing-name').length
+      };
+    }
+
+    function commitClean(session: DraftSession, generateId: () => DraftEmployeeId): CommitCleanResult {
+      const statuses = rowStatuses(session);
+      const okIds = new Set(statuses.filter(s => s.status === 'ok').map(s => s.rowId));
+      const isClean = (r: DraftRow) => okIds.has(r.rowId) && rules.normalizeEmployeeNumber(r.number) !== null;
+      const cleanRows = session.rows.filter(isClean);
+      const pendingRows = session.rows.filter(r => !isClean(r));
+      const usedIds = new Set(session.existingUsers.map(u => u.id));
+      const newEmployees: DraftEmployee[] = cleanRows.map(row => {
+        let id = generateId();
+        let suffix = 0;
+        while (usedIds.has(id)) { suffix += 1; id = `${id}-${suffix}`; }
+        usedIds.add(id);
+        return { id, name: row.name, number: row.number, position: row.position, sueldo: row.sueldo };
+      });
+      const finalUsers = [...session.existingUsers, ...newEmployees];
+      return { finalUsers, committedCount: cleanRows.length, session: { rows: pendingRows, existingUsers: finalUsers, queue: emptyQueue() } };
+    }
+
     return {
       createSession,
       addRow,
@@ -451,7 +543,11 @@ interface DraftImportApi {
       validateDraft,
       detectConflicts,
       resolveActiveConflict,
-      buildCommitPlan
+      buildCommitPlan,
+      autoAssignNumbers,
+      rowStatuses,
+      summarize,
+      commitClean
     };
   }
 );
