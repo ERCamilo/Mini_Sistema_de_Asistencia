@@ -1523,11 +1523,13 @@
                 <div class="modal-title" id="draft-import-title">Agregar varios empleados</div>
                 <div class="modal-subtitle" id="draft-import-msg"></div>
             </div>
-            <div id="draft-import-rows" style="max-height:50vh;overflow-y:auto;margin-bottom:12px;"></div>
+            <div id="draft-import-summary" style="display:none;background:var(--input-bg);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;"></div>
+            <div id="draft-import-rows" style="max-height:46vh;overflow-y:auto;margin-bottom:12px;"></div>
             <input type="file" id="ocr-photo-input" accept="image/*" capture="environment" style="display:none;">
             <button type="button" class="btn-full btn-secondary" id="btn-draft-photo">📷 Importar de foto</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-draft-autonumber" style="display:none;">🔢 Asignar números faltantes</button>
             <button type="button" class="btn-full btn-secondary" id="btn-draft-add-row">+ Agregar fila</button>
-            <button type="button" class="btn-full btn-primary" id="btn-draft-commit">Guardar todos</button>
+            <button type="button" class="btn-full btn-primary" id="btn-draft-commit">Guardar listos</button>
             <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-draft-import')">Cancelar</button>
         </div>
     </div>
@@ -2354,35 +2356,63 @@
 
         function renderDraftImportRows() {
             const container = document.getElementById('draft-import-rows');
-            const incompleteRowIds = draftImport.validateDraft(draftSession).incompleteRowIds;
-            container.innerHTML = '';
+            const statuses = draftImport.rowStatuses(draftSession);
+            const statusById = {};
+            statuses.forEach(s => { statusById[s.rowId] = s; });
+            const sum = draftImport.summarize(draftSession);
 
+            const summaryEl = document.getElementById('draft-import-summary');
+            if (sum.total > 0) {
+                const issues = [];
+                const missingNum = sum.total - sum.withNumber;
+                if (sum.conflicts) issues.push('⛔ ' + sum.conflicts + ' número repetido');
+                if (sum.missingName) issues.push('⚠️ ' + sum.missingName + ' sin nombre');
+                if (missingNum) issues.push('🔢 ' + missingNum + ' sin número');
+                summaryEl.style.display = 'block';
+                summaryEl.innerHTML =
+                    '<b>' + sum.total + '</b> persona(s) · ' + sum.withNumber + ' con número · ' +
+                    sum.withPosition + ' con posición · ' + sum.withSueldo + ' con sueldo' +
+                    (issues.length
+                        ? '<br><span style="color:var(--text-muted);">' + issues.join(' · ') + '</span>'
+                        : '<br><span style="color:#4caf50;font-weight:600;">✅ Todos listos para guardar</span>');
+            } else {
+                summaryEl.style.display = 'none';
+            }
+            document.getElementById('btn-draft-autonumber').style.display = (sum.total > sum.withNumber) ? 'block' : 'none';
+
+            container.innerHTML = '';
             draftSession.rows.forEach(row => {
-                const isFlagged = draftSession.queue.flaggedRowIds.includes(row.rowId);
-                const isIncomplete = incompleteRowIds.includes(row.rowId);
+                const st = statusById[row.rowId] || { status: 'ok', conflictWith: null };
+                let badge = '';
+                if (st.status === 'conflict') badge = '<div style="color:var(--danger-color);font-size:12px;font-weight:600;">⛔ Número repetido' + (st.conflictWith ? ' (ya es de ' + esc(st.conflictWith) + ')' : '') + '</div>';
+                else if (st.status === 'missing-name') badge = '<div style="color:var(--warning-color);font-size:12px;font-weight:600;">⚠️ Falta el nombre</div>';
                 const div = document.createElement('div');
                 div.className = 'action-item';
                 div.style.flexDirection = 'column';
                 div.style.alignItems = 'stretch';
                 div.style.gap = '8px';
-                if (isFlagged) div.style.border = '2px solid var(--danger-color)';
+                if (st.status === 'conflict') div.style.border = '2px solid var(--danger-color)';
+                else if (st.status === 'missing-name') div.style.border = '1px solid var(--warning-color)';
                 div.innerHTML = `
+                    ${badge}
                     <input type="text" class="search-input" placeholder="Nombre" value="${esc(row.name)}" data-field="name" data-row-id="${esc(row.rowId)}">
                     <input type="text" class="search-input" placeholder="Número" value="${esc(row.number)}" data-field="number" data-row-id="${esc(row.rowId)}">
-                    <input type="text" class="search-input" placeholder="Posición" list="position-options" value="${esc(row.position)}" data-field="position" data-row-id="${esc(row.rowId)}" style="${isIncomplete ? 'border-color:var(--danger-color);' : ''}">
+                    <input type="text" class="search-input" placeholder="Posición (opcional)" list="position-options" value="${esc(row.position)}" data-field="position" data-row-id="${esc(row.rowId)}">
                     <input type="text" class="search-input" placeholder="Sueldo (opcional)" value="${esc(row.sueldo)}" data-field="sueldo" data-row-id="${esc(row.rowId)}">
-                    ${isFlagged ? '<div style="color:var(--danger-color);font-size:12px;font-weight:600;">Resolvé el número manualmente</div>' : ''}
                     <button type="button" class="btn-full btn-danger" data-remove-row-id="${esc(row.rowId)}" style="margin-top:0;">Quitar fila</button>
                 `;
                 container.appendChild(div);
             });
 
             container.querySelectorAll('input[data-field]').forEach(input => {
+                const field = input.getAttribute('data-field');
                 input.oninput = (e) => {
                     const rowId = e.target.getAttribute('data-row-id');
-                    const field = e.target.getAttribute('data-field');
                     draftSession = draftImport.updateRow(draftSession, rowId, { [field]: e.target.value });
                 };
+                if (field === 'number' || field === 'name') {
+                    input.onblur = () => renderDraftImportRows();
+                }
             });
             container.querySelectorAll('button[data-remove-row-id]').forEach(btn => {
                 btn.onclick = (e) => {
@@ -2538,32 +2568,27 @@
         }
 
         function attemptDraftCommit() {
-            const validation = draftImport.validateDraft(draftSession);
-            if (!validation.ok) {
-                renderDraftImportRows();
-                document.getElementById('draft-import-msg').textContent = 'Falta posición';
+            const msg = document.getElementById('draft-import-msg');
+            const res = draftImport.commitClean(draftSession, generateDraftEmployeeId);
+            if (res.committedCount > 0) {
+                users = res.finalUsers;
+                saveData();
+                refreshEmployeeViews();
+            }
+            draftSession = res.session;
+            if (draftSession.rows.length === 0) {
+                closeModal('modal-draft-import');
+                draftSession = null;
                 return;
             }
+            renderDraftImportRows();
+            msg.textContent = (res.committedCount > 0 ? res.committedCount + ' guardado(s). ' : '') +
+                'Quedan ' + draftSession.rows.length + ' por revisar (número repetido o sin nombre).';
+        }
 
-            draftSession = draftImport.detectConflicts(draftSession);
-            if (draftSession.queue.active !== null) {
-                showDraftConflictModal(draftSession.queue.active);
-                return;
-            }
-
-            const plan = draftImport.buildCommitPlan(draftSession, generateDraftEmployeeId);
-            if (!plan.ok) {
-                renderDraftImportRows();
-                document.getElementById('draft-import-msg').textContent =
-                    plan.reason === 'gate' ? 'Falta posición' : 'Resolvé el número manualmente';
-                return;
-            }
-
-            users = plan.finalUsers;
-            saveData();
-            refreshEmployeeViews();
-            closeModal('modal-draft-import');
-            draftSession = null;
+        function autoAssignDraftNumbers() {
+            draftSession = draftImport.autoAssignNumbers(draftSession);
+            renderDraftImportRows();
         }
 
         function populatePositionOptions() {
@@ -2926,6 +2951,7 @@
             document.getElementById('btn-conflict-discard-new').onclick = () => resolveDraftConflictAndContinue('discard-new');
             document.getElementById('btn-draft-add-row').onclick = addDraftImportRow;
             document.getElementById('btn-draft-commit').onclick = attemptDraftCommit;
+            document.getElementById('btn-draft-autonumber').onclick = autoAssignDraftNumbers;
             document.getElementById('btn-draft-photo').onclick = () => document.getElementById('ocr-photo-input').click();
             document.getElementById('ocr-photo-input').onchange = handleOcrPhoto;
             document.getElementById('cam-input').onchange = onFabPhotoChosen;
