@@ -1360,6 +1360,108 @@
         .avatar-placeholder.tap-calendar:active {
             transform: scale(0.92);
         }
+
+        /* + central: gira a x cuando la hoja de agregar esta abierta */
+        .nav-fab .fab-glyph {
+            display: inline-flex;
+            transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        body.add-menu-open .nav-fab .fab-glyph {
+            transform: rotate(135deg);
+        }
+
+        /* Hoja inferior "Agregar empleado": sube desde abajo, la barra inferior sigue visible */
+        .add-sheet-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 90;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        body.add-menu-open .add-sheet-backdrop {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .add-sheet {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+            z-index: 95;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background: var(--card-bg);
+            border-top-left-radius: 28px;
+            border-top-right-radius: 28px;
+            border: 1px solid var(--border-color);
+            border-bottom: none;
+            box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4);
+            padding: 20px 16px 24px;
+            transform: translateY(140%);
+            transition: transform 0.34s cubic-bezier(0.1, 0.7, 0.1, 1);
+        }
+
+        body.add-menu-open .add-sheet {
+            transform: translateY(0);
+        }
+
+        .add-sheet-title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-color);
+            margin-bottom: 16px;
+        }
+
+        .add-tiles {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .add-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 18px 8px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: transform 0.12s, border-color 0.2s;
+        }
+
+        .add-tile:active {
+            transform: scale(0.95);
+            border-color: var(--accent-color);
+        }
+
+        .add-tile-ic {
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-bg);
+            color: var(--accent-color);
+            font-size: 26px;
+        }
+
+        .add-tile-label {
+            font-size: 13px;
+            font-weight: 600;
+        }
     </style>
 </head>
 
@@ -1822,20 +1924,24 @@
         </div>
     </div>
 
-    <!-- Hoja inferior de "Agregar empleado": la dispara el + central de la barra inferior -->
-    <div class="modal" id="modal-add-menu">
-        <div class="modal-content">
-            <div class="modal-handle"></div>
-            <div class="modal-header">
-                <div class="modal-title">Agregar empleado</div>
-                <div class="modal-subtitle">Elegí cómo cargarlos</div>
-            </div>
-            <div class="action-list">
-                <div class="action-item" onclick="addOneManual()"><span class="ic" data-icon="edit"></span> Agregar manual</div>
-                <div class="action-item" onclick="takePhoto()"><span class="ic" data-icon="camera"></span> Tomar foto</div>
-                <div class="action-item" onclick="chooseFromGallery()"><span class="ic" data-icon="gallery"></span> Desde galería</div>
-            </div>
-            <button class="btn-full btn-secondary" onclick="closeModal('modal-add-menu')">Cancelar</button>
+    <!-- Hoja inferior "Agregar empleado": sube desde abajo, la barra sigue visible;
+         el + central (que gira a ×) la abre y la cierra. Sin botón Cancelar. -->
+    <div class="add-sheet-backdrop" id="add-sheet-backdrop" onclick="closeAddMenu()"></div>
+    <div class="add-sheet" id="add-sheet" role="dialog" aria-modal="true" aria-label="Agregar empleado">
+        <div class="add-sheet-title">Agregar empleado</div>
+        <div class="add-tiles">
+            <button type="button" class="add-tile" onclick="addOneManual()">
+                <span class="add-tile-ic"><span class="ic" data-icon="edit"></span></span>
+                <span class="add-tile-label">Manual</span>
+            </button>
+            <button type="button" class="add-tile" onclick="takePhoto()">
+                <span class="add-tile-ic"><span class="ic" data-icon="camera"></span></span>
+                <span class="add-tile-label">Foto</span>
+            </button>
+            <button type="button" class="add-tile" onclick="chooseFromGallery()">
+                <span class="add-tile-ic"><span class="ic" data-icon="gallery"></span></span>
+                <span class="add-tile-label">Galería</span>
+            </button>
         </div>
     </div>
 
@@ -1855,8 +1961,8 @@
             <span class="ic" data-icon="employees"></span><span>Empleados</span>
         </button>
         <div class="nav-center">
-            <button class="nav-fab" id="nav-add" onclick="openModal('modal-add-menu')" aria-label="Agregar empleado">
-                <span class="ic" data-icon="add"></span>
+            <button class="nav-fab" id="nav-add" onclick="toggleAddMenu()" aria-label="Agregar empleado">
+                <span class="fab-glyph"><span class="ic" data-icon="add"></span></span>
             </button>
         </div>
         <button class="nav-item" id="nav-reports" onclick="openReportModal()">
@@ -2787,18 +2893,26 @@
                 positions.map(p => `<option value="${esc(p)}"></option>`).join('');
         }
 
+        function toggleAddMenu() {
+            document.body.classList.toggle('add-menu-open');
+        }
+
+        function closeAddMenu() {
+            document.body.classList.remove('add-menu-open');
+        }
+
         function addOneManual() {
-            closeModal('modal-add-menu');
+            closeAddMenu();
             openAddUserModal();
         }
 
         function takePhoto() {
-            closeModal('modal-add-menu');
+            closeAddMenu();
             document.getElementById('cam-input').click();
         }
 
         function chooseFromGallery() {
-            closeModal('modal-add-menu');
+            closeAddMenu();
             document.getElementById('gal-input').click();
         }
 
