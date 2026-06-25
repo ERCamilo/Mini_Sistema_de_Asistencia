@@ -733,15 +733,16 @@
             color: #000;
         }
 
-        /* FAB speed-dial sub-buttons (manual / camara / galeria) */
+        /* Speed-dial sub-buttons (manual / camara / galeria) — pop up from the
+           center + of the bottom nav. */
         .fab-sub {
             position: fixed;
-            right: 28px;
-            width: 56px;
-            height: 56px;
-            border-radius: 18px;
-            border: none;
-            font-size: 26px;
+            left: 50%;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+            font-size: 24px;
             cursor: pointer;
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
             display: flex;
@@ -751,30 +752,30 @@
             color: var(--text-color);
             z-index: 99;
             opacity: 0;
-            transform: translateY(24px) scale(0.6);
+            transform: translateX(-50%) translateY(20px) scale(0.6);
             pointer-events: none;
             transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
         #fab-manual { bottom: 96px; }
-        #fab-camera { bottom: 164px; }
-        #fab-gallery { bottom: 232px; }
+        #fab-camera { bottom: 158px; }
+        #fab-gallery { bottom: 220px; }
 
         body.fab-menu-open .fab-sub {
             opacity: 1;
-            transform: translateY(0) scale(1);
+            transform: translateX(-50%) translateY(0) scale(1);
             pointer-events: auto;
         }
 
         body.fab-menu-open #fab-camera { transition-delay: 0.05s; }
         body.fab-menu-open #fab-gallery { transition-delay: 0.1s; }
 
-        #fab-add-user .fab-glyph {
-            display: inline-block;
+        .nav-fab .fab-glyph {
+            display: inline-flex;
             transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
-        body.fab-menu-open #fab-add-user .fab-glyph {
+        body.fab-menu-open .nav-fab .fab-glyph {
             transform: rotate(135deg);
         }
 
@@ -1250,26 +1251,129 @@
             outline: none;
             border-color: var(--accent-color);
         }
+
+        /* --- Sistema de iconos (emoji <-> Lucide SVG) --- */
+        .ic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            vertical-align: -0.125em;
+        }
+
+        .ico {
+            width: 1em;
+            height: 1em;
+            display: block;
+        }
+
+        /* --- Barra de navegacion inferior --- */
+        .app-title {
+            flex: 1;
+            text-align: center;
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .bottom-nav {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 64px;
+            display: flex;
+            align-items: stretch;
+            background: var(--nav-bg);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid var(--border-color);
+            z-index: 100;
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+
+        .nav-item {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: color 0.2s, transform 0.1s;
+        }
+
+        .nav-item .ic {
+            font-size: 23px;
+        }
+
+        .nav-item.active {
+            color: var(--accent-color);
+        }
+
+        .nav-item:active {
+            transform: scale(0.92);
+        }
+
+        .nav-center {
+            flex: 0 0 64px;
+            position: relative;
+        }
+
+        .nav-fab {
+            position: absolute;
+            left: 50%;
+            top: -20px;
+            transform: translateX(-50%);
+            width: 58px;
+            height: 58px;
+            border-radius: 50%;
+            border: none;
+            background: var(--accent-color);
+            color: #000;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+            transition: transform 0.2s;
+        }
+
+        .nav-fab .ic {
+            font-size: 30px;
+        }
+
+        .nav-fab:active {
+            transform: translateX(-50%) scale(0.9);
+        }
+
+        [data-theme="light"] .nav-fab {
+            color: #fff;
+        }
+
+        [data-theme="contrast"] .nav-fab {
+            color: #000;
+            border: 2px solid #fff;
+        }
     </style>
 </head>
 
 <body>
 
     <div class="top-nav">
-        <button class="nav-tab active" onclick="switchView('attendance')">Asistencia</button>
-        <button class="nav-tab" onclick="switchView('employees')">Empleados</button>
-        <!-- Botón de Tema -->
-        <button class="menu-btn" onclick="openModal('theme-menu')" title="Temas">🎨</button>
-        <!-- Botón Menú Datos -->
-        <button class="menu-btn" id="export-btn" title="Gestión">⚙️</button>
+        <div class="app-title" id="section-title">Asistencia</div>
     </div>
 
     <!-- VISTA PRINCIPAL -->
     <div id="attendance-view">
         <div class="view-selector">
             <div class="view-mode-pills">
-                <button class="view-btn active" id="btn-mode-daily" onclick="setMode('daily')">📅 Diaria</button>
-                <button class="view-btn" id="btn-mode-weekly" onclick="setMode('weekly')">📊 Semanal</button>
+                <button class="view-btn active" id="btn-mode-daily" onclick="setMode('daily')"><span class="ic" data-icon="daily"></span> Diaria</button>
+                <button class="view-btn" id="btn-mode-weekly" onclick="setMode('weekly')"><span class="ic" data-icon="weekly"></span> Semanal</button>
             </div>
         </div>
 
@@ -1277,12 +1381,12 @@
         <div id="daily-view">
             <div class="dashboard-panel" style="padding-top:0;">
                 <div class="date-nav">
-                    <button class="nav-arrow" id="btn-prev-day">❮</button>
+                    <button class="nav-arrow" id="btn-prev-day"><span class="ic" data-icon="chevronLeft"></span></button>
                     <div class="current-date-wrapper">
                         <span class="current-date-display" id="header-date">...</span>
                         <input type="date" id="date-picker-trigger">
                     </div>
-                    <button class="nav-arrow" id="btn-next-day">❯</button>
+                    <button class="nav-arrow" id="btn-next-day"><span class="ic" data-icon="chevronRight"></span></button>
                 </div>
 
                 <div class="stats-filters">
@@ -1317,7 +1421,7 @@
 
                     <!-- Configuración rápida -->
                     <div class="config-bar">
-                        <div class="config-label">⏱️ Valor Check:</div>
+                        <div class="config-label"><span class="ic" data-icon="clock"></span> Valor Check:</div>
                         <div class="stepper-control">
                             <button class="stepper-btn" onclick="updateDefaultHours(-1)" aria-label="Menos">-</button>
                             <input type="number" id="default-hours-input" class="hours-input-global" value="8" min="1" max="24" readonly>
@@ -1327,7 +1431,7 @@
                 </div>
 
                 <div class="search-container">
-                    <span class="search-icon">🔍</span>
+                    <span class="search-icon"><span class="ic" data-icon="search"></span></span>
                     <input type="text" class="search-input" id="search-input" placeholder="Buscar empleado...">
                 </div>
             </div>
@@ -1339,11 +1443,11 @@
         <div id="weekly-view" class="hidden week-view-container">
             <div class="dashboard-panel" style="padding-top:0;">
                 <div class="date-nav">
-                    <button class="nav-arrow" onclick="changeWeek(-1)">❮</button>
+                    <button class="nav-arrow" onclick="changeWeek(-1)"><span class="ic" data-icon="chevronLeft"></span></button>
                     <div class="current-date-wrapper">
                         <span class="current-date-display" id="week-range-display">...</span>
                     </div>
-                    <button class="nav-arrow" onclick="changeWeek(1)">❯</button>
+                    <button class="nav-arrow" onclick="changeWeek(1)"><span class="ic" data-icon="chevronRight"></span></button>
                 </div>
             </div>
 
@@ -1359,24 +1463,11 @@
     <div id="employees-view" class="hidden">
         <div class="dashboard-panel">
             <div class="search-container">
-                <span class="search-icon">🔍</span>
+                <span class="search-icon"><span class="ic" data-icon="search"></span></span>
                 <input type="text" class="search-input" id="search-employees" placeholder="Gestionar empleados...">
             </div>
         </div>
         <div class="users-list" id="employees-container"></div>
-
-        <!-- FAB speed-dial: + despliega manual / cámara / galería -->
-        <button class="fab-sub" id="fab-gallery" onclick="chooseFromGallery()" title="Desde galería">🖼️</button>
-        <button class="fab-sub" id="fab-camera" onclick="takePhoto()" title="Tomar foto">📷</button>
-        <button class="fab-sub" id="fab-manual" onclick="addOneManual()" title="Agregar uno">✏️</button>
-        <button class="fab fab-add" id="fab-add-user" onclick="toggleAddMenu()" aria-label="Agregar empleado"
-            style="position: fixed; bottom: 24px; right: 24px;"><span class="fab-glyph">＋</span></button>
-        <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none;">
-        <input type="file" id="gal-input" accept="image/*" multiple style="display:none;">
-        <div class="ocr-loading-overlay" id="ocr-loading">
-            <div class="ocr-spinner"></div>
-            <div class="ocr-loading-text" id="ocr-loading-text">Leyendo la foto...</div>
-        </div>
     </div>
 
     <!-- MODAL DE TEMAS (NUEVO) -->
@@ -1387,22 +1478,34 @@
                 <div class="modal-title">Apariencia</div>
                 <div class="modal-subtitle">Personaliza tu experiencia</div>
             </div>
+            <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-bottom:10px;">Tema de color</div>
             <div class="theme-options">
-                <div class="theme-btn" onclick="setTheme('dark')">
+                <div class="theme-btn" data-theme-name="dark" onclick="setTheme('dark')">
                     <div class="theme-preview" style="background:#0a0e27;"></div>
                     <span>Original</span>
                 </div>
-                <div class="theme-btn" onclick="setTheme('light')">
+                <div class="theme-btn" data-theme-name="light" onclick="setTheme('light')">
                     <div class="theme-preview" style="background:#f3f4f6; border-color:#ccc;"></div>
                     <span>Claro</span>
                 </div>
-                <div class="theme-btn" onclick="setTheme('contrast')">
+                <div class="theme-btn" data-theme-name="contrast" onclick="setTheme('contrast')">
                     <div class="theme-preview" style="background:#000000; border-color:yellow;"></div>
                     <span>Alto Contraste</span>
                 </div>
-                <div class="theme-btn" onclick="setTheme('ocean')">
+                <div class="theme-btn" data-theme-name="ocean" onclick="setTheme('ocean')">
                     <div class="theme-preview" style="background:#0f172a; border-color:#38bdf8;"></div>
                     <span>Océano</span>
+                </div>
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin:18px 0 10px;">Estilo de íconos</div>
+            <div class="theme-options">
+                <div class="theme-btn" data-icon-style="lucide" onclick="setIconStyle('lucide')">
+                    <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:26px;height:26px;" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
+                    <span>Moderno</span>
+                </div>
+                <div class="theme-btn" data-icon-style="emoji" onclick="setIconStyle('emoji')">
+                    <span style="font-size:26px;line-height:1;">👥</span>
+                    <span>Emoji</span>
                 </div>
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('theme-menu')">Cerrar</button>
@@ -1526,9 +1629,9 @@
             <div id="draft-import-summary" style="display:none;background:var(--input-bg);border-radius:12px;padding:10px 12px;margin-bottom:10px;font-size:13px;line-height:1.5;"></div>
             <div id="draft-import-rows" style="max-height:46vh;overflow-y:auto;margin-bottom:12px;"></div>
             <input type="file" id="ocr-photo-input" accept="image/*" capture="environment" style="display:none;">
-            <button type="button" class="btn-full btn-secondary" id="btn-draft-photo">📷 Importar de foto</button>
-            <button type="button" class="btn-full btn-secondary" id="btn-draft-autonumber" style="display:none;">🔢 Asignar números faltantes</button>
-            <button type="button" class="btn-full btn-secondary" id="btn-draft-add-row">+ Agregar fila</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-draft-photo"><span class="ic" data-icon="camera"></span> Importar de foto</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-draft-autonumber" style="display:none;"><span class="ic" data-icon="hash"></span> Asignar números faltantes</button>
+            <button type="button" class="btn-full btn-secondary" id="btn-draft-add-row"><span class="ic" data-icon="add"></span> Agregar fila</button>
             <button type="button" class="btn-full btn-primary" id="btn-draft-commit">Guardar listos</button>
             <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-draft-import')">Cancelar</button>
         </div>
@@ -1542,45 +1645,45 @@
                 <div class="modal-title">Gestión de Datos</div>
             </div>
             <div class="export-options">
+                <div class="export-option" onclick="closeModal('export-menu'); openModal('theme-menu');">
+                    <span style="font-size: 24px;"><span class="ic" data-icon="palette"></span></span>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text-color);">Apariencia</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Tema de color e íconos</div>
+                    </div>
+                </div>
                 <div class="export-option" onclick="downloadJSON()">
-                    <span style="font-size: 24px;">💾</span>
+                    <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados y asistencia</div>
                     </div>
                 </div>
                 <div class="export-option" onclick="openImportBackupModal()">
-                    <span style="font-size: 24px;">📂</span>
+                    <span style="font-size: 24px;"><span class="ic" data-icon="restore"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Pegar JSON de respaldo completo</div>
                     </div>
                 </div>
                 <div class="export-option" onclick="openImportEmployeesModal()">
-                    <span style="font-size: 24px;">👥</span>
+                    <span style="font-size: 24px;"><span class="ic" data-icon="replace"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--danger-color);">Borrar y reemplazar todo</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Reemplaza TODA la lista con un JSON (peligroso)</div>
                     </div>
                 </div>
                 <div class="export-option" onclick="openDraftImportModal()">
-                    <span style="font-size: 24px;">➕</span>
+                    <span style="font-size: 24px;"><span class="ic" data-icon="addMany"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--accent-color);">Agregar varios</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Crear varios empleados a mano</div>
                     </div>
                 </div>
-                <div class="export-option" onclick="openReportModal()">
-                    <span style="font-size: 24px;">📊</span>
-                    <div>
-                        <div style="font-weight: 600;">Reporte de asistencia</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">PDF o Excel por rango de fechas</div>
-                    </div>
-                </div>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
                 <div class="export-option" id="btn-install-pwa" onclick="installPWA()"
                     style="opacity:0.4; cursor:not-allowed;">
-                    <span style="font-size: 24px;">📲</span>
+                    <span style="font-size: 24px;"><span class="ic" data-icon="install"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--text-color);" id="install-pwa-label">Instalar App
                         </div>
@@ -1589,7 +1692,7 @@
                     </div>
                 </div>
                 <div class="export-option" onclick="clearCacheAndReload()">
-                    <span style="font-size: 24px;">🔄</span>
+                    <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
                     <div>
                         <div style="font-weight: 600;">Buscar actualización</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Limpia el caché y carga la última versión</div>
@@ -1717,6 +1820,39 @@
         </div>
     </div>
 
+    <!-- Speed-dial global: lo dispara el + central de la barra inferior -->
+    <button class="fab-sub" id="fab-gallery" onclick="chooseFromGallery()" aria-label="Desde galería"><span class="ic" data-icon="gallery"></span></button>
+    <button class="fab-sub" id="fab-camera" onclick="takePhoto()" aria-label="Tomar foto"><span class="ic" data-icon="camera"></span></button>
+    <button class="fab-sub" id="fab-manual" onclick="addOneManual()" aria-label="Agregar uno"><span class="ic" data-icon="edit"></span></button>
+    <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="gal-input" accept="image/*" multiple style="display:none;">
+    <div class="ocr-loading-overlay" id="ocr-loading">
+        <div class="ocr-spinner"></div>
+        <div class="ocr-loading-text" id="ocr-loading-text">Leyendo la foto...</div>
+    </div>
+
+    <!-- BARRA DE NAVEGACION INFERIOR -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" id="nav-attendance" onclick="switchView('attendance')">
+            <span class="ic" data-icon="attendance"></span><span>Asistencia</span>
+        </button>
+        <button class="nav-item" id="nav-employees" onclick="switchView('employees')">
+            <span class="ic" data-icon="employees"></span><span>Empleados</span>
+        </button>
+        <div class="nav-center">
+            <button class="nav-fab" id="nav-add" onclick="toggleAddMenu()" aria-label="Agregar empleado">
+                <span class="fab-glyph"><span class="ic" data-icon="add"></span></span>
+            </button>
+        </div>
+        <button class="nav-item" id="nav-reports" onclick="openReportModal()">
+            <span class="ic" data-icon="reports"></span><span>Reportes</span>
+        </button>
+        <button class="nav-item" id="nav-more" onclick="openModal('export-menu')">
+            <span class="ic" data-icon="more"></span><span>Más</span>
+        </button>
+    </nav>
+
+    <script src="./icon-set.js"></script>
     <script src="./employee-number-rules.js"></script>
     <script src="./employee-number-modal.js"></script>
     <script src="./draft-import.js"></script>
@@ -1744,6 +1880,38 @@
             modalId: 'employee-number-conflict-modal'
         });
         const draftImport = window.DraftImport.createDraftImport(window.EmployeeNumberRules);
+
+        // --- SISTEMA DE ICONOS (emoji <-> Lucide) ---
+        let currentIconStyle = window.IconSet.normalizeIconStyle(localStorage.getItem('iconStyle'));
+
+        // Hydrate every [data-icon] placeholder under `root` with the current style.
+        function applyIcons(root) {
+            (root || document).querySelectorAll('[data-icon]').forEach(el => {
+                el.innerHTML = window.IconSet.iconMarkup(el.getAttribute('data-icon'), currentIconStyle);
+            });
+        }
+
+        function setIconStyle(style) {
+            currentIconStyle = window.IconSet.normalizeIconStyle(style);
+            localStorage.setItem('iconStyle', currentIconStyle);
+            markActiveIconStyle(currentIconStyle);
+            applyIcons(document);
+        }
+
+        function markActiveIconStyle(style) {
+            document.querySelectorAll('[data-icon-style]').forEach(b =>
+                b.classList.toggle('active', b.getAttribute('data-icon-style') === style));
+        }
+
+        function markActiveTheme(themeName) {
+            document.querySelectorAll('[data-theme-name]').forEach(b =>
+                b.classList.toggle('active', b.getAttribute('data-theme-name') === themeName));
+        }
+
+        function updateNavActive(view) {
+            document.getElementById('nav-attendance').classList.toggle('active', view === 'attendance');
+            document.getElementById('nav-employees').classList.toggle('active', view === 'employees');
+        }
 
         function esc(str) {
             const d = document.createElement('div');
@@ -1967,13 +2135,16 @@
             initReminder();
             updateDashboard();
             setupEvents();
+            markActiveIconStyle(currentIconStyle);
+            updateNavActive('attendance');
+            applyIcons(document);
         }
 
         // --- SISTEMA DE TEMAS ---
         function setTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             localStorage.setItem('appTheme', themeName);
-            document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+            markActiveTheme(themeName);
         }
 
         function loadTheme() {
@@ -2120,7 +2291,8 @@
             });
 
             if (filtered.length === 0) {
-                container.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><div>No hay resultados</div></div>`;
+                container.innerHTML = `<div class="empty-state"><div class="empty-icon"><span class="ic" data-icon="inbox"></span></div><div>No hay resultados</div></div>`;
+                applyIcons(container);
                 return;
             }
 
@@ -2150,11 +2322,12 @@
                         ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
                     </div>
                     <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}', ${isPresent})">
-                        ${isPresent ? '✓' : ''}
+                        ${isPresent ? '<span class="ic" data-icon="check"></span>' : ''}
                     </div>
                 `;
                 container.appendChild(div);
             });
+            applyIcons(container);
         }
 
         function changeWeek(offset) {
@@ -2365,16 +2538,16 @@
             if (sum.total > 0) {
                 const issues = [];
                 const missingNum = sum.total - sum.withNumber;
-                if (sum.conflicts) issues.push('⛔ ' + sum.conflicts + ' número repetido');
-                if (sum.missingName) issues.push('⚠️ ' + sum.missingName + ' sin nombre');
-                if (missingNum) issues.push('🔢 ' + missingNum + ' sin número');
+                if (sum.conflicts) issues.push('<span class="ic" data-icon="conflict"></span> ' + sum.conflicts + ' número repetido');
+                if (sum.missingName) issues.push('<span class="ic" data-icon="warning"></span> ' + sum.missingName + ' sin nombre');
+                if (missingNum) issues.push('<span class="ic" data-icon="hash"></span> ' + missingNum + ' sin número');
                 summaryEl.style.display = 'block';
                 summaryEl.innerHTML =
                     '<b>' + sum.total + '</b> persona(s) · ' + sum.withNumber + ' con número · ' +
                     sum.withPosition + ' con posición · ' + sum.withSueldo + ' con sueldo' +
                     (issues.length
                         ? '<br><span style="color:var(--text-muted);">' + issues.join(' · ') + '</span>'
-                        : '<br><span style="color:#4caf50;font-weight:600;">✅ Todos listos para guardar</span>');
+                        : '<br><span style="color:#4caf50;font-weight:600;"><span class="ic" data-icon="success"></span> Todos listos para guardar</span>');
             } else {
                 summaryEl.style.display = 'none';
             }
@@ -2384,8 +2557,8 @@
             draftSession.rows.forEach(row => {
                 const st = statusById[row.rowId] || { status: 'ok', conflictWith: null };
                 let badge = '';
-                if (st.status === 'conflict') badge = '<div style="color:var(--danger-color);font-size:12px;font-weight:600;">⛔ Número repetido' + (st.conflictWith ? ' (ya es de ' + esc(st.conflictWith) + ')' : '') + '</div>';
-                else if (st.status === 'missing-name') badge = '<div style="color:var(--warning-color);font-size:12px;font-weight:600;">⚠️ Falta el nombre</div>';
+                if (st.status === 'conflict') badge = '<div style="color:var(--danger-color);font-size:12px;font-weight:600;"><span class="ic" data-icon="conflict"></span> Número repetido' + (st.conflictWith ? ' (ya es de ' + esc(st.conflictWith) + ')' : '') + '</div>';
+                else if (st.status === 'missing-name') badge = '<div style="color:var(--warning-color);font-size:12px;font-weight:600;"><span class="ic" data-icon="warning"></span> Falta el nombre</div>';
                 const div = document.createElement('div');
                 div.className = 'action-item';
                 div.style.flexDirection = 'column';
@@ -2421,6 +2594,8 @@
                     renderDraftImportRows();
                 };
             });
+            applyIcons(summaryEl);
+            applyIcons(container);
         }
 
         function addDraftImportRow() {
@@ -2985,8 +3160,6 @@
                 }
             }
 
-            document.getElementById('export-btn').onclick = () => openModal('export-menu');
-
             // Cerrar modal solo cuando el clic es EXACTAMENTE en el overlay, no en hijos
             document.querySelectorAll('.modal').forEach(m => {
                 m.addEventListener('click', function (e) {
@@ -2997,18 +3170,18 @@
         }
 
         function switchView(view) {
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             if (view === 'attendance') {
-                document.querySelector('.nav-tab:first-child').classList.add('active');
                 document.getElementById('attendance-view').classList.remove('hidden');
                 document.getElementById('employees-view').classList.add('hidden');
+                document.getElementById('section-title').textContent = 'Asistencia';
                 updateDashboard();
             } else {
-                document.querySelector('.nav-tab:nth-child(2)').classList.add('active');
                 document.getElementById('attendance-view').classList.add('hidden');
                 document.getElementById('employees-view').classList.remove('hidden');
+                document.getElementById('section-title').textContent = 'Empleados';
                 renderEmployeesList();
             }
+            updateNavActive(view);
         }
 
         function renderEmployeesList() {
@@ -3030,10 +3203,11 @@
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
                     </div>
-                    <button class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')">✎</button>
+                    <button class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')"><span class="ic" data-icon="edit"></span></button>
                 `;
                 container.appendChild(div);
             });
+            applyIcons(container);
         }
 
         window.editUser = (id) => {

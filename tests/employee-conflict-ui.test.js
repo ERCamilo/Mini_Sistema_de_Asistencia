@@ -70,9 +70,10 @@ test('initialization leaves historical normalized duplicates untouched', () => {
 });
 test('service worker precaches the production coordinator', () => {
   const serviceWorker = readFileSync(require.resolve('../sw.js'), 'utf8');
-  assert.match(serviceWorker, /asistencia-v2\.3\.0/);
+  assert.match(serviceWorker, /asistencia-v2\.4\.0/);
   assert.match(serviceWorker, /'\.\/employee-number-rules\.js'/);
   assert.match(serviceWorker, /'\.\/employee-number-modal\.js'/);
   assert.match(serviceWorker, /'\.\/draft-import\.js'/);
   assert.match(serviceWorker, /'\.\/attendance-report\.js'/);
+  assert.match(serviceWorker, /'\.\/icon-set\.js'/);
 });
