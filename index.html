@@ -733,52 +733,6 @@
             color: #000;
         }
 
-        /* Speed-dial sub-buttons (manual / camara / galeria) — pop up from the
-           center + of the bottom nav. */
-        .fab-sub {
-            position: fixed;
-            left: 50%;
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
-            border: 1px solid var(--border-color);
-            font-size: 24px;
-            cursor: pointer;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--card-bg);
-            color: var(--text-color);
-            z-index: 99;
-            opacity: 0;
-            transform: translateX(-50%) translateY(20px) scale(0.6);
-            pointer-events: none;
-            transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-
-        #fab-manual { bottom: 96px; }
-        #fab-camera { bottom: 158px; }
-        #fab-gallery { bottom: 220px; }
-
-        body.fab-menu-open .fab-sub {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0) scale(1);
-            pointer-events: auto;
-        }
-
-        body.fab-menu-open #fab-camera { transition-delay: 0.05s; }
-        body.fab-menu-open #fab-gallery { transition-delay: 0.1s; }
-
-        .nav-fab .fab-glyph {
-            display: inline-flex;
-            transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-
-        body.fab-menu-open .nav-fab .fab-glyph {
-            transform: rotate(135deg);
-        }
-
         /* OCR loading overlay */
         .ocr-loading-overlay {
             position: fixed;
@@ -1359,6 +1313,53 @@
             color: #000;
             border: 2px solid #fff;
         }
+
+        /* Calendario: dia con asistencia relleno del color (en vez de un punto) */
+        .cal-day.fill-green {
+            background: var(--success-color);
+            border-color: var(--success-color);
+            color: #fff;
+        }
+
+        .cal-day.fill-red {
+            background: var(--danger-color);
+            border-color: var(--danger-color);
+            color: #fff;
+        }
+
+        .cal-day.fill-blue {
+            background: var(--extra-color);
+            border-color: var(--extra-color);
+            color: #fff;
+        }
+
+        .cal-day.fill-green .cal-hours,
+        .cal-day.fill-red .cal-hours,
+        .cal-day.fill-blue .cal-hours {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        [data-theme="contrast"] .cal-day.fill-green,
+        [data-theme="contrast"] .cal-day.fill-red,
+        [data-theme="contrast"] .cal-day.fill-blue {
+            color: #000;
+        }
+
+        [data-theme="contrast"] .cal-day.fill-green .cal-hours,
+        [data-theme="contrast"] .cal-day.fill-red .cal-hours,
+        [data-theme="contrast"] .cal-day.fill-blue .cal-hours {
+            color: rgba(0, 0, 0, 0.8);
+        }
+
+        /* Numero (avatar) como disparador del calendario en la lista diaria */
+        .avatar-placeholder.tap-calendar {
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+
+        .avatar-placeholder.tap-calendar:active {
+            transform: scale(0.92);
+        }
     </style>
 </head>
 
@@ -1521,9 +1522,10 @@
                 <div class="modal-subtitle">Opciones de asistencia</div>
             </div>
             <div class="action-list">
-                <div class="action-item" id="qa-modify"><span>⏱️</span> Modificar Horas</div>
+                <div class="action-item" id="qa-edit-profile"><span class="ic" data-icon="edit"></span> Editar perfil</div>
+                <div class="action-item" id="qa-modify"><span class="ic" data-icon="clock"></span> Modificar Horas</div>
                 <div class="action-item" id="qa-delete"
-                    style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span>🗑️</span> Marcar como
+                    style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span class="ic" data-icon="trash"></span> Marcar como
                     Ausente</div>
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('modal-quick-actions')">Cancelar</button>
@@ -1820,10 +1822,23 @@
         </div>
     </div>
 
-    <!-- Speed-dial global: lo dispara el + central de la barra inferior -->
-    <button class="fab-sub" id="fab-gallery" onclick="chooseFromGallery()" aria-label="Desde galería"><span class="ic" data-icon="gallery"></span></button>
-    <button class="fab-sub" id="fab-camera" onclick="takePhoto()" aria-label="Tomar foto"><span class="ic" data-icon="camera"></span></button>
-    <button class="fab-sub" id="fab-manual" onclick="addOneManual()" aria-label="Agregar uno"><span class="ic" data-icon="edit"></span></button>
+    <!-- Hoja inferior de "Agregar empleado": la dispara el + central de la barra inferior -->
+    <div class="modal" id="modal-add-menu">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">Agregar empleado</div>
+                <div class="modal-subtitle">Elegí cómo cargarlos</div>
+            </div>
+            <div class="action-list">
+                <div class="action-item" onclick="addOneManual()"><span class="ic" data-icon="edit"></span> Agregar manual</div>
+                <div class="action-item" onclick="takePhoto()"><span class="ic" data-icon="camera"></span> Tomar foto</div>
+                <div class="action-item" onclick="chooseFromGallery()"><span class="ic" data-icon="gallery"></span> Desde galería</div>
+            </div>
+            <button class="btn-full btn-secondary" onclick="closeModal('modal-add-menu')">Cancelar</button>
+        </div>
+    </div>
+
     <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none;">
     <input type="file" id="gal-input" accept="image/*" multiple style="display:none;">
     <div class="ocr-loading-overlay" id="ocr-loading">
@@ -1840,8 +1855,8 @@
             <span class="ic" data-icon="employees"></span><span>Empleados</span>
         </button>
         <div class="nav-center">
-            <button class="nav-fab" id="nav-add" onclick="toggleAddMenu()" aria-label="Agregar empleado">
-                <span class="fab-glyph"><span class="ic" data-icon="add"></span></span>
+            <button class="nav-fab" id="nav-add" onclick="openModal('modal-add-menu')" aria-label="Agregar empleado">
+                <span class="ic" data-icon="add"></span>
             </button>
         </div>
         <button class="nav-item" id="nav-reports" onclick="openReportModal()">
@@ -2313,8 +2328,8 @@
                 const div = document.createElement('div');
                 div.className = 'user-card';
                 div.innerHTML = `
-                    <div class="avatar-placeholder">${esc(u.number)}</div>
-                    <div class="user-info-area" onclick="openCalendar('${esc(u.id)}')">
+                    <div class="avatar-placeholder tap-calendar" onclick="openCalendar('${esc(u.id)}')" title="Ver historial">${esc(u.number)}</div>
+                    <div class="user-info-area" onclick="toggleCheck('${esc(u.id)}', ${isPresent})">
                         <div class="user-details">
                             <div class="user-name">${esc(u.name)}</div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
@@ -2772,26 +2787,18 @@
                 positions.map(p => `<option value="${esc(p)}"></option>`).join('');
         }
 
-        function toggleAddMenu() {
-            document.body.classList.toggle('fab-menu-open');
-        }
-
-        function closeAddMenu() {
-            document.body.classList.remove('fab-menu-open');
-        }
-
         function addOneManual() {
-            closeAddMenu();
+            closeModal('modal-add-menu');
             openAddUserModal();
         }
 
         function takePhoto() {
-            closeAddMenu();
+            closeModal('modal-add-menu');
             document.getElementById('cam-input').click();
         }
 
         function chooseFromGallery() {
-            closeAddMenu();
+            closeModal('modal-add-menu');
             document.getElementById('gal-input').click();
         }
 
@@ -3054,13 +3061,13 @@
                 let dots = '';
 
                 if (rec && rec.status === 'present') {
-                    cls += ' has-data';
                     let col = 'green';
                     if (rec.hours < 8) { col = 'red'; sL++; }
                     else if (rec.hours > 8) { col = 'blue'; sE++; }
                     else sN++;
 
-                    dots = `<div class="dot ${col}"></div><div class="cal-hours">${rec.hours}h</div>`;
+                    cls += ' has-data fill-' + col;
+                    dots = `<div class="cal-hours">${rec.hours}h</div>`;
                 }
 
                 grid.innerHTML += `<div class="${cls}" onclick="goToDate('${dateStr}')">${content}${dots}</div>`;
@@ -3092,6 +3099,11 @@
 
             document.getElementById('search-input').oninput = renderList;
             document.getElementById('search-employees').oninput = renderEmployeesList;
+
+            document.getElementById('qa-edit-profile').onclick = () => {
+                closeModal('modal-quick-actions');
+                window.editUser(selectedUserId);
+            };
 
             document.getElementById('qa-modify').onclick = () => {
                 closeModal('modal-quick-actions');
