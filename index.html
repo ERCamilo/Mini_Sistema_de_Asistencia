@@ -31,6 +31,9 @@
             --whatsapp-color: #25D366;
             --input-bg: #1a2040;
             --nav-bg: rgba(10, 14, 39, 0.95);
+            /* Layout: altura de la barra de titulo y del selector de semana (para el sticky) */
+            --topbar-h: 50px;
+            --weeknav-h: 54px;
         }
 
         /* Tema Claro */
@@ -102,8 +105,10 @@
         /* --- Header & Nav --- */
         .top-nav {
             display: flex;
+            align-items: center;
             gap: 8px;
-            padding: 12px 16px;
+            height: var(--topbar-h);
+            padding: 0 16px;
             background: var(--nav-bg);
             backdrop-filter: blur(10px);
             position: sticky;
@@ -611,83 +616,92 @@
 
         /* --- Tabla Semanal --- */
         .week-view-container {
-            padding: 0 16px 100px;
+            padding: 8px 16px 24px;
         }
 
-        .week-table-wrapper {
-            background: var(--card-bg);
-            border-radius: 16px;
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-            position: relative;
-        }
-
-        .week-scroll-area {
-            overflow: auto;
-            position: relative;
-            max-height: calc(100vh - 210px);
-            -webkit-overflow-scrolling: touch;
-        }
-
+        /* Tabla semanal: entra en pantalla (sin scroll horizontal) y el thead
+           (selector de semana + columnas) queda sticky bajo la barra de titulo,
+           asi solo scrollea la pagina (una sola barra). */
         .week-table {
             width: 100%;
             border-collapse: collapse;
-            min-width: 600px;
+            table-layout: fixed;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
         }
+
+        .week-table col.col-num { width: 30px; }
+        .week-table col.col-emp { width: 34%; }
 
         .week-table th,
         .week-table td {
-            padding: 12px 8px;
+            padding: 8px 2px;
             text-align: center;
             border-bottom: 1px solid var(--border-color);
-            white-space: nowrap;
         }
 
-        .week-table th {
+        /* Fila 1 del encabezado sticky: selector de semana */
+        .week-table .week-nav-row th {
+            position: sticky;
+            top: var(--topbar-h);
+            z-index: 22;
+            height: var(--weeknav-h);
+            padding: 0 6px;
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .week-nav-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .week-nav-inner .current-date-display {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        /* Fila 2 del encabezado sticky: titulos de columna */
+        .week-table .week-head-row th {
+            position: sticky;
+            top: calc(var(--topbar-h) + var(--weeknav-h));
+            z-index: 21;
             background: var(--input-bg);
             color: var(--text-muted);
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
         }
 
-        /* Header row sticks to the top while scrolling vertically */
-        .week-table thead th {
-            position: sticky;
-            top: 0;
-            z-index: 20;
+        .week-head-row .wk-dname { font-size: 9px; letter-spacing: 0.5px; }
+        .week-head-row .wk-dnum { font-size: 13px; font-weight: 700; }
+
+        .week-num {
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 700;
         }
 
-        /* Employee column sticks to the left while scrolling horizontally */
-        .col-sticky {
-            position: sticky;
-            left: 0;
-            background: inherit;
-            z-index: 10;
+        .week-emp-cell,
+        .week-emp-h {
             text-align: left !important;
-            padding-left: 16px !important;
-            border-right: 1px solid var(--border-color);
-            min-width: 154px;
-            max-width: 154px;
+            padding-left: 10px !important;
+        }
+
+        .week-emp-cell {
             white-space: normal;
             color: var(--text-color);
-            transition: min-width 0.2s ease, max-width 0.2s ease;
-        }
-
-        .week-table thead .col-sticky {
-            background: var(--input-bg);
-            z-index: 30; /* top-left corner: above both sticky axes */
-        }
-
-        .week-table tbody .col-sticky {
-            background: var(--card-bg);
         }
 
         .emp-full {
             display: block;
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 700;
-            line-height: 1.25;
+            line-height: 1.2;
             text-transform: none;
         }
 
@@ -697,32 +711,8 @@
             font-weight: 500;
             color: var(--text-muted);
             line-height: 1.2;
-            margin-top: 2px;
+            margin-top: 1px;
             text-transform: none;
-        }
-
-        .emp-compact {
-            display: none;
-            font-size: 13px;
-            font-weight: 700;
-            white-space: nowrap;
-            text-transform: none;
-        }
-
-        /* Compact state: while scrolled horizontally, shrink the name column */
-        .week-table.compact .col-sticky {
-            min-width: 88px;
-            max-width: 88px;
-            white-space: nowrap;
-        }
-
-        .week-table.compact .emp-full,
-        .week-table.compact .emp-pos {
-            display: none;
-        }
-
-        .week-table.compact .emp-compact {
-            display: block;
         }
 
         .week-cell {
@@ -1633,21 +1623,7 @@
 
         <!-- MODO SEMANAL -->
         <div id="weekly-view" class="hidden week-view-container">
-            <div class="dashboard-panel" style="padding-top:0;">
-                <div class="date-nav">
-                    <button class="nav-arrow" onclick="changeWeek(-1)"><span class="ic" data-icon="chevronLeft"></span></button>
-                    <div class="current-date-wrapper">
-                        <span class="current-date-display" id="week-range-display">...</span>
-                    </div>
-                    <button class="nav-arrow" onclick="changeWeek(1)"><span class="ic" data-icon="chevronRight"></span></button>
-                </div>
-            </div>
-
-            <div class="week-table-wrapper">
-                <div class="week-scroll-area">
-                    <table class="week-table" id="week-table"></table>
-                </div>
-            </div>
+            <table class="week-table" id="week-table"></table>
         </div>
     </div>
 
@@ -2568,24 +2544,40 @@
 
             const startStr = weekDates[0].toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
             const endStr = weekDates[6].toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-            document.getElementById('week-range-display').textContent = `${startStr} - ${endStr}`;
+            const rangeText = `${startStr} - ${endStr}`;
 
             const daysHeader = weekDates.map(d => {
                 const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '');
-                const dayNum = d.getDate();
-                return `<th>${dayName}<br><small>${dayNum}</small></th>`;
+                return `<th><span class="wk-dname">${dayName}</span><br><span class="wk-dnum">${d.getDate()}</span></th>`;
             }).join('');
 
-            let html = `<thead><tr><th class="col-sticky">Empleado</th>${daysHeader}</tr></thead><tbody>`;
+            // Sticky combined header: week selector (row 1) + column titles (row 2)
+            let html = `
+                <colgroup><col class="col-num"><col class="col-emp">${'<col>'.repeat(7)}</colgroup>
+                <thead>
+                    <tr class="week-nav-row">
+                        <th colspan="9">
+                            <div class="week-nav-inner">
+                                <button class="nav-arrow" onclick="changeWeek(-1)"><span class="ic" data-icon="chevronLeft"></span></button>
+                                <span class="current-date-display" id="week-range-display">${rangeText}</span>
+                                <button class="nav-arrow" onclick="changeWeek(1)"><span class="ic" data-icon="chevronRight"></span></button>
+                            </div>
+                        </th>
+                    </tr>
+                    <tr class="week-head-row">
+                        <th class="week-num">#</th>
+                        <th class="week-emp-h">Empleado</th>
+                        ${daysHeader}
+                    </tr>
+                </thead>
+                <tbody>`;
 
             const sortedUsers = [...users].sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
             sortedUsers.forEach(u => {
-                const nameCell =
-                    `<span class="emp-full">${esc(u.name)}</span>` +
-                    (u.position ? `<span class="emp-pos">${esc(u.position)}</span>` : '') +
-                    `<span class="emp-compact">${esc(compactName(u.name))}</span>`;
-                let row = `<tr><td class="col-sticky">${nameCell}</td>`;
+                let row = `<tr><td class="week-num">${esc(u.number)}</td>`;
+                row += `<td class="week-emp-cell"><span class="emp-full">${esc(u.name)}</span>` +
+                    (u.position ? `<span class="emp-pos">${esc(u.position)}</span>` : '') + `</td>`;
                 weekDates.forEach(d => {
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -2597,7 +2589,7 @@
                     let cellClass = 'week-cell cell-empty';
 
                     if (rec && rec.status === 'present') {
-                        cellContent = `${rec.hours}h`;
+                        cellContent = `${rec.hours}`;
                         if (rec.hours == 8) cellClass = 'week-cell cell-green';
                         else if (rec.hours > 8) cellClass = 'week-cell cell-blue';
                         else cellClass = 'week-cell cell-red';
@@ -2609,17 +2601,7 @@
             });
             html += '</tbody>';
             table.innerHTML = html;
-
-            // keep the name-column compact state in sync with the current h-scroll
-            const wsa = document.querySelector('.week-scroll-area');
-            table.classList.toggle('compact', !!wsa && wsa.scrollLeft > 6);
-        }
-
-        // "Ana García" -> "Ana G."  ·  "Juan Carlos Pérez" -> "Juan C."
-        function compactName(name) {
-            const parts = String(name).trim().split(/\s+/).filter(Boolean);
-            if (parts.length <= 1) return parts[0] || '';
-            return parts[0] + ' ' + parts[1].charAt(0).toUpperCase() + '.';
+            applyIcons(table);
         }
 
         function toggleCheck(uid, isPresent) {
@@ -3407,15 +3389,6 @@
 
             document.getElementById('cal-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalGrid(); }
             document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalGrid(); }
-
-            // Weekly table: shrink the employee name column once the user scrolls sideways
-            const weekScroll = document.querySelector('.week-scroll-area');
-            if (weekScroll) {
-                weekScroll.addEventListener('scroll', () => {
-                    const table = document.getElementById('week-table');
-                    if (table) table.classList.toggle('compact', weekScroll.scrollLeft > 6);
-                });
-            }
 
             document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
             document.getElementById('btn-conflict-return').onclick = handleConflictReturn;
