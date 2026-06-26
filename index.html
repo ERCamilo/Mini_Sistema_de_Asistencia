@@ -1608,6 +1608,42 @@
         .cal-day.dj-selected .dj-pin {
             color: #fff;
         }
+
+        /* Toasts (avisos no bloqueantes) */
+        #toast-container {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            z-index: 300;
+            pointer-events: none;
+            padding: 0 16px;
+        }
+
+        .toast {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px 18px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(12px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
     </style>
 </head>
 
@@ -2047,11 +2083,11 @@
             <div class="modal-subtitle" id="report-msg" style="text-align:center;margin-bottom:18px;">Elegí el rango de fechas</div>
             <div style="margin-bottom:12px;">
                 <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Desde</label>
-                <input type="date" id="report-from" class="search-input">
+                <input type="text" id="report-from" class="search-input" readonly onclick="openReportDatePicker('report-from')" placeholder="Elegir fecha" style="cursor:pointer;">
             </div>
             <div style="margin-bottom:12px;">
                 <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Hasta</label>
-                <input type="date" id="report-to" class="search-input">
+                <input type="text" id="report-to" class="search-input" readonly onclick="openReportDatePicker('report-to')" placeholder="Elegir fecha" style="cursor:pointer;">
             </div>
             <div style="margin-bottom:18px;">
                 <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Horas de un día completo</label>
@@ -2089,6 +2125,22 @@
         <div class="ocr-spinner"></div>
         <div class="ocr-loading-text" id="ocr-loading-text">Leyendo la foto...</div>
     </div>
+
+    <!-- MODAL DE CONFIRMACIÓN (reemplaza confirm() nativo) -->
+    <div class="modal" id="modal-confirm" role="dialog" aria-modal="true">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="confirm-title">Confirmar</div>
+            </div>
+            <div id="confirm-message" style="font-size:14px;color:var(--text-color);line-height:1.4;text-align:center;margin-bottom:8px;"></div>
+            <button type="button" class="btn-full btn-danger" id="confirm-ok" onclick="resolveConfirm(true)">Confirmar</button>
+            <button type="button" class="btn-full btn-secondary" onclick="resolveConfirm(false)">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- Toasts (reemplazan alert() informativos) -->
+    <div id="toast-container"></div>
 
     <!-- BARRA DE NAVEGACION INFERIOR -->
     <nav class="bottom-nav">
@@ -2182,6 +2234,43 @@
                 b.classList.toggle('active', b.getAttribute('data-check-mode') === mode));
         }
 
+        // --- Confirmacion y avisos in-app (reemplazan confirm()/alert() nativos) ---
+        let _confirmResolve = null;
+
+        function showConfirm(message, opts) {
+            const o = opts || {};
+            return new Promise(resolve => {
+                _confirmResolve = resolve;
+                document.getElementById('confirm-message').textContent = message;
+                document.getElementById('confirm-title').textContent = o.title || 'Confirmar';
+                const btn = document.getElementById('confirm-ok');
+                btn.textContent = o.confirmText || 'Confirmar';
+                btn.className = 'btn-full ' + (o.danger === false ? 'btn-primary' : 'btn-danger');
+                openModal('modal-confirm');
+            });
+        }
+
+        function resolveConfirm(ok) {
+            const r = _confirmResolve;
+            _confirmResolve = null;
+            closeModal('modal-confirm');
+            if (r) r(ok);
+        }
+
+        function showToast(message) {
+            const c = document.getElementById('toast-container');
+            if (!c) return;
+            const t = document.createElement('div');
+            t.className = 'toast';
+            t.textContent = message;
+            c.appendChild(t);
+            requestAnimationFrame(() => t.classList.add('show'));
+            setTimeout(() => {
+                t.classList.remove('show');
+                setTimeout(() => t.remove(), 320);
+            }, 3000);
+        }
+
         const NAV_VIEWS = ['attendance', 'employees', 'reports', 'more'];
         const VIEW_TITLES = { attendance: 'Asistencia', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
 
@@ -2247,7 +2336,7 @@
         }
 
         async function clearCacheAndReload() {
-            if (!confirm('Esto limpia el caché y recarga para traer la última versión. Tus empleados y asistencia NO se borran. ¿Continuar?')) return;
+            if (!await showConfirm('Esto limpia el caché y recarga para traer la última versión. Tus empleados y asistencia NO se borran. ¿Continuar?', { title: 'Buscar actualización', confirmText: 'Actualizar', danger: false })) return;
             try {
                 if ('serviceWorker' in navigator) {
                     const regs = await navigator.serviceWorker.getRegistrations();
@@ -2311,7 +2400,7 @@
             if (enabled) {
                 // Pedir permiso de notificacion
                 if (!('Notification' in window)) {
-                    alert('Este navegador no soporta notificaciones.');
+                    showToast('Este navegador no soporta notificaciones.');
                     document.getElementById('reminder-toggle').checked = false;
                     return;
                 }
@@ -2477,7 +2566,7 @@
             const presentUsers = users.filter(u => records[u.id]).sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
             if (presentUsers.length === 0) {
-                alert("No hay asistencia registrada para hoy.");
+                showToast('No hay asistencia registrada para hoy.');
                 return;
             }
 
@@ -2744,6 +2833,9 @@
         function closeModal(id) {
             if (id === 'employee-number-conflict-modal') employeeNumberModal.close();
             else { const el = document.getElementById(id); if (el) el.classList.remove('active'); }
+            if (id === 'modal-confirm' && _confirmResolve) {
+                const r = _confirmResolve; _confirmResolve = null; r(false);
+            }
             if (id === activeBigModal) {
                 activeBigModal = null;
                 document.body.classList.remove('big-open');
@@ -3412,24 +3504,26 @@
             closeModal('modal-calendar');
         }
 
-        // --- IR A UNA FECHA (calendario de navegacion rapida) ---
-        let dateJumpDate = new Date();
+        // --- CALENDARIO REUSABLE (barra de fecha del modo diario + campos del reporte) ---
+        let _datePicker = { monthDate: new Date(), selected: null, onPick: null };
 
         function todayDateKey() {
             const t = new Date();
             return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
         }
 
-        function openDateJump() {
-            const [y, m] = selectedDate.split('-');
-            dateJumpDate = new Date(Number(y), Number(m) - 1, 1);
-            renderDateJumpGrid();
+        // Abre el calendario sobre `currentDateStr` y llama onPick(dateStr) al elegir.
+        function openDatePicker(currentDateStr, onPick) {
+            const base = (currentDateStr && /^\d{4}-\d{2}-\d{2}$/.test(currentDateStr)) ? currentDateStr : todayDateKey();
+            const [y, m] = base.split('-');
+            _datePicker = { monthDate: new Date(Number(y), Number(m) - 1, 1), selected: base, onPick: onPick };
+            renderDatePickerGrid();
             openModal('modal-date-jump');
         }
 
-        function renderDateJumpGrid() {
-            const y = dateJumpDate.getFullYear();
-            const m = dateJumpDate.getMonth();
+        function renderDatePickerGrid() {
+            const y = _datePicker.monthDate.getFullYear();
+            const m = _datePicker.monthDate.getMonth();
             const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             document.getElementById('datejump-month-year').textContent = `${months[m]} ${y}`;
 
@@ -3448,20 +3542,35 @@
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 let cls = 'cal-day dj-day';
-                if (dateStr === selectedDate) cls += ' dj-selected';
+                if (dateStr === _datePicker.selected) cls += ' dj-selected';
                 const pin = (dateStr === todayStr) ? '<span class="dj-pin"><span class="ic" data-icon="pin"></span></span>' : '';
-                grid.innerHTML += `<div class="${cls}" onclick="jumpToDate('${dateStr}')">${pin}${d}</div>`;
+                grid.innerHTML += `<div class="${cls}" onclick="pickDate('${dateStr}')">${pin}${d}</div>`;
             }
             applyIcons(grid);
         }
 
-        function jumpToDate(dateStr) {
-            selectedDate = dateStr;
-            if (document.getElementById('btn-mode-weekly').classList.contains('active')) {
-                setMode('daily');
-            }
-            updateDashboard();
+        function pickDate(dateStr) {
+            const cb = _datePicker.onPick;
             closeModal('modal-date-jump');
+            if (cb) cb(dateStr);
+        }
+
+        // Barra de fecha del modo diario
+        function openDateJump() {
+            openDatePicker(selectedDate, (d) => {
+                selectedDate = d;
+                if (document.getElementById('btn-mode-weekly').classList.contains('active')) setMode('daily');
+                updateDashboard();
+            });
+        }
+
+        // Campos "Desde"/"Hasta" del reporte
+        function openReportDatePicker(fieldId) {
+            const input = document.getElementById(fieldId);
+            openDatePicker(input.value, (d) => {
+                input.value = d;
+                document.getElementById('report-msg').textContent = 'Elegí el rango de fechas';
+            });
         }
 
         const slider = document.getElementById('hours-slider');
@@ -3483,9 +3592,9 @@
         function setupEvents() {
             document.getElementById('btn-prev-day').onclick = () => changeDay(-1);
             document.getElementById('btn-next-day').onclick = () => changeDay(1);
-            document.getElementById('datejump-prev').onclick = () => { dateJumpDate.setMonth(dateJumpDate.getMonth() - 1); renderDateJumpGrid(); };
-            document.getElementById('datejump-next').onclick = () => { dateJumpDate.setMonth(dateJumpDate.getMonth() + 1); renderDateJumpGrid(); };
-            document.getElementById('datejump-today').onclick = () => jumpToDate(todayDateKey());
+            document.getElementById('datejump-prev').onclick = () => { _datePicker.monthDate.setMonth(_datePicker.monthDate.getMonth() - 1); renderDatePickerGrid(); };
+            document.getElementById('datejump-next').onclick = () => { _datePicker.monthDate.setMonth(_datePicker.monthDate.getMonth() + 1); renderDatePickerGrid(); };
+            document.getElementById('datejump-today').onclick = () => pickDate(todayDateKey());
 
             document.getElementById('search-input').oninput = renderList;
             document.getElementById('search-employees').oninput = renderEmployeesList;
@@ -3546,13 +3655,14 @@
             }
 
             document.getElementById('btn-delete-user').onclick = () => {
-                if (confirm('¿Eliminar permanentemente?')) {
+                showConfirm('¿Eliminar este empleado permanentemente?', { title: 'Eliminar empleado', confirmText: 'Eliminar' }).then(ok => {
+                    if (!ok) return;
                     const id = document.getElementById('edit-user-id').value;
                     users = users.filter(x => x.id !== id);
                     saveData();
                     renderEmployeesList();
                     closeModal('user-modal');
-                }
+                });
             }
 
             // Cerrar modal solo cuando el clic es EXACTAMENTE en el overlay, no en hijos
@@ -3746,11 +3856,12 @@
             if (btn.getAttribute('data-ready') !== 'yes') return;
 
             // Confirmación explícita: acción destructiva (reemplaza TODA la lista).
-            if (!confirm('Esto BORRARÁ los ' + users.length + ' empleados actuales y los reemplazará con la lista pegada. Esta acción no se puede deshacer. ¿Continuar?')) return;
+            showConfirm('Esto BORRARÁ los ' + users.length + ' empleados actuales y los reemplazará con la lista pegada. Esta acción no se puede deshacer. ¿Continuar?', { title: 'Borrar y reemplazar todo', confirmText: 'Borrar y reemplazar' }).then(ok => {
+              if (!ok) return;
 
-            const raw = document.getElementById('import-employees-textarea').value.trim();
+              const raw = document.getElementById('import-employees-textarea').value.trim();
 
-            try {
+              try {
                 const parsed = JSON.parse(raw);
                 let incoming = Array.isArray(parsed)
                     ? parsed
@@ -3786,10 +3897,11 @@
                 msg.style.color = 'var(--success-color)';
                 msg.innerHTML = '&#x2705; ' + users.length + ' empleados importados correctamente.';
 
-            } catch (err) {
+              } catch (err) {
                 document.getElementById('import-validation-msg').innerHTML =
                     '&#x274C; Error: ' + err.message;
-            }
+              }
+            });
         }
 
         init();
