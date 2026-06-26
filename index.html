@@ -558,6 +558,12 @@
             font-size: 13px;
             font-weight: 700;
             border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: transform 0.12s;
+        }
+
+        .hours-badge:active {
+            transform: scale(0.92);
         }
 
         .hours-badge.green {
@@ -1148,6 +1154,42 @@
             background: rgba(0, 212, 255, 0.05);
         }
 
+        /* Selector de comportamiento del check (tarjetas apiladas) */
+        .mode-options {
+            display: grid;
+            gap: 10px;
+        }
+
+        .mode-card {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            text-align: left;
+            padding: 14px;
+            border-radius: 14px;
+            border: 2px solid var(--border-color);
+            background: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .mode-card.active {
+            border-color: var(--accent-color);
+            background: rgba(0, 212, 255, 0.05);
+        }
+
+        .mode-card .mode-title {
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .mode-card .mode-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.3;
+        }
+
         .theme-preview {
             width: 24px;
             height: 24px;
@@ -1677,6 +1719,21 @@
                     <span>Emoji</span>
                 </div>
             </div>
+            <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin:18px 0 10px;">Comportamiento del check</div>
+            <div class="mode-options">
+                <button type="button" class="mode-card" data-check-mode="modal" onclick="setCheckMode('modal')">
+                    <span class="mode-title">Con menú</span>
+                    <span class="mode-desc">1 toque marca presente; el 2º abre opciones (horas / ausente).</span>
+                </button>
+                <button type="button" class="mode-card" data-check-mode="cycle" onclick="setCheckMode('cycle')">
+                    <span class="mode-title">Ciclo de 3</span>
+                    <span class="mode-desc">Presente → medio día → ausente, en cada toque. Sin menú.</span>
+                </button>
+                <button type="button" class="mode-card" data-check-mode="toggle" onclick="setCheckMode('toggle')">
+                    <span class="mode-title">Interruptor</span>
+                    <span class="mode-desc">Presente ↔ ausente. Cada toque cambia de estado.</span>
+                </button>
+            </div>
             <button class="btn-full btn-secondary" onclick="closeModal('theme-menu')">Cerrar</button>
         </div>
     </div>
@@ -2049,6 +2106,7 @@
     </nav>
 
     <script src="./icon-set.js"></script>
+    <script src="./check-cycle.js"></script>
     <script src="./employee-number-rules.js"></script>
     <script src="./employee-number-modal.js"></script>
     <script src="./draft-import.js"></script>
@@ -2102,6 +2160,20 @@
         function markActiveTheme(themeName) {
             document.querySelectorAll('[data-theme-name]').forEach(b =>
                 b.classList.toggle('active', b.getAttribute('data-theme-name') === themeName));
+        }
+
+        // --- COMPORTAMIENTO DEL CHECK (3 modos) ---
+        let currentCheckMode = window.CheckCycle.normalizeCheckMode(localStorage.getItem('checkMode'));
+
+        function setCheckMode(mode) {
+            currentCheckMode = window.CheckCycle.normalizeCheckMode(mode);
+            localStorage.setItem('checkMode', currentCheckMode);
+            markActiveCheckMode(currentCheckMode);
+        }
+
+        function markActiveCheckMode(mode) {
+            document.querySelectorAll('[data-check-mode]').forEach(b =>
+                b.classList.toggle('active', b.getAttribute('data-check-mode') === mode));
         }
 
         const NAV_VIEWS = ['attendance', 'employees', 'reports', 'more'];
@@ -2335,6 +2407,7 @@
             updateDashboard();
             setupEvents();
             markActiveIconStyle(currentIconStyle);
+            markActiveCheckMode(currentCheckMode);
             updateNavActive('attendance');
             applyIcons(document);
         }
@@ -2517,9 +2590,9 @@
                             <div class="user-name">${esc(u.name)}</div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
-                        ${isPresent ? `<div class="hours-badge ${colorClass}">${hours}h</div>` : ''}
+                        ${isPresent ? `<div class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" title="Modificar horas">${hours}h</div>` : ''}
                     </div>
-                    <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}', ${isPresent})">
+                    <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}')">
                         ${isPresent ? '<span class="ic" data-icon="check"></span>' : ''}
                     </div>
                 `;
@@ -2605,16 +2678,21 @@
             applyIcons(table);
         }
 
-        function toggleCheck(uid, isPresent) {
-            if (isPresent) {
+        function toggleCheck(uid) {
+            const rec = getRecord(uid);
+            const current = rec ? { present: true, hours: rec.hours } : null;
+            const fullHours = parseInt(document.getElementById('default-hours-input').value) || 8;
+            const result = window.CheckCycle.nextAttendanceState(current, currentCheckMode, fullHours);
+
+            if (result.action === 'open-modal') {
                 selectedUserId = uid;
                 const u = users.find(x => x.id === uid);
                 document.getElementById('qa-user-name').textContent = u.name;
                 openModal('modal-quick-actions');
-            } else {
-                const defaultHours = document.getElementById('default-hours-input').value || 8;
-                setRecord(uid, 'present', defaultHours);
+                return;
             }
+            if (result.present) setRecord(uid, 'present', result.hours);
+            else setRecord(uid, 'absent', 0);
         }
 
         function changeDay(offset) {
@@ -3352,6 +3430,18 @@
         const display = document.getElementById('hours-display-val');
         slider.oninput = function () { display.textContent = this.value; }
 
+        // Shortcut: open the hours slider modal for an employee (badge tap + "Modificar horas")
+        function openHoursModal(uid) {
+            selectedUserId = uid;
+            const rec = getRecord(uid);
+            const val = rec ? rec.hours : (parseInt(document.getElementById('default-hours-input').value) || 8);
+            slider.value = val;
+            display.textContent = val;
+            const u = users.find(x => x.id === uid);
+            document.getElementById('hours-user-name').textContent = u.name;
+            openModal('modal-hours');
+        }
+
         function setupEvents() {
             document.getElementById('btn-prev-day').onclick = () => changeDay(-1);
             document.getElementById('btn-next-day').onclick = () => changeDay(1);
@@ -3369,13 +3459,7 @@
 
             document.getElementById('qa-modify').onclick = () => {
                 closeModal('modal-quick-actions');
-                const rec = getRecord(selectedUserId);
-                const val = rec ? rec.hours : 8;
-                slider.value = val;
-                display.textContent = val;
-                const u = users.find(x => x.id === selectedUserId);
-                document.getElementById('hours-user-name').textContent = u.name;
-                openModal('modal-hours');
+                openHoursModal(selectedUserId);
             };
 
             document.getElementById('qa-delete').onclick = () => {
