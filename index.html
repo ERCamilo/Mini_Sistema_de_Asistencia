@@ -1462,6 +1462,44 @@
             font-size: 13px;
             font-weight: 600;
         }
+
+        /* Calendario "Ir a una fecha" */
+        .cal-day.dj-day {
+            cursor: pointer;
+            transition: transform 0.12s, background 0.2s;
+        }
+
+        .cal-day.dj-day:active {
+            transform: scale(0.9);
+        }
+
+        .cal-day.dj-selected {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        [data-theme="contrast"] .cal-day.dj-selected {
+            color: #000;
+        }
+
+        .cal-day .dj-pin {
+            position: absolute;
+            top: 3px;
+            right: 4px;
+            color: var(--danger-color);
+            line-height: 1;
+        }
+
+        .cal-day .dj-pin .ico {
+            width: 12px;
+            height: 12px;
+        }
+
+        .cal-day.dj-selected .dj-pin {
+            color: #fff;
+        }
     </style>
 </head>
 
@@ -1485,9 +1523,8 @@
             <div class="dashboard-panel" style="padding-top:0;">
                 <div class="date-nav">
                     <button class="nav-arrow" id="btn-prev-day"><span class="ic" data-icon="chevronLeft"></span></button>
-                    <div class="current-date-wrapper">
+                    <div class="current-date-wrapper" id="date-jump-trigger" onclick="openDateJump()" style="cursor:pointer;" title="Ir a una fecha">
                         <span class="current-date-display" id="header-date">...</span>
-                        <input type="date" id="date-picker-trigger">
                     </div>
                     <button class="nav-arrow" id="btn-next-day"><span class="ic" data-icon="chevronRight"></span></button>
                 </div>
@@ -1676,6 +1713,25 @@
                         id="stat-extra">0</span>Extras</div>
             </div>
             <button class="btn-full btn-secondary" onclick="closeModal('modal-calendar')">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- MODAL IR A UNA FECHA (navegacion rapida de dias) -->
+    <div class="modal" id="modal-date-jump">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">Ir a una fecha</div>
+                <div class="modal-subtitle"><span class="ic" data-icon="pin" style="color:var(--danger-color);"></span> marca el día de hoy</div>
+            </div>
+            <div class="calendar-nav">
+                <button class="cal-nav-btn" id="datejump-prev"><span class="ic" data-icon="chevronLeft"></span></button>
+                <span style="font-weight: 700; font-size: 16px;" id="datejump-month-year">...</span>
+                <button class="cal-nav-btn" id="datejump-next"><span class="ic" data-icon="chevronRight"></span></button>
+            </div>
+            <div class="calendar-grid" id="datejump-grid"></div>
+            <button class="btn-full btn-primary" id="datejump-today"><span class="ic" data-icon="today"></span> Ir a hoy</button>
+            <button class="btn-full btn-secondary" onclick="closeModal('modal-date-jump')">Cerrar</button>
         </div>
     </div>
 
@@ -2338,7 +2394,6 @@
             const dateObj = new Date(y, m - 1, d);
             const options = { weekday: 'short', day: 'numeric', month: 'short' };
             document.getElementById('header-date').textContent = dateObj.toLocaleDateString('es-ES', options).replace('.', '');
-            document.getElementById('date-picker-trigger').value = selectedDate;
 
             const total = users.length;
             const records = attendanceData[selectedDate] || {};
@@ -3191,6 +3246,58 @@
             closeModal('modal-calendar');
         }
 
+        // --- IR A UNA FECHA (calendario de navegacion rapida) ---
+        let dateJumpDate = new Date();
+
+        function todayDateKey() {
+            const t = new Date();
+            return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+        }
+
+        function openDateJump() {
+            const [y, m] = selectedDate.split('-');
+            dateJumpDate = new Date(Number(y), Number(m) - 1, 1);
+            renderDateJumpGrid();
+            openModal('modal-date-jump');
+        }
+
+        function renderDateJumpGrid() {
+            const y = dateJumpDate.getFullYear();
+            const m = dateJumpDate.getMonth();
+            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            document.getElementById('datejump-month-year').textContent = `${months[m]} ${y}`;
+
+            const grid = document.getElementById('datejump-grid');
+            grid.innerHTML = `
+                <div class="cal-header">DOM</div><div class="cal-header">LUN</div><div class="cal-header">MAR</div>
+                <div class="cal-header">MIE</div><div class="cal-header">JUE</div><div class="cal-header">VIE</div><div class="cal-header">SAB</div>
+            `;
+
+            const firstDay = new Date(y, m, 1).getDay();
+            const daysInMonth = new Date(y, m + 1, 0).getDate();
+            const todayStr = todayDateKey();
+
+            for (let i = 0; i < firstDay; i++) grid.innerHTML += `<div class="cal-day empty"></div>`;
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                let cls = 'cal-day dj-day';
+                if (dateStr === selectedDate) cls += ' dj-selected';
+                const pin = (dateStr === todayStr) ? '<span class="dj-pin"><span class="ic" data-icon="pin"></span></span>' : '';
+                grid.innerHTML += `<div class="${cls}" onclick="jumpToDate('${dateStr}')">${pin}${d}</div>`;
+            }
+            applyIcons(grid);
+        }
+
+        function jumpToDate(dateStr) {
+            selectedDate = dateStr;
+            if (document.getElementById('btn-mode-weekly').classList.contains('active')) {
+                setMode('daily');
+            }
+            updateDashboard();
+            closeModal('modal-date-jump');
+        }
+
         const slider = document.getElementById('hours-slider');
         const display = document.getElementById('hours-display-val');
         slider.oninput = function () { display.textContent = this.value; }
@@ -3198,9 +3305,9 @@
         function setupEvents() {
             document.getElementById('btn-prev-day').onclick = () => changeDay(-1);
             document.getElementById('btn-next-day').onclick = () => changeDay(1);
-            document.getElementById('date-picker-trigger').onchange = (e) => {
-                if (e.target.value) { selectedDate = e.target.value; updateDashboard(); }
-            }
+            document.getElementById('datejump-prev').onclick = () => { dateJumpDate.setMonth(dateJumpDate.getMonth() - 1); renderDateJumpGrid(); };
+            document.getElementById('datejump-next').onclick = () => { dateJumpDate.setMonth(dateJumpDate.getMonth() + 1); renderDateJumpGrid(); };
+            document.getElementById('datejump-today').onclick = () => jumpToDate(todayDateKey());
 
             document.getElementById('search-input').oninput = renderList;
             document.getElementById('search-employees').oninput = renderEmployeesList;
