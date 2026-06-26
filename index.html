@@ -623,8 +623,10 @@
         }
 
         .week-scroll-area {
-            overflow-x: auto;
+            overflow: auto;
             position: relative;
+            max-height: calc(100vh - 210px);
+            -webkit-overflow-scrolling: touch;
         }
 
         .week-table {
@@ -649,6 +651,14 @@
             text-transform: uppercase;
         }
 
+        /* Header row sticks to the top while scrolling vertically */
+        .week-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+        }
+
+        /* Employee column sticks to the left while scrolling horizontally */
         .col-sticky {
             position: sticky;
             left: 0;
@@ -657,20 +667,62 @@
             text-align: left !important;
             padding-left: 16px !important;
             border-right: 1px solid var(--border-color);
-            min-width: 120px;
-            max-width: 120px;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            min-width: 154px;
+            max-width: 154px;
+            white-space: normal;
             color: var(--text-color);
+            transition: min-width 0.2s ease, max-width 0.2s ease;
         }
 
         .week-table thead .col-sticky {
             background: var(--input-bg);
-            z-index: 20;
+            z-index: 30; /* top-left corner: above both sticky axes */
         }
 
         .week-table tbody .col-sticky {
             background: var(--card-bg);
+        }
+
+        .emp-full {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.25;
+            text-transform: none;
+        }
+
+        .emp-pos {
+            display: block;
+            font-size: 10px;
+            font-weight: 500;
+            color: var(--text-muted);
+            line-height: 1.2;
+            margin-top: 2px;
+            text-transform: none;
+        }
+
+        .emp-compact {
+            display: none;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+            text-transform: none;
+        }
+
+        /* Compact state: while scrolled horizontally, shrink the name column */
+        .week-table.compact .col-sticky {
+            min-width: 88px;
+            max-width: 88px;
+            white-space: nowrap;
+        }
+
+        .week-table.compact .emp-full,
+        .week-table.compact .emp-pos {
+            display: none;
+        }
+
+        .week-table.compact .emp-compact {
+            display: block;
         }
 
         .week-cell {
@@ -2529,7 +2581,11 @@
             const sortedUsers = [...users].sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
             sortedUsers.forEach(u => {
-                let row = `<tr><td class="col-sticky">${esc(u.name)}</td>`;
+                const nameCell =
+                    `<span class="emp-full">${esc(u.name)}</span>` +
+                    (u.position ? `<span class="emp-pos">${esc(u.position)}</span>` : '') +
+                    `<span class="emp-compact">${esc(compactName(u.name))}</span>`;
+                let row = `<tr><td class="col-sticky">${nameCell}</td>`;
                 weekDates.forEach(d => {
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -2553,6 +2609,17 @@
             });
             html += '</tbody>';
             table.innerHTML = html;
+
+            // keep the name-column compact state in sync with the current h-scroll
+            const wsa = document.querySelector('.week-scroll-area');
+            table.classList.toggle('compact', !!wsa && wsa.scrollLeft > 6);
+        }
+
+        // "Ana García" -> "Ana G."  ·  "Juan Carlos Pérez" -> "Juan C."
+        function compactName(name) {
+            const parts = String(name).trim().split(/\s+/).filter(Boolean);
+            if (parts.length <= 1) return parts[0] || '';
+            return parts[0] + ' ' + parts[1].charAt(0).toUpperCase() + '.';
         }
 
         function toggleCheck(uid, isPresent) {
@@ -3340,6 +3407,15 @@
 
             document.getElementById('cal-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalGrid(); }
             document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalGrid(); }
+
+            // Weekly table: shrink the employee name column once the user scrolls sideways
+            const weekScroll = document.querySelector('.week-scroll-area');
+            if (weekScroll) {
+                weekScroll.addEventListener('scroll', () => {
+                    const table = document.getElementById('week-table');
+                    if (table) table.classList.toggle('compact', weekScroll.scrollLeft > 6);
+                });
+            }
 
             document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
             document.getElementById('btn-conflict-return').onclick = handleConflictReturn;
