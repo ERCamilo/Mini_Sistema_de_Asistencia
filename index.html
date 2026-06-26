@@ -1741,15 +1741,11 @@
         </div>
     </div>
 
-    <!-- Menú Gestión de Datos -->
-    <div class="modal" id="export-menu">
-        <div class="modal-content">
-            <div class="modal-handle"></div>
-            <div class="modal-header">
-                <div class="modal-title">Gestión de Datos</div>
-            </div>
+    <!-- VISTA MÁS / GESTIÓN DE DATOS -->
+    <div id="more-view" class="hidden">
+        <div class="dashboard-panel">
             <div class="export-options">
-                <div class="export-option" onclick="closeModal('export-menu'); openModal('theme-menu');">
+                <div class="export-option" onclick="openModal('theme-menu')">
                     <span style="font-size: 24px;"><span class="ic" data-icon="palette"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--text-color);">Apariencia</div>
@@ -1824,7 +1820,6 @@
                     </div>
                 </div>
             </div>
-            <button class="btn-full btn-secondary" onclick="closeModal('export-menu')">Cancelar</button>
         </div>
     </div>
 
@@ -1898,14 +1893,10 @@
         </div>
     </div>
 
-    <!-- MODAL REPORTE DE ASISTENCIA -->
-    <div class="modal" id="modal-report">
-        <div class="modal-content">
-            <div class="modal-handle"></div>
-            <div class="modal-header">
-                <div class="modal-title">📊 Reporte de asistencia</div>
-                <div class="modal-subtitle" id="report-msg">Elegí el rango de fechas</div>
-            </div>
+    <!-- VISTA REPORTE DE ASISTENCIA -->
+    <div id="reports-view" class="hidden">
+        <div class="dashboard-panel">
+            <div class="modal-subtitle" id="report-msg" style="text-align:center;margin-bottom:18px;">Elegí el rango de fechas</div>
             <div style="margin-bottom:12px;">
                 <label style="font-size:13px;color:var(--text-muted);display:block;margin-bottom:4px;">Desde</label>
                 <input type="date" id="report-from" class="search-input">
@@ -1920,7 +1911,6 @@
             </div>
             <button type="button" class="btn-full btn-primary" id="btn-report-pdf">Generar PDF</button>
             <button type="button" class="btn-full btn-primary" id="btn-report-excel">Generar Excel</button>
-            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-report')">Cancelar</button>
         </div>
     </div>
 
@@ -1965,10 +1955,10 @@
                 <span class="fab-glyph"><span class="ic" data-icon="add"></span></span>
             </button>
         </div>
-        <button class="nav-item" id="nav-reports" onclick="openReportModal()">
+        <button class="nav-item" id="nav-reports" onclick="switchView('reports')">
             <span class="ic" data-icon="reports"></span><span>Reportes</span>
         </button>
-        <button class="nav-item" id="nav-more" onclick="openModal('export-menu')">
+        <button class="nav-item" id="nav-more" onclick="switchView('more')">
             <span class="ic" data-icon="more"></span><span>Más</span>
         </button>
     </nav>
@@ -2029,9 +2019,12 @@
                 b.classList.toggle('active', b.getAttribute('data-theme-name') === themeName));
         }
 
+        const NAV_VIEWS = ['attendance', 'employees', 'reports', 'more'];
+        const VIEW_TITLES = { attendance: 'Asistencia', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
+
         function updateNavActive(view) {
-            document.getElementById('nav-attendance').classList.toggle('active', view === 'attendance');
-            document.getElementById('nav-employees').classList.toggle('active', view === 'employees');
+            NAV_VIEWS.forEach(v =>
+                document.getElementById('nav-' + v).classList.toggle('active', v === view));
         }
 
         function esc(str) {
@@ -2546,7 +2539,7 @@
 
         function closeModal(id) {
             if (id === 'employee-number-conflict-modal') employeeNumberModal.close();
-            else document.getElementById(id).classList.remove('active');
+            else { const el = document.getElementById(id); if (el) el.classList.remove('active'); }
             if (id === 'employee-number-conflict-modal' || id === 'user-modal') {
                 pendingEmployeeConflict = null;
             }
@@ -2942,8 +2935,7 @@
             return window.XLSX;
         }
 
-        window.openReportModal = () => {
-            closeModal('export-menu');
+        function enterReportsView() {
             const today = new Date();
             const first = new Date(today.getFullYear(), today.getMonth(), 1);
             const fmt = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -2951,7 +2943,6 @@
             document.getElementById('report-to').value = fmt(today);
             document.getElementById('report-expected').value = localStorage.getItem('expectedHoursPerDay') || '8';
             document.getElementById('report-msg').textContent = 'Elegí el rango de fechas';
-            openModal('modal-report');
         }
 
         function readReportParams() {
@@ -3296,17 +3287,13 @@
         }
 
         function switchView(view) {
-            if (view === 'attendance') {
-                document.getElementById('attendance-view').classList.remove('hidden');
-                document.getElementById('employees-view').classList.add('hidden');
-                document.getElementById('section-title').textContent = 'Asistencia';
-                updateDashboard();
-            } else {
-                document.getElementById('attendance-view').classList.add('hidden');
-                document.getElementById('employees-view').classList.remove('hidden');
-                document.getElementById('section-title').textContent = 'Empleados';
-                renderEmployeesList();
-            }
+            closeAddMenu();
+            NAV_VIEWS.forEach(v =>
+                document.getElementById(v + '-view').classList.toggle('hidden', v !== view));
+            document.getElementById('section-title').textContent = VIEW_TITLES[view] || '';
+            if (view === 'attendance') updateDashboard();
+            else if (view === 'employees') renderEmployeesList();
+            else if (view === 'reports') enterReportsView();
             updateNavActive(view);
         }
 
