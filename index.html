@@ -514,7 +514,6 @@
             display: flex;
             align-items: center;
             gap: 12px;
-            cursor: pointer;
             padding: 4px;
         }
 
@@ -2511,7 +2510,7 @@
                 div.className = 'user-card';
                 div.innerHTML = `
                     <div class="avatar-placeholder tap-calendar" onclick="openCalendar('${esc(u.id)}')" title="Ver historial">${esc(u.number)}</div>
-                    <div class="user-info-area" onclick="toggleCheck('${esc(u.id)}', ${isPresent})">
+                    <div class="user-info-area">
                         <div class="user-details">
                             <div class="user-name">${esc(u.name)}</div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
