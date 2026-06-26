@@ -905,6 +905,19 @@
             }
         }
 
+        /* Modales GRANDES: la barra de navegacion sigue visible (backdrop debajo de
+           la barra) y el panel se apoya sobre ella; se cierran con el + (-> x). */
+        .modal.big {
+            z-index: 90;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal.big .modal-content {
+            margin-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+            max-height: calc(100vh - var(--topbar-h) - 84px);
+            overflow-y: auto;
+        }
+
         .modal-handle {
             width: 40px;
             height: 4px;
@@ -1379,7 +1392,16 @@
             align-items: center;
             justify-content: center;
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
-            transition: transform 0.2s;
+            transition: transform 0.2s, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        /* En modo "cerrar" (hoja de agregar o un modal grande abierto) el + pasa a x
+           y vira del cian neon a un naranja-rojizo, animado junto con la rotacion. */
+        body.add-menu-open .nav-fab,
+        body.big-open .nav-fab {
+            background: #f9531e;
+            color: #fff;
+            box-shadow: 0 6px 20px rgba(249, 83, 30, 0.45);
         }
 
         .nav-fab .ic {
@@ -1452,7 +1474,8 @@
             transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
-        body.add-menu-open .nav-fab .fab-glyph {
+        body.add-menu-open .nav-fab .fab-glyph,
+        body.big-open .nav-fab .fab-glyph {
             transform: rotate(135deg);
         }
 
@@ -1773,7 +1796,7 @@
         </div>
     </div>
 
-    <div class="modal" id="modal-calendar">
+    <div class="modal big" id="modal-calendar">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1798,12 +1821,11 @@
                         style="color: var(--extra-color); font-weight: 800; font-size: 16px; display: block;"
                         id="stat-extra">0</span>Extras</div>
             </div>
-            <button class="btn-full btn-secondary" onclick="closeModal('modal-calendar')">Cerrar</button>
         </div>
     </div>
 
     <!-- MODAL IR A UNA FECHA (navegacion rapida de dias) -->
-    <div class="modal" id="modal-date-jump">
+    <div class="modal big" id="modal-date-jump">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1817,11 +1839,10 @@
             </div>
             <div class="calendar-grid" id="datejump-grid"></div>
             <button class="btn-full btn-primary" id="datejump-today"><span class="ic" data-icon="today"></span> Ir a hoy</button>
-            <button class="btn-full btn-secondary" onclick="closeModal('modal-date-jump')">Cerrar</button>
         </div>
     </div>
 
-    <div class="modal" id="user-modal">
+    <div class="modal big" id="user-modal">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1841,8 +1862,6 @@
                 <button type="submit" class="btn-full btn-primary">Guardar Empleado</button>
                 <button type="button" id="btn-delete-user" class="btn-full btn-danger"
                     style="display: none; margin-top: 12px;">Eliminar</button>
-                <button type="button" class="btn-full btn-secondary" id="cancel-btn"
-                    style="margin-top: 12px;">Cancelar</button>
             </form>
         </div>
     </div>
@@ -1865,7 +1884,7 @@
     </div>
 
     <!-- MODAL AGREGAR VARIOS EMPLEADOS (DRAFT IMPORT) -->
-    <div class="modal" id="modal-draft-import" role="dialog" aria-modal="true" aria-labelledby="draft-import-title">
+    <div class="modal big" id="modal-draft-import" role="dialog" aria-modal="true" aria-labelledby="draft-import-title">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1879,7 +1898,6 @@
             <button type="button" class="btn-full btn-secondary" id="btn-draft-autonumber" style="display:none;"><span class="ic" data-icon="hash"></span> Asignar números faltantes</button>
             <button type="button" class="btn-full btn-secondary" id="btn-draft-add-row"><span class="ic" data-icon="add"></span> Agregar fila</button>
             <button type="button" class="btn-full btn-primary" id="btn-draft-commit">Guardar listos</button>
-            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-draft-import')">Cancelar</button>
         </div>
     </div>
 
@@ -1966,7 +1984,7 @@
     </div>
 
     <!-- MODAL RESTAURAR RESPALDO -->
-    <div class="modal" id="modal-restore-backup">
+    <div class="modal big" id="modal-restore-backup">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1979,19 +1997,14 @@
                 onpaste="setTimeout(function(){validateRestoreTextarea(document.getElementById('restore-backup-textarea'))},50)"></textarea>
             <div id="restore-validation-msg"
                 style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
-            <div style="display:flex;gap:10px;">
-                <button type="button"
-                    style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;"
-                    onclick="closeModal('modal-restore-backup')">Cancelar</button>
-                <button type="button" id="btn-do-restore" data-ready="no"
-                    style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
-                    onclick="doRestoreBackup()">Restaurar</button>
-            </div>
+            <button type="button" id="btn-do-restore" data-ready="no"
+                style="width:100%;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
+                onclick="doRestoreBackup()">Restaurar</button>
         </div>
     </div>
 
     <!-- MODAL IMPORTAR EMPLEADOS (PEGAR JSON) -->
-    <div class="modal" id="modal-import-employees">
+    <div class="modal big" id="modal-import-employees">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -2020,18 +2033,11 @@
             <div id="import-validation-msg"
                 style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
 
-            <div style="display:flex;gap:10px;">
-                <button type="button"
-                    style="flex:1;padding:16px;border-radius:16px;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-muted);font-size:16px;font-weight:600;cursor:pointer;"
-                    onclick="closeModal('modal-import-employees')">
-                    Cancelar
-                </button>
-                <button type="button" id="btn-do-import" data-ready="no"
-                    style="flex:1;padding:16px;border-radius:16px;border:none;background:var(--danger-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
-                    onclick="doImportEmployeesFromText()">
-                    Borrar y reemplazar
-                </button>
-            </div>
+            <button type="button" id="btn-do-import" data-ready="no"
+                style="width:100%;padding:16px;border-radius:16px;border:none;background:var(--danger-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
+                onclick="doImportEmployeesFromText()">
+                Borrar y reemplazar
+            </button>
         </div>
     </div>
 
@@ -2093,7 +2099,7 @@
             <span class="ic" data-icon="employees"></span><span>Empleados</span>
         </button>
         <div class="nav-center">
-            <button class="nav-fab" id="nav-add" onclick="toggleAddMenu()" aria-label="Agregar empleado">
+            <button class="nav-fab" id="nav-add" onclick="handleNavFab()" aria-label="Agregar empleado">
                 <span class="fab-glyph"><span class="ic" data-icon="add"></span></span>
             </button>
         </div>
@@ -2712,17 +2718,36 @@
             input.value = val;
         }
 
+        // Modales "grandes": la barra de navegacion sigue visible y se cierran con el
+        // + central (que pasa a x naranja). Solo uno abierto a la vez.
+        const BIG_MODALS = new Set([
+            'modal-calendar', 'modal-date-jump', 'user-modal',
+            'modal-restore-backup', 'modal-import-employees', 'modal-draft-import'
+        ]);
+        let activeBigModal = null;
+
         function openModal(id) {
             if (id === 'employee-number-conflict-modal') {
                 employeeNumberModal.open();
                 return;
             }
-            document.getElementById(id).classList.add('active');
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (BIG_MODALS.has(id)) {
+                closeAddMenu();
+                activeBigModal = id;
+                document.body.classList.add('big-open');
+            }
+            el.classList.add('active');
         }
 
         function closeModal(id) {
             if (id === 'employee-number-conflict-modal') employeeNumberModal.close();
             else { const el = document.getElementById(id); if (el) el.classList.remove('active'); }
+            if (id === activeBigModal) {
+                activeBigModal = null;
+                document.body.classList.remove('big-open');
+            }
             if (id === 'employee-number-conflict-modal' || id === 'user-modal') {
                 pendingEmployeeConflict = null;
             }
@@ -2731,10 +2756,23 @@
             }
         }
 
+        // The center + is contextual: closes the open big modal, else toggles the add sheet.
+        function handleNavFab() {
+            if (activeBigModal) { closeModal(activeBigModal); return; }
+            toggleAddMenu();
+        }
+
         function handleModalKeyboard(event) {
             if (employeeNumberModal.handleKeydown(event) === 'closed') {
                 pendingEmployeeConflict = null;
                 pendingDraftConflict = null;
+                return;
+            }
+            if (event.key === 'Escape') {
+                if (activeBigModal) { closeModal(activeBigModal); return; }
+                if (document.body.classList.contains('add-menu-open')) { closeAddMenu(); return; }
+                const open = document.querySelector('.modal.active');
+                if (open) closeModal(open.id);
             }
         }
 
@@ -3475,7 +3513,6 @@
             document.getElementById('cal-prev').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() - 1); renderCalGrid(); }
             document.getElementById('cal-next').onclick = () => { calendarDate.setMonth(calendarDate.getMonth() + 1); renderCalGrid(); }
 
-            document.getElementById('cancel-btn').onclick = () => closeModal('user-modal');
             document.getElementById('btn-conflict-return').onclick = handleConflictReturn;
             document.getElementById('btn-conflict-suggest').onclick = useSuggestedEmployeeNumber;
             document.getElementById('btn-conflict-edit-existing').onclick = editConflictingEmployee;
@@ -3529,6 +3566,7 @@
 
         function switchView(view) {
             closeAddMenu();
+            if (activeBigModal) closeModal(activeBigModal);
             NAV_VIEWS.forEach(v =>
                 document.getElementById(v + '-view').classList.toggle('hidden', v !== view));
             document.getElementById('section-title').textContent = VIEW_TITLES[view] || '';
