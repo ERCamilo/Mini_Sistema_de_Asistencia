@@ -92,6 +92,28 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        /* Controles que ahora son <button> reales (a11y por teclado/lector de pantalla):
+           reset temprano para que las clases de abajo definan su tipografia/colores. */
+        .check-box,
+        .stat-card,
+        .action-item,
+        .export-option,
+        .theme-btn,
+        .avatar-placeholder,
+        .hours-badge {
+            font: inherit;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        /* Foco visible accesible para los controles interactivos */
+        button:focus-visible,
+        .stat-card:focus-visible,
+        [tabindex]:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: var(--bg-color);
@@ -1009,6 +1031,8 @@
             font-size: 16px;
             border: 1px solid var(--border-color);
             color: var(--text-color);
+            text-align: left;
+            width: 100%;
         }
 
         .action-item:active {
@@ -1130,6 +1154,9 @@
             gap: 16px;
             border: 1px solid var(--border-color);
             cursor: pointer;
+            text-align: left;
+            width: 100%;
+            color: var(--text-color);
         }
 
         .empty-state {
@@ -1722,22 +1749,22 @@
                 </div>
 
                 <div class="stats-filters">
-                    <div class="stat-card active" onclick="setFilter('all')" data-filter="all">
+                    <button type="button" class="stat-card active" onclick="setFilter('all')" data-filter="all" aria-label="Filtrar: todos">
                         <div class="stat-value" id="stat-total">0</div>
                         <div class="stat-label">Total</div>
-                    </div>
-                    <div class="stat-card" onclick="setFilter('present')" data-filter="present">
+                    </button>
+                    <button type="button" class="stat-card" onclick="setFilter('present')" data-filter="present" aria-label="Filtrar: presentes">
                         <div class="stat-value" id="stat-present" style="color: var(--success-color)">0</div>
                         <div class="stat-label">Presentes</div>
-                    </div>
-                    <div class="stat-card" onclick="setFilter('extra')" data-filter="extra">
+                    </button>
+                    <button type="button" class="stat-card" onclick="setFilter('extra')" data-filter="extra" aria-label="Filtrar: con horas extra">
                         <div class="stat-value" id="stat-extra-dash" style="color: var(--extra-color)">0</div>
                         <div class="stat-label">Extras</div>
-                    </div>
-                    <div class="stat-card" onclick="setFilter('absent')" data-filter="absent">
+                    </button>
+                    <button type="button" class="stat-card" onclick="setFilter('absent')" data-filter="absent" aria-label="Filtrar: ausentes">
                         <div class="stat-value" id="stat-absent" style="color: var(--danger-color)">0</div>
                         <div class="stat-label">Ausentes</div>
-                    </div>
+                    </button>
                 </div>
 
                 <!-- HERRAMIENTAS: WHATSAPP Y CONFIGURACIÓN -->
@@ -1800,33 +1827,33 @@
             </div>
             <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin-bottom:10px;">Tema de color</div>
             <div class="theme-options">
-                <div class="theme-btn" data-theme-name="dark" onclick="setTheme('dark')">
+                <button type="button" class="theme-btn" data-theme-name="dark" onclick="setTheme('dark')">
                     <div class="theme-preview" style="background:#0a0e27;"></div>
                     <span>Original</span>
-                </div>
-                <div class="theme-btn" data-theme-name="light" onclick="setTheme('light')">
+                </button>
+                <button type="button" class="theme-btn" data-theme-name="light" onclick="setTheme('light')">
                     <div class="theme-preview" style="background:#f3f4f6; border-color:#ccc;"></div>
                     <span>Claro</span>
-                </div>
-                <div class="theme-btn" data-theme-name="contrast" onclick="setTheme('contrast')">
+                </button>
+                <button type="button" class="theme-btn" data-theme-name="contrast" onclick="setTheme('contrast')">
                     <div class="theme-preview" style="background:#000000; border-color:yellow;"></div>
                     <span>Alto Contraste</span>
-                </div>
-                <div class="theme-btn" data-theme-name="ocean" onclick="setTheme('ocean')">
+                </button>
+                <button type="button" class="theme-btn" data-theme-name="ocean" onclick="setTheme('ocean')">
                     <div class="theme-preview" style="background:#0f172a; border-color:#38bdf8;"></div>
                     <span>Océano</span>
-                </div>
+                </button>
             </div>
             <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin:18px 0 10px;">Estilo de íconos</div>
             <div class="theme-options">
-                <div class="theme-btn" data-icon-style="lucide" onclick="setIconStyle('lucide')">
+                <button type="button" class="theme-btn" data-icon-style="lucide" onclick="setIconStyle('lucide')">
                     <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:26px;height:26px;" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>
                     <span>Moderno</span>
-                </div>
-                <div class="theme-btn" data-icon-style="emoji" onclick="setIconStyle('emoji')">
+                </button>
+                <button type="button" class="theme-btn" data-icon-style="emoji" onclick="setIconStyle('emoji')">
                     <span style="font-size:26px;line-height:1;">👥</span>
                     <span>Emoji</span>
-                </div>
+                </button>
             </div>
             <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin:18px 0 10px;">Comportamiento del check</div>
             <div class="mode-options">
@@ -1855,11 +1882,11 @@
                 <div class="modal-subtitle">Opciones de asistencia</div>
             </div>
             <div class="action-list">
-                <div class="action-item" id="qa-edit-profile"><span class="ic" data-icon="edit"></span> Editar perfil</div>
-                <div class="action-item" id="qa-modify"><span class="ic" data-icon="clock"></span> Modificar Horas</div>
-                <div class="action-item" id="qa-delete"
+                <button type="button" class="action-item" id="qa-edit-profile"><span class="ic" data-icon="edit"></span> Editar perfil</button>
+                <button type="button" class="action-item" id="qa-modify"><span class="ic" data-icon="clock"></span> Modificar Horas</button>
+                <button type="button" class="action-item" id="qa-delete"
                     style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span class="ic" data-icon="trash"></span> Marcar como
-                    Ausente</div>
+                    Ausente</button>
             </div>
         </div>
     </div>
@@ -1932,14 +1959,14 @@
             <form id="user-form">
                 <input type="hidden" id="edit-user-id">
                 <div style="margin-bottom: 16px;"><input type="text" id="user-name" placeholder="Nombre Completo"
-                        class="search-input" required></div>
+                        aria-label="Nombre completo" class="search-input" required></div>
                 <div style="margin-bottom: 16px;"><input type="text" id="user-number" inputmode="numeric"
-                        placeholder="Número de empleado" class="search-input" required></div>
+                        placeholder="Número de empleado" aria-label="Número de empleado" class="search-input" required></div>
                 <div style="margin-bottom: 16px;"><input type="text" id="user-position" list="position-options"
-                        placeholder="Cargo / Puesto (Opcional)" class="search-input">
+                        placeholder="Cargo / Puesto (Opcional)" aria-label="Cargo o puesto (opcional)" class="search-input">
                     <datalist id="position-options"></datalist></div>
                 <div style="margin-bottom: 24px;"><input type="text" id="user-sueldo"
-                        placeholder="Sueldo (Opcional)" class="search-input"></div>
+                        placeholder="Sueldo (Opcional)" aria-label="Sueldo (opcional)" class="search-input"></div>
                 <button type="submit" class="btn-full btn-primary">Guardar Empleado</button>
                 <button type="button" id="btn-delete-user" class="btn-full btn-danger"
                     style="display: none; margin-top: 12px;">Eliminar</button>
@@ -1986,43 +2013,43 @@
     <div id="more-view" class="hidden">
         <div class="dashboard-panel">
             <div class="export-options">
-                <div class="export-option" onclick="openModal('theme-menu')">
+                <button type="button" class="export-option" onclick="openModal('theme-menu')">
                     <span style="font-size: 24px;"><span class="ic" data-icon="palette"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--text-color);">Apariencia</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Tema de color e íconos</div>
                     </div>
-                </div>
-                <div class="export-option" onclick="downloadJSON()">
+                </button>
+                <button type="button" class="export-option" onclick="downloadJSON()">
                     <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados y asistencia</div>
                     </div>
-                </div>
-                <div class="export-option" onclick="openImportBackupModal()">
+                </button>
+                <button type="button" class="export-option" onclick="openImportBackupModal()">
                     <span style="font-size: 24px;"><span class="ic" data-icon="restore"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Pegar JSON de respaldo completo</div>
                     </div>
-                </div>
-                <div class="export-option" onclick="openImportEmployeesModal()">
+                </button>
+                <button type="button" class="export-option" onclick="openImportEmployeesModal()">
                     <span style="font-size: 24px;"><span class="ic" data-icon="replace"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--danger-color);">Borrar y reemplazar todo</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Reemplaza TODA la lista con un JSON (peligroso)</div>
                     </div>
-                </div>
-                <div class="export-option" onclick="openDraftImportModal()">
+                </button>
+                <button type="button" class="export-option" onclick="openDraftImportModal()">
                     <span style="font-size: 24px;"><span class="ic" data-icon="addMany"></span></span>
                     <div>
                         <div style="font-weight: 600; color: var(--accent-color);">Agregar varios</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Crear varios empleados a mano</div>
                     </div>
-                </div>
+                </button>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
-                <div class="export-option" id="btn-install-pwa" onclick="installPWA()"
+                <button type="button" class="export-option" id="btn-install-pwa" onclick="installPWA()"
                     style="opacity:0.4; cursor:not-allowed;">
                     <span style="font-size: 24px;"><span class="ic" data-icon="install"></span></span>
                     <div>
@@ -2031,14 +2058,14 @@
                         <div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando
                             disponibilidad...</div>
                     </div>
-                </div>
-                <div class="export-option" onclick="clearCacheAndReload()">
+                </button>
+                <button type="button" class="export-option" onclick="clearCacheAndReload()">
                     <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
                     <div>
                         <div style="font-weight: 600;">Buscar actualización</div>
                         <div style="font-size: 12px; color: var(--text-muted);">Limpia el caché y carga la última versión</div>
                     </div>
-                </div>
+                </button>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
                 <div class="reminder-config">
                     <div class="reminder-row">
@@ -2731,17 +2758,17 @@
                 const div = document.createElement('div');
                 div.className = 'user-card';
                 div.innerHTML = `
-                    <div class="avatar-placeholder tap-calendar" onclick="openCalendar('${esc(u.id)}')" title="Ver historial">${esc(u.number)}</div>
+                    <button type="button" class="avatar-placeholder tap-calendar" onclick="openCalendar('${esc(u.id)}')" aria-label="Ver historial de ${esc(u.name)}" title="Ver historial">${esc(u.number)}</button>
                     <div class="user-info-area">
                         <div class="user-details">
                             <div class="user-name">${esc(u.name)}</div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
-                        ${isPresent ? `<div class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" title="Modificar horas">${hours}h</div>` : ''}
+                        ${isPresent ? `<button type="button" class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" aria-label="Modificar horas de ${esc(u.name)}" title="Modificar horas">${hours}h</button>` : ''}
                     </div>
-                    <div class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}')">
+                    <button type="button" class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}')" aria-label="${isPresent ? 'Asistencia de ' + esc(u.name) + ', presente — tocá para opciones' : 'Marcar presente a ' + esc(u.name)}">
                         ${isPresent ? '<span class="ic" data-icon="check"></span>' : ''}
-                    </div>
+                    </button>
                 `;
                 container.appendChild(div);
             });
@@ -2882,6 +2909,9 @@
                 document.body.classList.add('big-open');
             }
             el.classList.add('active');
+            // a11y: mover el foco al panel para que el lector de pantalla lo anuncie
+            const content = el.querySelector('.modal-content');
+            if (content) { content.setAttribute('tabindex', '-1'); content.focus({ preventScroll: true }); }
         }
 
         function closeModal(id) {
