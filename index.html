@@ -2824,6 +2824,7 @@
             if (!el) return;
             if (BIG_MODALS.has(id)) {
                 closeAddMenu();
+                if (activeBigModal && activeBigModal !== id) closeModal(activeBigModal);
                 activeBigModal = id;
                 document.body.classList.add('big-open');
             }
@@ -2861,6 +2862,8 @@
                 return;
             }
             if (event.key === 'Escape') {
+                // A small modal layered over a big one (e.g. the confirm) is topmost -> close it first.
+                if (document.getElementById('modal-confirm').classList.contains('active')) { closeModal('modal-confirm'); return; }
                 if (activeBigModal) { closeModal(activeBigModal); return; }
                 if (document.body.classList.contains('add-menu-open')) { closeAddMenu(); return; }
                 const open = document.querySelector('.modal.active');
