@@ -1741,7 +1741,7 @@
     </div>
 
     <!-- MODAL DE TEMAS (NUEVO) -->
-    <div class="modal" id="theme-menu">
+    <div class="modal big" id="theme-menu">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1793,12 +1793,11 @@
                     <span class="mode-desc">Presente ↔ ausente. Cada toque cambia de estado.</span>
                 </button>
             </div>
-            <button class="btn-full btn-secondary" onclick="closeModal('theme-menu')">Cerrar</button>
         </div>
     </div>
 
     <!-- MODALES EXISTENTES -->
-    <div class="modal" id="modal-quick-actions">
+    <div class="modal big" id="modal-quick-actions">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1812,11 +1811,10 @@
                     style="color: var(--danger-color); border-color: rgba(239,68,68,0.3);"><span class="ic" data-icon="trash"></span> Marcar como
                     Ausente</div>
             </div>
-            <button class="btn-full btn-secondary" onclick="closeModal('modal-quick-actions')">Cancelar</button>
         </div>
     </div>
 
-    <div class="modal" id="modal-hours">
+    <div class="modal big" id="modal-hours">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -1825,10 +1823,7 @@
             </div>
             <div class="hours-display"><span id="hours-display-val">8</span>h</div>
             <input type="range" class="range-slider" id="hours-slider" min="0" max="16" step="0.5" value="8">
-            <div style="display: flex; gap: 12px;">
-                <button class="btn-full btn-secondary" onclick="closeModal('modal-hours')">Cancelar</button>
-                <button class="btn-full btn-primary" id="btn-save-hours">Guardar</button>
-            </div>
+            <button class="btn-full btn-primary" id="btn-save-hours">Guardar</button>
         </div>
     </div>
 
@@ -2811,7 +2806,8 @@
         // + central (que pasa a x naranja). Solo uno abierto a la vez.
         const BIG_MODALS = new Set([
             'modal-calendar', 'modal-date-jump', 'user-modal',
-            'modal-restore-backup', 'modal-import-employees', 'modal-draft-import'
+            'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
+            'modal-quick-actions', 'modal-hours', 'theme-menu'
         ]);
         let activeBigModal = null;
 
