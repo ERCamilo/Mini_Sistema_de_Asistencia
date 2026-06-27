@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mini Sistema de Asistencia</title>
     <meta name="theme-color" content="#00d4ff">
     <meta name="mobile-web-app-capable" content="yes">
@@ -487,6 +487,29 @@
             opacity: 0.5;
             pointer-events: none;
             color: var(--text-color);
+        }
+
+        .search-clear {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 30px;
+            height: 30px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 14px;
+        }
+
+        /* Mostrar la X solo cuando hay texto escrito */
+        .search-input:placeholder-shown~.search-clear {
+            display: none;
         }
 
         /* --- Lista --- */
@@ -1644,6 +1667,31 @@
             opacity: 1;
             transform: translateY(0);
         }
+
+        /* Vista que entra: animacion sutil al cambiar de pantalla */
+        @keyframes viewIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        #attendance-view:not(.hidden),
+        #employees-view:not(.hidden),
+        #reports-view:not(.hidden),
+        #more-view:not(.hidden) {
+            animation: viewIn 0.22s ease both;
+        }
+
+        /* Respeta a quien pidio menos movimiento (accesibilidad) */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
     </style>
 </head>
 
@@ -1717,6 +1765,7 @@
                 <div class="search-container">
                     <span class="search-icon"><span class="ic" data-icon="search"></span></span>
                     <input type="text" class="search-input" id="search-input" placeholder="Buscar empleado...">
+                    <button type="button" class="search-clear" aria-label="Limpiar búsqueda" onclick="clearSearch('search-input', renderList)"><span class="ic" data-icon="close"></span></button>
                 </div>
             </div>
 
@@ -1735,6 +1784,7 @@
             <div class="search-container">
                 <span class="search-icon"><span class="ic" data-icon="search"></span></span>
                 <input type="text" class="search-input" id="search-employees" placeholder="Gestionar empleados...">
+                <button type="button" class="search-clear" aria-label="Limpiar búsqueda" onclick="clearSearch('search-employees', renderEmployeesList)"><span class="ic" data-icon="close"></span></button>
             </div>
         </div>
         <div class="users-list" id="employees-container"></div>
@@ -1883,8 +1933,8 @@
                 <input type="hidden" id="edit-user-id">
                 <div style="margin-bottom: 16px;"><input type="text" id="user-name" placeholder="Nombre Completo"
                         class="search-input" required></div>
-                <div style="margin-bottom: 16px;"><input type="number" id="user-number" placeholder="Número de empleado"
-                        class="search-input" required></div>
+                <div style="margin-bottom: 16px;"><input type="text" id="user-number" inputmode="numeric"
+                        placeholder="Número de empleado" class="search-input" required></div>
                 <div style="margin-bottom: 16px;"><input type="text" id="user-position" list="position-options"
                         placeholder="Cargo / Puesto (Opcional)" class="search-input">
                     <datalist id="position-options"></datalist></div>
@@ -2004,7 +2054,7 @@
                     <div class="reminder-row" id="reminder-time-row" style="display:none;">
                         <div>
                             <div class="reminder-label">Hora del recordatorio</div>
-                            <div class="reminder-hint">Te avisaremos si no hay asistencia</div>
+                            <div class="reminder-hint">Aviso local: solo suena con la app abierta</div>
                         </div>
                         <input type="time" id="reminder-time" class="time-input" value="09:00"
                             onchange="updateReminderTime(this.value)">
@@ -2264,6 +2314,13 @@
                 t.classList.remove('show');
                 setTimeout(() => t.remove(), 320);
             }, 3000);
+        }
+
+        function clearSearch(inputId, render) {
+            const el = document.getElementById(inputId);
+            el.value = '';
+            render();
+            el.focus();
         }
 
         const NAV_VIEWS = ['attendance', 'employees', 'reports', 'more'];
@@ -3068,11 +3125,22 @@
 
         async function ocrSinglePhoto(file) {
             const imageBase64 = await compressImageToBase64(file, 1600, 0.7);
-            const resp = await fetch(OCR_WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-API-Key': OCR_API_KEY },
-                body: JSON.stringify({ imageBase64: imageBase64 })
-            });
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 30000);
+            let resp;
+            try {
+                resp = await fetch(OCR_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': OCR_API_KEY },
+                    body: JSON.stringify({ imageBase64: imageBase64 }),
+                    signal: controller.signal
+                });
+            } catch (e) {
+                if (e && e.name === 'AbortError') throw new Error('la lectura tardó demasiado — revisá tu conexión');
+                throw new Error('sin conexión con el servidor OCR');
+            } finally {
+                clearTimeout(timer);
+            }
             if (!resp.ok) throw new Error('el servidor OCR respondió ' + resp.status);
             const data = await resp.json();
             if (!data || !data.ok || !Array.isArray(data.employees)) {
