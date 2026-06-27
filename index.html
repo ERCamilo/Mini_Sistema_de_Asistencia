@@ -100,7 +100,9 @@
         .export-option,
         .theme-btn,
         .avatar-placeholder,
-        .hours-badge {
+        .hours-badge,
+        .cal-day,
+        .current-date-wrapper {
             font: inherit;
             -webkit-appearance: none;
             appearance: none;
@@ -275,6 +277,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
         }
 
         .current-date-display {
@@ -1742,9 +1748,9 @@
             <div class="dashboard-panel" style="padding-top:0;">
                 <div class="date-nav">
                     <button class="nav-arrow" id="btn-prev-day"><span class="ic" data-icon="chevronLeft"></span></button>
-                    <div class="current-date-wrapper" id="date-jump-trigger" onclick="openDateJump()" style="cursor:pointer;" title="Ir a una fecha">
+                    <button type="button" class="current-date-wrapper" id="date-jump-trigger" onclick="openDateJump()" aria-label="Elegir fecha" title="Ir a una fecha">
                         <span class="current-date-display" id="header-date">...</span>
-                    </div>
+                    </button>
                     <button class="nav-arrow" id="btn-next-day"><span class="ic" data-icon="chevronRight"></span></button>
                 </div>
 
@@ -3585,7 +3591,7 @@
                     dots = `<div class="cal-hours">${rec.hours}h</div>`;
                 }
 
-                grid.innerHTML += `<div class="${cls}" onclick="goToDate('${dateStr}')">${content}${dots}</div>`;
+                grid.innerHTML += `<button type="button" class="${cls}" onclick="goToDate('${dateStr}')">${content}${dots}</button>`;
             }
             document.getElementById('stat-normal').textContent = sN;
             document.getElementById('stat-less').textContent = sL;
@@ -3641,7 +3647,7 @@
                 let cls = 'cal-day dj-day';
                 if (dateStr === _datePicker.selected) cls += ' dj-selected';
                 const pin = (dateStr === todayStr) ? '<span class="dj-pin"><span class="ic" data-icon="pin"></span></span>' : '';
-                grid.innerHTML += `<div class="${cls}" onclick="pickDate('${dateStr}')">${pin}${d}</div>`;
+                grid.innerHTML += `<button type="button" class="${cls}" onclick="pickDate('${dateStr}')" aria-label="${d}">${pin}${d}</button>`;
             }
             applyIcons(grid);
         }
