@@ -617,6 +617,11 @@
             transform: scale(0.92);
         }
 
+        .state-glyph {
+            font-size: 0.85em;
+            margin-right: 2px;
+        }
+
         .hours-badge.green {
             color: var(--success-color);
             border-color: var(--success-color);
@@ -2356,6 +2361,14 @@
             el.focus();
         }
 
+        // Glifo de estado (ademas del color, para daltonismo): completo / extra / menos
+        function stateGlyph(colorClass) {
+            if (colorClass === 'green') return '✓';
+            if (colorClass === 'blue') return '↑';
+            if (colorClass === 'red') return '↓';
+            return '';
+        }
+
         const NAV_VIEWS = ['attendance', 'employees', 'reports', 'more'];
         const VIEW_TITLES = { attendance: 'Asistencia', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
 
@@ -2770,7 +2783,7 @@
                             <div class="user-name">${esc(u.name)}</div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
-                        ${isPresent ? `<button type="button" class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" aria-label="Modificar horas de ${esc(u.name)}" title="Modificar horas">${hours}h</button>` : ''}
+                        ${isPresent ? `<button type="button" class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" aria-label="Modificar horas de ${esc(u.name)}" title="Modificar horas"><span class="state-glyph">${stateGlyph(colorClass)}</span>${hours}h</button>` : ''}
                     </div>
                     <button type="button" class="check-box ${isPresent ? 'checked' : ''} ${colorClass}" onclick="toggleCheck('${esc(u.id)}')" aria-label="${isPresent ? 'Asistencia de ' + esc(u.name) + ', presente — tocá para opciones' : 'Marcar presente a ' + esc(u.name)}">
                         ${isPresent ? '<span class="ic" data-icon="check"></span>' : ''}
@@ -2843,10 +2856,9 @@
                     let cellClass = 'week-cell cell-empty';
 
                     if (rec && rec.status === 'present') {
-                        cellContent = `${rec.hours}`;
-                        if (rec.hours == 8) cellClass = 'week-cell cell-green';
-                        else if (rec.hours > 8) cellClass = 'week-cell cell-blue';
-                        else cellClass = 'week-cell cell-red';
+                        const col = rec.hours == 8 ? 'green' : (rec.hours > 8 ? 'blue' : 'red');
+                        cellClass = 'week-cell cell-' + col;
+                        cellContent = `${stateGlyph(col)}${rec.hours}`;
                     }
                     row += `<td class="${cellClass}" onclick="goToDate('${dateStr}')">${cellContent}</td>`;
                 });
@@ -3588,7 +3600,7 @@
                     else sN++;
 
                     cls += ' has-data fill-' + col;
-                    dots = `<div class="cal-hours">${rec.hours}h</div>`;
+                    dots = `<div class="cal-hours">${stateGlyph(col)} ${rec.hours}h</div>`;
                 }
 
                 grid.innerHTML += `<button type="button" class="${cls}" onclick="goToDate('${dateStr}')">${content}${dots}</button>`;
