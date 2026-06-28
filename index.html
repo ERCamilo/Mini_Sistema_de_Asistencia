@@ -2108,9 +2108,11 @@
             <div class="modal-handle"></div>
             <div class="modal-header">
                 <div class="modal-title">&#x1F4C2; Restaurar Respaldo</div>
-                <div class="modal-subtitle">Pega el JSON del respaldo completo</div>
+                <div class="modal-subtitle">Elegí el archivo .json o pegá el JSON</div>
             </div>
-            <textarea id="restore-backup-textarea" placeholder="Pega aqui el JSON de respaldo..."
+            <input type="file" id="restore-file-input" accept="application/json,.json" style="display:none;" onchange="loadBackupFile(event)">
+            <button type="button" class="btn-full btn-secondary" onclick="document.getElementById('restore-file-input').click()"><span class="ic" data-icon="restore"></span> Elegir archivo .json</button>
+            <textarea id="restore-backup-textarea" placeholder="...o pegá aquí el JSON de respaldo"
                 style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
                 oninput="validateRestoreTextarea(this)"
                 onpaste="setTimeout(function(){validateRestoreTextarea(document.getElementById('restore-backup-textarea'))},50)"></textarea>
@@ -2956,19 +2958,43 @@
             toggleAddMenu();
         }
 
+        // El modal "de arriba" para el teclado (foco/Escape): confirm > grande > cualquier .modal activo.
+        function topmostModal() {
+            const confirmEl = document.getElementById('modal-confirm');
+            if (confirmEl.classList.contains('active')) return confirmEl;
+            if (activeBigModal) return document.getElementById(activeBigModal);
+            return document.querySelector('.modal.active');
+        }
+
         function handleModalKeyboard(event) {
             if (employeeNumberModal.handleKeydown(event) === 'closed') {
                 pendingEmployeeConflict = null;
                 pendingDraftConflict = null;
                 return;
             }
+            // El modal de conflicto maneja su propio teclado (trap incluido).
+            if (pendingEmployeeConflict || pendingDraftConflict) return;
+
             if (event.key === 'Escape') {
-                // A small modal layered over a big one (e.g. the confirm) is topmost -> close it first.
                 if (document.getElementById('modal-confirm').classList.contains('active')) { closeModal('modal-confirm'); return; }
                 if (activeBigModal) { closeModal(activeBigModal); return; }
                 if (document.body.classList.contains('add-menu-open')) { closeAddMenu(); return; }
                 const open = document.querySelector('.modal.active');
                 if (open) closeModal(open.id);
+                return;
+            }
+
+            // Focus-trap: Tab cicla dentro del modal activo (no se escapa al fondo).
+            if (event.key === 'Tab') {
+                const modal = topmostModal();
+                if (!modal) return;
+                const list = [...modal.querySelectorAll('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+                    .filter(el => !el.disabled && el.offsetParent !== null);
+                if (!list.length) return;
+                const first = list[0], last = list[list.length - 1];
+                if (!modal.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+                else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
             }
         }
 
@@ -3841,15 +3867,50 @@
             openModal('user-modal');
         }
 
+        const BACKUP_SETTINGS_KEYS = ['appTheme', 'iconStyle', 'checkMode', 'reminderConfig', 'expectedHoursPerDay'];
+
         function downloadJSON() {
-            const blob = new Blob([JSON.stringify({ users, attendance: attendanceData }, null, 2)], { type: 'application/json' });
+            const settings = {};
+            BACKUP_SETTINGS_KEYS.forEach(k => {
+                const v = localStorage.getItem(k);
+                if (v !== null) settings[k] = v;
+            });
+            const data = { users, attendance: attendanceData, settings };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
             a.download = 'backup_asistencia_' + selectedDate + '.json';
             a.click();
         }
 
+        // Re-aplica en vivo la config restaurada desde un respaldo (sin recargar)
+        function applyRestoredSettings() {
+            loadTheme();
+            currentIconStyle = window.IconSet.normalizeIconStyle(localStorage.getItem('iconStyle'));
+            markActiveIconStyle(currentIconStyle);
+            applyIcons(document);
+            currentCheckMode = window.CheckCycle.normalizeCheckMode(localStorage.getItem('checkMode'));
+            markActiveCheckMode(currentCheckMode);
+            initReminder();
+        }
+
         // --- RESTAURAR RESPALDO COMPLETO ---
+        window.loadBackupFile = (event) => {
+            const file = event.target.files && event.target.files[0];
+            event.target.value = '';
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const ta = document.getElementById('restore-backup-textarea');
+                ta.value = reader.result;
+                validateRestoreTextarea(ta);
+            };
+            reader.onerror = () => {
+                document.getElementById('restore-validation-msg').innerHTML = '&#x274C; No se pudo leer el archivo.';
+            };
+            reader.readAsText(file);
+        };
+
         window.openImportBackupModal = () => {
             closeModal('export-menu');
             const ta = document.getElementById('restore-backup-textarea');
@@ -3877,7 +3938,8 @@
                 if (!hasUsers && !hasAtt) throw new Error('No se encontraron datos válidos de empleados ni asistencia.');
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
-                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia.';
+                const hasSettings = parsed.settings && typeof parsed.settings === 'object' && Object.keys(parsed.settings).length > 0;
+                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasSettings ? ' + ajustes.' : '.');
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
             } catch (err) {
@@ -3897,6 +3959,12 @@
                 const parsed = JSON.parse(raw);
                 if (Array.isArray(parsed.users)) users = parsed.users;
                 if (parsed.attendance) attendanceData = parsed.attendance;
+                if (parsed.settings && typeof parsed.settings === 'object') {
+                    BACKUP_SETTINGS_KEYS.forEach(k => {
+                        if (typeof parsed.settings[k] === 'string') localStorage.setItem(k, parsed.settings[k]);
+                    });
+                    applyRestoredSettings();
+                }
                 saveData();
                 closeModal('modal-restore-backup');
                 renderList(); renderEmployeesList();
