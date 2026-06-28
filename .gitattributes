@@ -1,0 +1,14 @@
+# Normaliza el fin de linea a LF y mata el "churn" CRLF en Windows
+# (los .js compilados aparecian siempre como modificados en git status).
+* text=auto eol=lf
+
+# Binarios: que git no toque sus bytes
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
