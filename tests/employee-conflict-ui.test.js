@@ -70,11 +70,22 @@ test('initialization leaves historical normalized duplicates untouched', () => {
 });
 test('service worker precaches the production coordinator', () => {
   const serviceWorker = readFileSync(require.resolve('../sw.js'), 'utf8');
-  assert.match(serviceWorker, /asistencia-v2\.5\.0/);
+  assert.match(serviceWorker, /asistencia-v2\.11\.0/);
   assert.match(serviceWorker, /'\.\/employee-number-rules\.js'/);
   assert.match(serviceWorker, /'\.\/employee-number-modal\.js'/);
   assert.match(serviceWorker, /'\.\/draft-import\.js'/);
   assert.match(serviceWorker, /'\.\/attendance-report\.js'/);
   assert.match(serviceWorker, /'\.\/icon-set\.js'/);
   assert.match(serviceWorker, /'\.\/check-cycle\.js'/);
+  assert.match(serviceWorker, /'\.\/field-requests-coordinator\.js'/);
+  assert.match(serviceWorker, /'\.\/field-requests-repository\.js'/);
+  const fieldRequests = readFileSync(require.resolve('../field-requests.js'), 'utf8');
+  const repository = readFileSync(require.resolve('../field-requests-repository.js'), 'utf8');
+  assert.match(fieldRequests, /updateTemplate/);
+  assert.match(fieldRequests, /duplicateTemplate/);
+  assert.match(repository, /createFieldRequestsRepository/);
+  assert.match(serviceWorker, /'\.\/local-db\.js'/);
+  assert.match(serviceWorker, /'\.\/mini-sa-envelope\.js'/);
+  assert.match(serviceWorker, /'\.\/roster-package\.js'/);
+  assert.match(serviceWorker, /'\.\/field-requests\.js'/);
 });

@@ -116,6 +116,29 @@
             outline-offset: 2px;
         }
 
+        .ic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .ico {
+            width: 1em;
+            height: 1em;
+            display: inline-block;
+            vertical-align: -0.125em;
+            stroke-width: 2;
+            stroke: currentColor;
+            fill: none;
+            flex-shrink: 0;
+        }
+
+        .req-tpl-icon-box .ico {
+            width: 22px;
+            height: 22px;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: var(--bg-color);
@@ -1713,10 +1736,327 @@
         }
 
         #attendance-view:not(.hidden),
+        #requests-view:not(.hidden),
         #employees-view:not(.hidden),
         #reports-view:not(.hidden),
         #more-view:not(.hidden) {
             animation: viewIn 0.22s ease both;
+        }
+
+        /* --- ESTILOS MÓDULO DE SOLICITUDES --- */
+        .category-pills {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding: 4px 0 10px;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+        }
+        .category-pills::-webkit-scrollbar { display: none; }
+        .category-pill {
+            flex-shrink: 0;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .category-pill.active {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+        }
+        [data-theme="dark"] .category-pill.active,
+        [data-theme="ocean"] .category-pill.active,
+        [data-theme="light"] .category-pill.active {
+            color: #fff;
+        }
+        [data-theme="contrast"] .category-pill.active {
+            color: #000;
+        }
+
+        .req-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: transform 0.15s ease, border-color 0.2s ease;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+            cursor: pointer;
+        }
+        .req-card:active {
+            transform: scale(0.985);
+            border-color: var(--accent-color);
+        }
+        .req-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .req-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-color);
+            line-height: 1.25;
+        }
+        .req-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .req-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 8px;
+            border: 1.5px solid var(--border-color);
+            background: var(--input-bg);
+            color: var(--text-color);
+            line-height: 1.2;
+        }
+        .req-badge-personal { border-color: #3b82f6; color: #3b82f6; }
+        .req-badge-materials { border-color: #f59e0b; color: #f59e0b; }
+        .req-badge-equipment { border-color: #a855f7; color: #a855f7; }
+        .req-badge-general { border-color: var(--accent-color); color: var(--accent-color); }
+        .req-badge-urgent { background: #ef4444; border-color: #ef4444; color: #ffffff !important; }
+        .req-badge-important { border-color: #f59e0b; color: #f59e0b; }
+        .req-badge-open { border-color: var(--success-color); color: var(--success-color); }
+        .req-badge-completed { border-color: var(--extra-color); color: var(--extra-color); }
+        .req-badge-closed { border-color: var(--text-muted); color: var(--text-muted); }
+        .req-badge-shared { border-color: var(--whatsapp-color); color: var(--whatsapp-color); }
+
+        .req-progress-bar {
+            width: 100%;
+            height: 6px;
+            background: var(--input-bg);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 4px 0 2px;
+        }
+        .req-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-color), var(--success-color));
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        .req-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .req-cta-btn {
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            color: var(--accent-color);
+            font-size: 12px;
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .req-cta-btn:active {
+            background: var(--accent-color);
+            color: #fff;
+        }
+
+        /* Answering UI */
+        .req-answer-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 14px;
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .req-emp-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .req-emp-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            background: var(--input-bg);
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            border: 1px solid var(--border-color);
+        }
+        .req-emp-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+        .req-emp-role {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .req-btn-group {
+            display: flex;
+            gap: 8px;
+        }
+        .req-ans-btn {
+            flex: 1;
+            padding: 10px 8px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .req-ans-btn.active-yes {
+            background: var(--success-color);
+            border-color: var(--success-color);
+            color: #fff;
+        }
+        .req-ans-btn.active-no {
+            background: var(--danger-color);
+            border-color: var(--danger-color);
+            color: #fff;
+        }
+        .req-ans-btn.active-opt {
+            background: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+        }
+        [data-theme="dark"] .req-ans-btn.active-opt,
+        [data-theme="ocean"] .req-ans-btn.active-opt,
+        [data-theme="light"] .req-ans-btn.active-opt {
+            color: #fff;
+        }
+        .req-details-toggle {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-color);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 0;
+            text-align: left;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .req-details-panel {
+            background: var(--input-bg);
+            border-radius: 12px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .req-note-preview {
+            font-size: 11px;
+            color: var(--text-muted);
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            padding: 4px 8px;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        /* Template cards */
+        .req-template-item {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .req-template-item:active {
+            transform: scale(0.98);
+            border-color: var(--accent-color);
+        }
+        .req-tpl-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+            background: var(--input-bg);
+            border: 1.5px solid var(--border-color);
+            color: var(--text-color);
+        }
+        .req-tpl-icon-box[data-cat="personal"] { color: #3b82f6; border-color: #3b82f6; }
+        .req-tpl-icon-box[data-cat="materials"] { color: #f59e0b; border-color: #f59e0b; }
+        .req-tpl-icon-box[data-cat="equipment"] { color: #a855f7; border-color: #a855f7; }
+        .req-tpl-icon-box[data-cat="general"] { color: var(--accent-color); border-color: var(--accent-color); }
+
+        .req-tpl-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+        }
+        .req-tpl-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-color);
+            line-height: 1.25;
+        }
+        .req-tpl-desc {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-color);
+            opacity: 0.82;
+            line-height: 1.3;
+        }
+        .req-tpl-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+        .req-template-fav-btn {
+            background: none;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            color: var(--warning-color);
+            padding: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         /* Respeta a quien pidio menos movimiento (accesibilidad) */
@@ -1814,6 +2154,40 @@
         <div id="weekly-view" class="hidden week-view-container">
             <table class="week-table" id="week-table"></table>
         </div>
+    </div>
+
+    <!-- VISTA SOLICITUDES DE CAMPO -->
+    <div id="requests-view" class="hidden">
+        <div class="view-selector">
+            <div class="view-mode-pills">
+                <button class="view-btn active" id="btn-req-tab-open" onclick="setRequestsTab('open')">Abiertas</button>
+                <button class="view-btn" id="btn-req-tab-completed" onclick="setRequestsTab('completed')">Completadas</button>
+                <button class="view-btn" id="btn-req-tab-closed" onclick="setRequestsTab('closed')">Cerradas</button>
+                <button class="view-btn" id="btn-req-tab-templates" onclick="setRequestsTab('templates')">Plantillas</button>
+            </div>
+        </div>
+
+        <div class="dashboard-panel" style="padding-top:0;">
+            <button type="button" class="btn-full btn-primary" onclick="openNewRequestModal()" style="margin-bottom:12px;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px;">
+                <span class="ic" data-icon="add"></span> Nueva solicitud
+            </button>
+
+            <div class="category-pills" id="req-category-pills">
+                <button type="button" class="category-pill active" data-req-cat="all" onclick="setRequestsCategory('all')">Todas</button>
+                <button type="button" class="category-pill" data-req-cat="personal" onclick="setRequestsCategory('personal')">Personal</button>
+                <button type="button" class="category-pill" data-req-cat="materials" onclick="setRequestsCategory('materials')">Materiales</button>
+                <button type="button" class="category-pill" data-req-cat="equipment" onclick="setRequestsCategory('equipment')">Equipos</button>
+                <button type="button" class="category-pill" data-req-cat="general" onclick="setRequestsCategory('general')">General</button>
+            </div>
+
+            <div class="search-container">
+                <span class="search-icon"><span class="ic" data-icon="search"></span></span>
+                <input type="text" class="search-input" id="search-requests" placeholder="Buscar solicitud...">
+                <button type="button" class="search-clear" aria-label="Limpiar búsqueda" onclick="clearSearch('search-requests', renderRequestsDashboard)"><span class="ic" data-icon="close"></span></button>
+            </div>
+        </div>
+
+        <div class="users-list" id="requests-container" style="padding: 0 16px 80px;"></div>
     </div>
 
     <!-- VISTA EMPLEADOS -->
@@ -2059,6 +2433,13 @@
                         <div style="font-size: 12px; color: var(--text-muted);">Crear varios empleados a mano</div>
                     </div>
                 </button>
+                <button type="button" class="export-option" onclick="switchView('reports')">
+                    <span style="font-size: 24px;"><span class="ic" data-icon="reports"></span></span>
+                    <div>
+                        <div style="font-weight: 600; color: var(--text-color);">Reportes de asistencia</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Generar reporte en PDF o Excel</div>
+                    </div>
+                </button>
                 <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
                 <button type="button" class="export-option" id="btn-install-pwa" onclick="installPWA()"
                     style="opacity:0.4; cursor:not-allowed;">
@@ -2183,6 +2564,146 @@
         </div>
     </div>
 
+    <!-- MODAL CREAR SOLICITUD / ELEGIR PLANTILLA -->
+    <div class="modal big" id="modal-request-create" role="dialog" aria-modal="true" aria-labelledby="req-create-title">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="req-create-title">Nueva Solicitud</div>
+                <div class="modal-subtitle">Elegí una plantilla rápida o personalizá tu formulario</div>
+            </div>
+
+            <div class="view-selector" style="margin-bottom:14px;">
+                <div class="view-mode-pills">
+                    <button type="button" class="view-btn active" id="btn-create-tab-tpl" onclick="setCreateRequestTab('templates')">Plantillas</button>
+                    <button type="button" class="view-btn" id="btn-create-tab-custom" onclick="setCreateRequestTab('custom')">Personalizada</button>
+                </div>
+            </div>
+
+            <!-- Panel Plantillas -->
+            <div id="req-create-templates-panel">
+                <div id="req-create-templates-list" style="max-height:48vh;overflow-y:auto;margin-bottom:12px;"></div>
+            </div>
+
+            <!-- Panel Personalizada -->
+            <div id="req-create-custom-panel" style="display:none;max-height:54vh;overflow-y:auto;padding-right:2px;margin-bottom:12px;">
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Fecha requerida (opcional)</label>
+                    <input type="date" id="req-custom-required-date" class="search-input">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Título</label>
+                    <input type="text" id="req-custom-title" class="search-input" placeholder="Ej: Horas extra mañana, Compra cemento..." required>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                    <div>
+                        <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Categoría</label>
+                        <select id="req-custom-category" class="search-input" onchange="onCustomCategoryChange(this.value)" style="cursor:pointer;">
+                            <option value="personal">Personal (Empleados)</option>
+                            <option value="materials">Materiales</option>
+                            <option value="equipment">Equipos / Herramientas</option>
+                            <option value="general">General</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Prioridad</label>
+                        <select id="req-custom-priority" class="search-input" style="cursor:pointer;">
+                            <option value="normal">Normal</option>
+                            <option value="important">Importante</option>
+                            <option value="urgent">Urgente</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Destinatarios (solo Personal) -->
+                <div id="req-custom-targets-row" style="margin-bottom:12px;">
+                    <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Destinatarios</label>
+                    <select id="req-custom-target-type" class="search-input" onchange="onCustomTargetTypeChange(this.value)" style="cursor:pointer;">
+                        <option value="all">Toda la cuadrilla</option>
+                        <option value="position">Por cargo / puesto</option>
+                        <option value="custom">Selección manual</option>
+                    </select>
+                    <div id="req-custom-position-wrap" style="display:none;margin-top:8px;">
+                        <input type="text" id="req-custom-target-position" list="position-options" placeholder="Escribí el cargo (ej: Albañil)" class="search-input">
+                    </div>
+                    <div id="req-custom-employees-picker" style="display:none;margin-top:8px;max-height:140px;overflow-y:auto;background:var(--input-bg);padding:8px;border-radius:12px;border:1px solid var(--border-color);"></div>
+                </div>
+                <!-- Constructor dinámico de preguntas -->
+                <div style="margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                        <label style="font-size:12px;color:var(--text-muted);font-weight:600;">Preguntas / Campos del formulario</label>
+                        <button type="button" onclick="addCustomFieldRow()" style="background:none;border:none;color:var(--accent-color);font-size:12px;font-weight:700;cursor:pointer;">+ Añadir campo</button>
+                    </div>
+                    <div id="req-custom-fields-container" style="display:flex;flex-direction:column;gap:8px;"></div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Observación general (opcional)</label>
+                    <textarea id="req-custom-notes" class="search-input" style="height:60px;resize:vertical;" placeholder="Instrucciones para la cuadrilla o detalle..."></textarea>
+                </div>
+                <div style="display:flex;gap:8px"><button type="button" id="btn-request-save-draft" class="btn-full btn-secondary" onclick="submitCustomRequest('draft')">Guardar borrador</button><button type="button" id="btn-request-submit" class="btn-full btn-primary" onclick="submitCustomRequest('open')">Crear y abrir</button></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RESPONDER SOLICITUD -->
+    <div class="modal big" id="modal-request-answering" role="dialog" aria-modal="true" aria-labelledby="req-answering-title">
+        <div class="modal-content" style="max-height: calc(100vh - var(--topbar-h) - 40px);">
+            <div class="modal-handle"></div>
+            <div class="modal-header" style="margin-bottom:12px;">
+                <div class="modal-title" id="req-answering-title">Cargando...</div>
+                <div id="req-answering-badges" style="display:flex;justify-content:center;gap:6px;margin:6px 0 2px;"></div>
+                <div class="modal-subtitle" id="req-answering-progress-text">0 de 0 respondidos</div>
+                <div class="req-progress-bar" style="margin:6px auto 0;max-width:320px;">
+                    <div class="req-progress-fill" id="req-answering-progress-bar" style="width:0%;"></div>
+                </div>
+            </div>
+
+            <!-- Contenedor dinámico de respuestas -->
+            <div id="req-answering-container" style="max-height:48vh;overflow-y:auto;margin-bottom:14px;padding-right:2px;"></div>
+
+            <!-- Botones inferiores -->
+            <div style="display:flex;gap:10px;">
+                <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-request-answering')">Volver</button>
+                <button type="button" class="btn-full btn-primary" id="btn-answering-review" onclick="openRequestReview(activeRequestId)">Revisar / Compartir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL REVISIÓN Y COMPARTIR RESULTADOS -->
+    <div class="modal big" id="modal-request-review" role="dialog" aria-modal="true" aria-labelledby="req-review-title">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="req-review-title">Resumen de Solicitud</div>
+                <div id="req-review-badges" style="display:flex;justify-content:center;gap:6px;margin:6px 0;"></div>
+                <div class="modal-subtitle" id="req-review-date"></div>
+            </div>
+
+            <!-- Resumen de métricas y respuestas -->
+            <div id="req-review-body" style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:16px;padding:14px;max-height:36vh;overflow-y:auto;margin-bottom:14px;font-size:13px;line-height:1.6;"></div>
+
+            <!-- Botones para compartir en WhatsApp -->
+            <button type="button" class="whatsapp-cta" style="width:100%;margin-bottom:10px;justify-content:center;" onclick="shareActiveRequestWhatsApp('summary')">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="white" style="flex-shrink:0;">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                </svg>
+                Compartir Resumen por WhatsApp
+            </button>
+            <button type="button" class="btn-full btn-secondary" style="margin-bottom:12px;" onclick="shareActiveRequestWhatsApp('detail')">
+                <span class="ic" data-icon="share"></span> Compartir Detalle Completo
+            </button>
+
+            <!-- Acciones de estado y gestión -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+                <button type="button" class="btn-full btn-secondary" id="btn-review-status-toggle" onclick="toggleActiveRequestStatus()">Completar</button>
+                <button type="button" class="btn-full btn-secondary" onclick="duplicateActiveRequest()"><span class="ic" data-icon="copy"></span> Duplicar</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <button type="button" class="btn-full btn-secondary" onclick="saveActiveRequestAsTemplate()"><span class="ic" data-icon="star"></span> Guardar plantilla</button>
+                <button type="button" class="btn-full btn-danger" onclick="deleteActiveRequest()"><span class="ic" data-icon="trash"></span> Eliminar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Hoja inferior "Agregar empleado": sube desde abajo, la barra sigue visible;
          el + central (que gira a ×) la abre y la cierra. Sin botón Cancelar. -->
     <div class="add-sheet-backdrop" id="add-sheet-backdrop" onclick="closeAddMenu()"></div>
@@ -2232,16 +2753,16 @@
         <button class="nav-item active" id="nav-attendance" onclick="switchView('attendance')">
             <span class="ic" data-icon="attendance"></span><span>Asistencia</span>
         </button>
-        <button class="nav-item" id="nav-employees" onclick="switchView('employees')">
-            <span class="ic" data-icon="employees"></span><span>Empleados</span>
+        <button class="nav-item" id="nav-requests" onclick="switchView('requests')">
+            <span class="ic" data-icon="requests"></span><span>Solicitudes</span>
         </button>
         <div class="nav-center">
-            <button class="nav-fab" id="nav-add" onclick="handleNavFab()" aria-label="Agregar empleado">
+            <button class="nav-fab" id="nav-add" onclick="handleNavFab()" aria-label="Agregar">
                 <span class="fab-glyph"><span class="ic" data-icon="add"></span></span>
             </button>
         </div>
-        <button class="nav-item" id="nav-reports" onclick="switchView('reports')">
-            <span class="ic" data-icon="reports"></span><span>Reportes</span>
+        <button class="nav-item" id="nav-employees" onclick="switchView('employees')">
+            <span class="ic" data-icon="employees"></span><span>Empleados</span>
         </button>
         <button class="nav-item" id="nav-more" onclick="switchView('more')">
             <span class="ic" data-icon="more"></span><span>Más</span>
@@ -2254,15 +2775,33 @@
     <script src="./employee-number-modal.js"></script>
     <script src="./draft-import.js"></script>
     <script src="./attendance-report.js"></script>
+    <script src="./local-db.js"></script>
+    <script src="./mini-sa-envelope.js"></script>
+    <script src="./roster-package.js"></script>
+    <script src="./field-requests.js"></script>
+    <script src="./field-requests-coordinator.js"></script>
+    <script src="./field-requests-repository.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
+        let requests = [];
+        let requestTemplates = [];
+        const expandedRequestEmployeeIds = new Set();
+        let activeRequestId = null;
+        let requestsTab = 'open';
+        let requestsCategory = 'all';
+        let createRequestTab = 'templates';
+        let customFieldsDraft = [];
+        let editingRequestTemplateId = null;
         let currentFilter = 'all';
         let selectedDate = new Date().toISOString().split('T')[0];
         let currentWeekStart = new Date();
         let selectedUserId = null;
         let calendarDate = new Date();
         let lastActionTime = "";
+        let localDbReady = false;
+        let localDataRevision = 0;
+        let localDbWriteQueue = Promise.resolve();
         let pendingEmployeeConflict = null;
         let draftSession = null;
         let pendingDraftConflict = null;
@@ -2290,7 +2829,7 @@
 
         function setIconStyle(style) {
             currentIconStyle = window.IconSet.normalizeIconStyle(style);
-            localStorage.setItem('iconStyle', currentIconStyle);
+            saveLocalSetting('iconStyle', currentIconStyle);
             markActiveIconStyle(currentIconStyle);
             applyIcons(document);
         }
@@ -2310,7 +2849,7 @@
 
         function setCheckMode(mode) {
             currentCheckMode = window.CheckCycle.normalizeCheckMode(mode);
-            localStorage.setItem('checkMode', currentCheckMode);
+            saveLocalSetting('checkMode', currentCheckMode);
             markActiveCheckMode(currentCheckMode);
         }
 
@@ -2371,12 +2910,14 @@
             return '';
         }
 
-        const NAV_VIEWS = ['attendance', 'employees', 'reports', 'more'];
-        const VIEW_TITLES = { attendance: 'Asistencia', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
+        const NAV_VIEWS = ['attendance', 'requests', 'employees', 'reports', 'more'];
+        const VIEW_TITLES = { attendance: 'Asistencia', requests: 'Solicitudes', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
 
         function updateNavActive(view) {
-            NAV_VIEWS.forEach(v =>
-                document.getElementById('nav-' + v).classList.toggle('active', v === view));
+            NAV_VIEWS.forEach(v => {
+                const el = document.getElementById('nav-' + v);
+                if (el) el.classList.toggle('active', v === view);
+            });
         }
 
         function esc(str) {
@@ -2489,7 +3030,7 @@
         }
 
         function saveReminderConfig(config) {
-            localStorage.setItem('reminderConfig', JSON.stringify(config));
+            saveLocalSetting('reminderConfig', JSON.stringify(config));
         }
 
         function toggleReminder(enabled) {
@@ -2605,12 +3146,13 @@
             markActiveCheckMode(currentCheckMode);
             updateNavActive('attendance');
             applyIcons(document);
+            initLocalPersistence();
         }
 
         // --- SISTEMA DE TEMAS ---
         function setTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
-            localStorage.setItem('appTheme', themeName);
+            saveLocalSetting('appTheme', themeName);
             markActiveTheme(themeName);
         }
 
@@ -2623,6 +3165,7 @@
             const u = localStorage.getItem('users');
             const a = localStorage.getItem('weeklyAttendance');
             const t = localStorage.getItem('lastUpdateTimestamp');
+            const requestState = fieldRequestsRepository.load();
 
             if (u) users = JSON.parse(u);
             if (a) {
@@ -2636,12 +3179,111 @@
                 }
             }
             if (t) lastActionTime = t;
+            requests = requestState.requests;
+            requestTemplates = requestState.templates;
+        }
+
+        const localDb = window.MiniLocalDb.createLocalDb({
+            storage: localStorage,
+            indexedDB: window.indexedDB,
+            navigator: window.navigator
+        });
+
+        const fieldRequestsRepository = window.FieldRequestsRepository.createFieldRequestsRepository({
+            storage: localStorage
+        });
+
+        function captureLocalSnapshot() {
+            const settings = {};
+            BACKUP_SETTINGS_KEYS.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value !== null) settings[key] = value;
+            });
+            return {
+                schemaVersion: 1,
+                users: users,
+                attendance: attendanceData,
+                settings,
+                requests: requests,
+                templates: requestTemplates,
+                lastUpdateTimestamp: lastActionTime
+            };
+        }
+
+        function writeLegacyMirror(snapshot) {
+            localStorage.setItem('users', JSON.stringify(snapshot.users));
+            localStorage.setItem('weeklyAttendance', JSON.stringify(snapshot.attendance));
+            localStorage.setItem('lastUpdateTimestamp', snapshot.lastUpdateTimestamp);
+
+        }
+
+        function queueLocalSnapshot() {
+            if (!localDbReady || !window.MiniLocalDb.isEnabled(localStorage)) return;
+            const snapshot = captureLocalSnapshot();
+            localDbWriteQueue = localDbWriteQueue
+                .then(() => localDb.writeState(snapshot))
+                .catch(error => {
+                    localDbReady = false;
+                    localStorage.setItem(window.MiniLocalDb.FEATURE_FLAG_KEY, 'false');
+                    console.warn('Mini volvió al almacenamiento heredado.', error);
+                });
+        }
+
+        function saveLocalSetting(key, value) {
+            localStorage.setItem(key, value);
+            localDataRevision += 1;
+            queueLocalSnapshot();
+        }
+
+        function applyLocalSnapshot(snapshot) {
+            users = snapshot.users;
+            attendanceData = snapshot.attendance;
+            lastActionTime = snapshot.lastUpdateTimestamp;
+            if (Array.isArray(snapshot.requests)) requests = snapshot.requests;
+            if (Array.isArray(snapshot.templates)) requestTemplates = snapshot.templates;
+            BACKUP_SETTINGS_KEYS.forEach(key => {
+                if (typeof snapshot.settings[key] === 'string') {
+                    localStorage.setItem(key, snapshot.settings[key]);
+                } else {
+                    localStorage.removeItem(key);
+                }
+            });
+            writeLegacyMirror(snapshot);
+            fieldRequestsRepository.save(requests, requestTemplates);
+        }
+
+        async function initLocalPersistence() {
+            const startingRevision = localDataRevision;
+            const result = await localDb.migrateLegacyData();
+            if (result.status !== 'migrated' && result.status !== 'already-migrated') return;
+            if (!window.MiniLocalDb.isEnabled(localStorage)) return;
+            try {
+                const stored = await localDb.readState();
+                if (!stored) return;
+                if (localDataRevision === startingRevision) {
+                    applyLocalSnapshot(stored);
+                } else {
+                    await localDb.writeState(captureLocalSnapshot());
+                }
+                localDbReady = true;
+                if (localDataRevision === startingRevision) {
+                    ({ users, pendingConflict: pendingEmployeeConflict } =
+                        initializeEmployeeNumberState(users));
+                    applyRestoredSettings();
+                    updateDashboard();
+                    renderEmployeesList();
+                }
+            } catch (error) {
+                localStorage.setItem(window.MiniLocalDb.FEATURE_FLAG_KEY, 'false');
+                console.warn('Mini continuará usando el almacenamiento heredado.', error);
+            }
         }
 
         function saveData() {
-            localStorage.setItem('users', JSON.stringify(users));
-            localStorage.setItem('weeklyAttendance', JSON.stringify(attendanceData));
-            localStorage.setItem('lastUpdateTimestamp', lastActionTime);
+            localDataRevision += 1;
+            writeLegacyMirror(captureLocalSnapshot());
+            fieldRequestsRepository.save(requests, requestTemplates);
+            queueLocalSnapshot();
             updateDashboard();
         }
 
@@ -2911,7 +3553,8 @@
         const BIG_MODALS = new Set([
             'modal-calendar', 'modal-date-jump', 'user-modal',
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
-            'modal-quick-actions', 'modal-hours', 'theme-menu'
+            'modal-quick-actions', 'modal-hours', 'theme-menu',
+            'modal-request-create', 'modal-request-answering', 'modal-request-review'
         ]);
         let activeBigModal = null;
 
@@ -3407,7 +4050,7 @@
             if (from > to) return { error: '"Desde" es posterior a "Hasta"' };
             if (AttendanceReport.rangeDays(from, to) > REPORT_MAX_DAYS) return { error: 'Máximo 3 meses (92 días)' };
             if (!users.length) return { error: 'No hay empleados cargados' };
-            localStorage.setItem('expectedHoursPerDay', String(expected));
+            saveLocalSetting('expectedHoursPerDay', String(expected));
             return { from, to, expected };
         }
 
@@ -3739,6 +4382,8 @@
 
             document.getElementById('search-input').oninput = renderList;
             document.getElementById('search-employees').oninput = renderEmployeesList;
+            const searchReq = document.getElementById('search-requests');
+            if (searchReq) searchReq.oninput = renderRequestsDashboard;
 
             document.getElementById('qa-edit-profile').onclick = () => {
                 closeModal('modal-quick-actions');
@@ -3818,13 +4463,832 @@
         function switchView(view) {
             closeAddMenu();
             if (activeBigModal) closeModal(activeBigModal);
-            NAV_VIEWS.forEach(v =>
-                document.getElementById(v + '-view').classList.toggle('hidden', v !== view));
+            NAV_VIEWS.forEach(v => {
+                const el = document.getElementById(v + '-view');
+                if (el) el.classList.toggle('hidden', v !== view);
+            });
             document.getElementById('section-title').textContent = VIEW_TITLES[view] || '';
             if (view === 'attendance') updateDashboard();
+            else if (view === 'requests') renderRequestsDashboard();
             else if (view === 'employees') renderEmployeesList();
             else if (view === 'reports') enterReportsView();
             updateNavActive(view);
+        }
+
+        // ==========================================
+        // MÓDULO DE SOLICITUDES DE CAMPO
+        // ==========================================
+
+        function getReqCategoryIcon(cat) {
+            if (cat === 'personal') return 'employees';
+            if (cat === 'materials') return 'package';
+            if (cat === 'equipment') return 'wrench';
+            return 'requests';
+        }
+
+        function getReqCategoryLabel(cat) {
+            if (cat === 'personal') return 'Personal';
+            if (cat === 'materials') return 'Materiales';
+            if (cat === 'equipment') return 'Equipos';
+            return 'General';
+        }
+
+        function setRequestsTab(tab) {
+            requestsTab = tab;
+            document.querySelectorAll('#requests-view .view-mode-pills .view-btn').forEach(b => {
+                b.classList.toggle('active', b.id === 'btn-req-tab-' + tab);
+            });
+            renderRequestsDashboard();
+        }
+
+        function setRequestsCategory(cat) {
+            requestsCategory = cat;
+            document.querySelectorAll('#req-category-pills .category-pill').forEach(b => {
+                b.classList.toggle('active', b.getAttribute('data-req-cat') === cat);
+            });
+            renderRequestsDashboard();
+        }
+
+        function renderRequestsDashboard() {
+            normalizeRequestState();
+            const container = document.getElementById('requests-container');
+            if (!container) return;
+            const searchInput = document.getElementById('search-requests');
+            const search = (searchInput ? searchInput.value : '').toLowerCase().trim();
+
+            if (requestsTab === 'templates') {
+                renderTemplatesList(container, search);
+                return;
+            }
+
+            const filtered = window.FieldRequests.filterRequests(requests, {
+                status: requestsTab,
+                category: requestsCategory,
+                search: search
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon"><span class="ic" data-icon="inbox"></span></div>
+                        <div style="font-weight:600;margin-top:8px;">No hay solicitudes ${requestsTab === 'open' ? 'abiertas' : (requestsTab === 'completed' ? 'completadas' : 'cerradas')}</div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Tocá "+ Nueva solicitud" para crear una.</div>
+                    </div>
+                `;
+                applyIcons(container);
+                return;
+            }
+
+            container.innerHTML = '';
+            filtered.forEach(req => {
+                const summary = window.FieldRequests.summarizeResults(req);
+                const progressPct = summary.targetCount > 0 ? Math.round((summary.answeredCount / summary.targetCount) * 100) : (req.status === 'completed' || req.status === 'closed' ? 100 : 0);
+
+                let categoryClass = req.category || 'general';
+                const catIcon = getReqCategoryIcon(categoryClass);
+                const catLabel = getReqCategoryLabel(categoryClass);
+
+                let priorityBadge = '';
+                if (req.priority === 'urgent') priorityBadge = `<span class="req-badge req-badge-urgent"><span class="ic" data-icon="warning"></span> Urgente</span>`;
+                else if (req.priority === 'important') priorityBadge = `<span class="req-badge req-badge-important">Importante</span>`;
+
+                let sharedBadge = '';
+                if (req.lastSharedAt) {
+                    sharedBadge = `<span class="req-badge req-badge-shared"><span class="ic" data-icon="share"></span> Compartida ✓</span>`;
+                }
+
+                let statusBadge = `<span class="req-badge req-badge-${req.status}">${requestStatusLabel(req.status)}</span>`;
+
+                const card = document.createElement('div');
+                card.className = 'req-card';
+                card.onclick = () => openRequestAnswering(req.id);
+
+                card.innerHTML = `
+                    <div class="req-card-top">
+                        <div style="display:flex;align-items:flex-start;gap:12px;flex:1;">
+                            <div class="req-tpl-icon-box" data-cat="${esc(categoryClass)}">
+                                <span class="ic" data-icon="${catIcon}"></span>
+                            </div>
+                            <div style="flex:1;">
+                                <div class="req-title">${esc(req.title)}</div>
+                                <div class="req-badges" style="margin-top:6px;">
+                                    <span class="req-badge req-badge-${categoryClass}"><span class="ic" data-icon="${catIcon}"></span> ${catLabel}</span>
+                                    ${priorityBadge}
+                                    ${statusBadge}
+                                    ${sharedBadge}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ${req.category === 'personal' && summary.targetCount > 0 ? `
+                        <div class="req-progress-bar">
+                            <div class="req-progress-fill" style="width: ${progressPct}%;"></div>
+                        </div>
+                        <div class="req-meta-row">
+                            <span>${summary.answeredCount} de ${summary.targetCount} respondidos (${progressPct}%)</span>
+                            <span>${req.createdAt ? new Date(req.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : ''}</span>
+                        </div>
+                    ` : `
+                        <div class="req-meta-row">
+                            <span>${req.responses && Object.keys(req.responses).length > 0 ? Object.keys(req.responses).length + ' campo(s) respondido(s)' : 'Sin respuestas aún'}</span>
+                            <span>${req.createdAt ? new Date(req.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : ''}</span>
+                        </div>
+                    `}
+                    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+                        <button type="button" class="req-cta-btn" onclick="event.stopPropagation(); openRequestReview('${esc(req.id)}')">
+                            <span class="ic" data-icon="share"></span> Revisar
+                        </button>
+                        <button type="button" class="req-cta-btn" style="background:var(--accent-color);color:#fff;" onclick="event.stopPropagation(); openRequestAnswering('${esc(req.id)}')">
+                            ${req.status === 'open' ? 'Responder' : 'Ver respuestas'}
+                        </button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+            applyIcons(container);
+        }
+
+        function renderTemplatesList(container, search) {
+            const defaults = window.FieldRequests.getDefaultTemplates();
+            const allTemplates = [...requestTemplates, ...defaults];
+            const filtered = allTemplates.filter(t => {
+                if (!search) return true;
+                const title = (t.title || t.name || '').toLowerCase();
+                const desc = (t.description || '').toLowerCase();
+                const cat = (t.category || '').toLowerCase();
+                return title.includes(search) || desc.includes(search) || cat.includes(search);
+            });
+
+            filtered.sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0));
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon"><span class="ic" data-icon="inbox"></span></div>
+                        <div style="font-weight:600;margin-top:8px;">No se encontraron plantillas</div>
+                    </div>
+                `;
+                applyIcons(container);
+                return;
+            }
+
+            container.innerHTML = '';
+            filtered.forEach(tpl => {
+                const cat = tpl.category || 'general';
+                const catIcon = getReqCategoryIcon(cat);
+                const tplTitle = tpl.title || tpl.name || 'Plantilla';
+
+                const item = document.createElement('div');
+                item.className = 'req-template-item';
+                item.onclick = () => useTemplateToCreate(tpl.id);
+                item.innerHTML = `
+                    <div class="req-tpl-icon-box" data-cat="${esc(cat)}">
+                        <span class="ic" data-icon="${catIcon}"></span>
+                    </div>
+                    <div class="req-tpl-info">
+                        <div class="req-tpl-title">${esc(tplTitle)}</div>
+                        <div class="req-tpl-desc">${esc(tpl.description || '')} · ${tpl.source === 'sa' ? 'Plantilla de la empresa' : (tpl.isSystem ? 'Incluida en Mini' : 'Mi plantilla')}</div>
+                    </div>
+                    <div class="req-tpl-actions">
+                        <button type="button" class="btn-full btn-primary" style="width:auto;padding:7px 15px;font-size:13px;font-weight:700;margin:0;border-radius:10px;" onclick="event.stopPropagation(); useTemplateToCreate('${esc(tpl.id)}')">Usar</button>
+                        <button type="button" class="req-template-fav-btn" onclick="event.stopPropagation(); toggleTemplateFavorite('${esc(tpl.id)}')" aria-label="Favorito">
+                            <span class="ic" data-icon="${tpl.isFavorite ? 'starFilled' : 'star'}"></span>
+                        </button>
+                        ${!tpl.isSystem ? `<button type="button" class="req-template-fav-btn" onclick="event.stopPropagation(); openEditRequestTemplate('${esc(tpl.id)}')" aria-label="Editar plantilla"><span class="ic" data-icon="edit"></span></button>` : ''}
+                        <button type="button" class="req-template-fav-btn" onclick="event.stopPropagation(); duplicateRequestTemplate('${esc(tpl.id)}')" aria-label="Duplicar plantilla"><span class="ic" data-icon="copy"></span></button>
+                        ${!tpl.isSystem ? `<button type="button" class="req-template-fav-btn" onclick="event.stopPropagation(); deleteRequestTemplate('${esc(tpl.id)}')" aria-label="Eliminar plantilla"><span class="ic" data-icon="delete"></span></button>` : ''}
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+            applyIcons(container);
+        }
+
+        function toggleTemplateFavorite(tplId) {
+            const userTpl = requestTemplates.find(t => t.id === tplId);
+            if (userTpl) {
+                userTpl.isFavorite = !userTpl.isFavorite;
+            } else {
+                const def = window.FieldRequests.getDefaultTemplates().find(t => t.id === tplId);
+                if (def) {
+                    const copy = structuredClone(def);
+                    copy.isFavorite = !copy.isFavorite;
+                    requestTemplates.push(copy);
+                }
+            }
+            saveData();
+            renderRequestsDashboard();
+        }
+
+        function deleteRequestTemplate(templateId) {
+            const template = requestTemplates.find(item => item.id === templateId);
+            if (!template || template.isSystem) return;
+            showConfirm('¿Eliminar esta plantilla permanentemente?', { title: 'Eliminar plantilla', confirmText: 'Eliminar' }).then(confirmed => {
+                if (!confirmed) return;
+                requestTemplates = requestTemplates.filter(item => item.id !== templateId);
+                saveData();
+                renderRequestsDashboard();
+                renderCreateTemplatesList();
+                showToast('Plantilla eliminada');
+            });
+        }
+
+        function duplicateRequestTemplate(templateId) {
+            const template = [...requestTemplates, ...window.FieldRequests.getDefaultTemplates()].find(item => item.id === templateId);
+            if (!template) return;
+            requestTemplates.unshift(window.FieldRequests.duplicateTemplate(template));
+            saveData();
+            renderRequestsDashboard();
+            renderCreateTemplatesList();
+            showToast('Plantilla duplicada');
+        }
+
+        function openEditRequestTemplate(templateId) {
+            const template = requestTemplates.find(item => item.id === templateId);
+            if (!template || template.isSystem) return;
+            setCreateRequestTab('custom');
+            resetCustomRequestBuilder();
+            editingRequestTemplateId = templateId;
+            document.getElementById('req-create-title').textContent = 'Editar plantilla';
+            document.getElementById('req-custom-title').value = template.name || template.title || '';
+            document.getElementById('req-custom-category').value = template.category || 'general';
+            document.getElementById('req-custom-priority').value = template.priority || 'normal';
+            document.getElementById('req-custom-target-type').value = template.targetType || 'none';
+            document.getElementById('req-custom-target-position').value = template.targetPosition || '';
+            document.getElementById('req-custom-notes').value = template.description || '';
+            customFieldsDraft = structuredClone(template.fields || []);
+            onCustomCategoryChange(template.category || 'general');
+            onCustomTargetTypeChange(template.targetType || 'none');
+            renderCustomFieldRows();
+            document.getElementById('btn-request-save-draft').style.display = 'none';
+            document.getElementById('btn-request-submit').textContent = 'Guardar plantilla';
+            openModal('modal-request-create');
+        }
+
+        function openNewRequestModal() {
+            editingRequestTemplateId = null;
+            document.getElementById('req-create-title').textContent = 'Nueva Solicitud';
+            document.getElementById('btn-request-save-draft').style.display = '';
+            document.getElementById('btn-request-submit').textContent = 'Crear y abrir';
+            setCreateRequestTab('templates');
+            renderCreateTemplatesList();
+            resetCustomRequestBuilder();
+            openModal('modal-request-create');
+        }
+
+        function setCreateRequestTab(tab) {
+            createRequestTab = tab;
+            document.getElementById('btn-create-tab-tpl').classList.toggle('active', tab === 'templates');
+            document.getElementById('btn-create-tab-custom').classList.toggle('active', tab === 'custom');
+            document.getElementById('req-create-templates-panel').style.display = tab === 'templates' ? 'block' : 'none';
+            document.getElementById('req-create-custom-panel').style.display = tab === 'custom' ? 'block' : 'none';
+        }
+
+        function renderCreateTemplatesList() {
+            const list = document.getElementById('req-create-templates-list');
+            if (!list) return;
+            const defaults = window.FieldRequests.getDefaultTemplates();
+            const allTemplates = [...requestTemplates, ...defaults];
+            allTemplates.sort((a, b) => (b.isFavorite ? 1 : 0) - (a.isFavorite ? 1 : 0));
+
+            list.innerHTML = '';
+            allTemplates.forEach(tpl => {
+                const cat = tpl.category || 'general';
+                const catIcon = getReqCategoryIcon(cat);
+                const tplTitle = tpl.title || tpl.name || 'Plantilla';
+
+                const item = document.createElement('div');
+                item.className = 'req-template-item';
+                item.onclick = () => useTemplateToCreate(tpl.id);
+                item.innerHTML = `
+                    <div class="req-tpl-icon-box" data-cat="${esc(cat)}">
+                        <span class="ic" data-icon="${catIcon}"></span>
+                    </div>
+                    <div class="req-tpl-info">
+                        <div class="req-tpl-title">${esc(tplTitle)}</div>
+                        <div class="req-tpl-desc">${esc(tpl.description || '')}</div>
+                    </div>
+                    <div class="req-tpl-actions">
+                        <button type="button" class="btn-full btn-primary" style="width:auto;padding:7px 15px;font-size:13px;font-weight:700;margin:0;border-radius:10px;" onclick="event.stopPropagation(); useTemplateToCreate('${esc(tpl.id)}')">Usar</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+            applyIcons(list);
+        }
+
+        function useTemplateToCreate(tplId) {
+            const defaults = window.FieldRequests.getDefaultTemplates();
+            const tpl = [...requestTemplates, ...defaults].find(t => t.id === tplId);
+            if (!tpl) return;
+
+            const targetType = tpl.targetType || (tpl.category === 'personal' ? 'all' : 'none');
+
+            const newReq = window.FieldRequests.createRequest({
+                title: tpl.title || tpl.name || 'Solicitud',
+                category: tpl.category || 'general',
+                priority: tpl.priority || 'normal',
+                targetType: targetType,
+                targetPosition: tpl.targetPosition,
+                targetEmployeeIds: tpl.customRecipients || tpl.targetEmployeeIds,
+                customRecipients: tpl.customRecipients || tpl.targetEmployeeIds,
+                fields: tpl.fields || [],
+                allowComments: tpl.allowComments,
+                notes: tpl.notes,
+                templateId: tpl.id,
+                allEmployees: users
+            }, users);
+
+            requests.unshift(newReq);
+            saveData();
+            closeModal('modal-request-create');
+            openRequestAnswering(newReq.id);
+            renderRequestsDashboard();
+        }
+
+        function resetCustomRequestBuilder() {
+            document.getElementById('req-custom-title').value = '';
+            document.getElementById('req-custom-category').value = 'personal';
+            document.getElementById('req-custom-priority').value = 'normal';
+            document.getElementById('req-custom-target-type').value = 'all';
+            document.getElementById('req-custom-target-position').value = '';
+            document.getElementById('req-custom-notes').value = '';
+            document.getElementById('req-custom-required-date').value = '';
+            onCustomCategoryChange('personal');
+            onCustomTargetTypeChange('all');
+
+            customFieldsDraft = [
+                { id: 'f1', label: '¿Disponible?', type: 'boolean', allowComment: true }
+            ];
+            renderCustomFieldRows();
+        }
+
+        function onCustomCategoryChange(cat) {
+            const targetsRow = document.getElementById('req-custom-targets-row');
+            if (targetsRow) targetsRow.style.display = (cat === 'personal') ? 'block' : 'none';
+        }
+
+        function onCustomTargetTypeChange(type) {
+            const posWrap = document.getElementById('req-custom-position-wrap');
+            const empPicker = document.getElementById('req-custom-employees-picker');
+            if (posWrap) posWrap.style.display = (type === 'position') ? 'block' : 'none';
+            if (empPicker) {
+                empPicker.style.display = (type === 'custom') ? 'block' : 'none';
+                if (type === 'custom') renderCustomEmployeesPicker();
+            }
+        }
+
+        function renderCustomEmployeesPicker() {
+            const picker = document.getElementById('req-custom-employees-picker');
+            if (!picker) return;
+            picker.innerHTML = users.map(u => `
+                <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;color:var(--text-color);cursor:pointer;">
+                    <input type="checkbox" value="${esc(u.id)}" class="req-custom-emp-check" checked>
+                    <span>${esc(u.number)}. ${esc(u.name)} (${esc(u.position || 'Sin cargo')})</span>
+                </label>
+            `).join('');
+        }
+
+        function addCustomFieldRow(initial) {
+            const id = 'f' + Date.now() + Math.random().toString(36).slice(2, 5);
+            customFieldsDraft.push(initial || { id, label: '', type: 'boolean', allowComment: true });
+            renderCustomFieldRows();
+        }
+
+        function removeCustomFieldRow(index) {
+            if (customFieldsDraft.length <= 1) {
+                showToast('Debe haber al menos un campo');
+                return;
+            }
+            customFieldsDraft.splice(index, 1);
+            renderCustomFieldRows();
+        }
+
+        function renderCustomFieldRows() {
+            const container = document.getElementById('req-custom-fields-container');
+            if (!container) return;
+            container.innerHTML = '';
+            customFieldsDraft.forEach((field, index) => {
+                const needsOptions = ['single_choice', 'multiple_choice', 'choice_comment'].includes(field.type);
+                const needsUnit = field.type === 'number_unit';
+                const row = document.createElement('div');
+                row.className = 'req-answer-card';
+                row.innerHTML = `
+                    <div style="display:flex;gap:8px;align-items:center"><input type="text" class="search-input" style="flex:1" placeholder="Pregunta o campo" value="${esc(field.label || '')}" oninput="customFieldsDraft[${index}].label=this.value"><button type="button" onclick="removeCustomFieldRow(${index})" style="background:none;border:none;color:var(--danger-color);font-size:16px" aria-label="Quitar"><span class="ic" data-icon="close"></span></button></div>
+                    <select class="search-input" onchange="customFieldsDraft[${index}].type=this.value;renderCustomFieldRows()">
+                        <option value="boolean" ${field.type === 'boolean' ? 'selected' : ''}>Sí / No</option><option value="check" ${field.type === 'check' ? 'selected' : ''}>Check rápido</option><option value="single_choice" ${field.type === 'single_choice' ? 'selected' : ''}>Selección única</option><option value="multiple_choice" ${field.type === 'multiple_choice' ? 'selected' : ''}>Selección múltiple</option><option value="number" ${field.type === 'number' ? 'selected' : ''}>Número</option><option value="number_unit" ${field.type === 'number_unit' ? 'selected' : ''}>Número + unidad</option><option value="text_short" ${field.type === 'text_short' ? 'selected' : ''}>Texto corto</option><option value="text_long" ${field.type === 'text_long' ? 'selected' : ''}>Texto largo</option><option value="choice_comment" ${field.type === 'choice_comment' ? 'selected' : ''}>Selección + comentario</option><option value="boolean_comment" ${field.type === 'boolean_comment' ? 'selected' : ''}>Sí/No + comentario</option>
+                    </select>
+                    ${needsOptions ? `<input type="text" class="search-input" placeholder="Opciones separadas por coma" value="${esc((field.options || []).join(', '))}" oninput="customFieldsDraft[${index}].options=this.value.split(',').map(v=>v.trim()).filter(Boolean)">` : ''}
+                    ${needsUnit ? `<input type="text" class="search-input" placeholder="Unidad (kg, sacos, metros...)" value="${esc(field.unit || '')}" oninput="customFieldsDraft[${index}].unit=this.value">` : ''}
+                    <div style="display:flex;gap:18px;flex-wrap:wrap"><label style="font-size:12px"><input type="checkbox" ${field.required ? 'checked' : ''} onchange="customFieldsDraft[${index}].required=this.checked"> Obligatorio</label><label style="font-size:12px"><input type="checkbox" ${field.allowComment ? 'checked' : ''} onchange="customFieldsDraft[${index}].allowComment=this.checked"> Permitir comentario</label></div>`;
+                container.appendChild(row);
+            });
+            applyIcons(container);
+        }
+
+        function submitCustomRequest(initialStatus = 'open') {
+            const title = document.getElementById('req-custom-title').value.trim();
+            if (!title) {
+                showToast('Ingresá un título para la solicitud');
+                document.getElementById('req-custom-title').focus();
+                return;
+            }
+
+            const category = document.getElementById('req-custom-category').value;
+            const priority = document.getElementById('req-custom-priority').value;
+            const targetType = category === 'personal' ? document.getElementById('req-custom-target-type').value : 'none';
+            const targetPosition = document.getElementById('req-custom-target-position').value.trim();
+            const notes = document.getElementById('req-custom-notes').value.trim();
+            const requiredDate = document.getElementById('req-custom-required-date').value || null;
+
+            let customRecipients = [];
+            if (targetType === 'custom') {
+                document.querySelectorAll('.req-custom-emp-check:checked').forEach(c => {
+                    customRecipients.push(c.value);
+                });
+                if (customRecipients.length === 0) {
+                    showToast('Seleccioná al menos un trabajador');
+                    return;
+                }
+            }
+
+            const fields = customFieldsDraft.map((f, i) => ({
+                id: f.id || 'f' + (i + 1),
+                label: f.label && f.label.trim() ? f.label.trim() : 'Pregunta ' + (i + 1),
+                type: f.type || 'boolean',
+                required: !!f.required,
+                options: Array.isArray(f.options) ? f.options : [],
+                unit: f.unit ? f.unit.trim() : undefined,
+                allowComment: !!f.allowComment
+            }));
+
+            if (editingRequestTemplateId) {
+                const templateIndex = requestTemplates.findIndex(template => template.id === editingRequestTemplateId);
+                if (templateIndex < 0) return;
+                requestTemplates[templateIndex] = window.FieldRequests.updateTemplate(requestTemplates[templateIndex], {
+                    name: title,
+                    title,
+                    description: notes,
+                    category,
+                    priority,
+                    targetType,
+                    targetPosition: targetType === 'position' ? targetPosition : undefined,
+                    fields
+                });
+                editingRequestTemplateId = null;
+                saveData();
+                closeModal('modal-request-create');
+                renderRequestsDashboard();
+                renderCreateTemplatesList();
+                showToast('Plantilla actualizada');
+                return;
+            }
+
+            const newReq = window.FieldRequests.createRequest({
+                title,
+                category,
+                priority,
+                status: initialStatus,
+                requiredAt: requiredDate,
+                createdBy: 'capataz',
+                targetType,
+                targetPosition: targetType === 'position' ? targetPosition : undefined,
+                targetEmployeeIds: targetType === 'custom' ? customRecipients : undefined,
+                customRecipients: targetType === 'custom' ? customRecipients : undefined,
+                fields,
+                allowComments: true,
+                notes,
+                allEmployees: users
+            }, users);
+
+            requests.unshift(newReq);
+            saveData();
+            closeModal('modal-request-create');
+            if (initialStatus === 'open') openRequestAnswering(newReq.id);
+            renderRequestsDashboard();
+        }
+
+        // ==========================================
+        // RESPONDER SOLICITUD (UI DINÁMICA)
+        // ==========================================
+
+        function normalizeRequestState() {
+            requests = (requests || []).map(req => window.FieldRequests.normalizeRequest(req));
+        }
+
+        function replaceRequest(updated) {
+            const index = requests.findIndex(req => req.id === updated.id);
+            if (index >= 0) requests[index] = updated;
+            return updated;
+        }
+
+        function getRequestResponse(req, fieldId, employeeId) {
+            return window.FieldRequests.getResponse(req, fieldId, employeeId);
+        }
+
+        function openRequestAnswering(reqId) {
+            normalizeRequestState();
+            activeRequestId = reqId;
+            const req = requests.find(r => r.id === reqId);
+            if (!req) return;
+            document.getElementById('req-answering-title').textContent = req.title;
+            renderRequestAnsweringView();
+            openModal('modal-request-answering');
+        }
+
+        function renderRequestAnsweringView() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+            const isPersonal = Array.isArray(req.targets) && req.targets.length > 0;
+            const summary = window.FieldRequests.summarizeResults(req);
+            const badgesEl = document.getElementById('req-answering-badges');
+            if (badgesEl) {
+                const catIcon = getReqCategoryIcon(req.category);
+                badgesEl.innerHTML = `
+                    <span class="req-badge req-badge-${req.category || 'general'}"><span class="ic" data-icon="${catIcon}"></span> ${getReqCategoryLabel(req.category)}</span>
+                    <span class="req-badge req-badge-${req.priority || 'normal'}">${esc(req.priority || 'normal')}</span>
+                    <span class="req-badge req-badge-${req.status || 'open'}">${requestStatusLabel(req.status)}</span>`;
+            }
+            const progressText = document.getElementById('req-answering-progress-text');
+            const progressBar = document.getElementById('req-answering-progress-bar');
+            const answered = isPersonal ? summary.respondedTargets : Object.keys(req.responses || {}).length;
+            const total = isPersonal ? summary.totalTargets : (req.fields || []).length;
+            const pct = total ? Math.round((answered / total) * 100) : 0;
+            if (progressText) progressText.textContent = isPersonal ? `${answered} de ${total} trabajadores con respuesta (${pct}%)` : `${answered} de ${total} campos respondidos`;
+            if (progressBar) progressBar.style.width = pct + '%';
+            const container = document.getElementById('req-answering-container');
+            if (!container) return;
+            if (isPersonal) renderPersonalAnswering(container, req);
+            else renderGeneralAnswering(container, req);
+            applyIcons(container);
+        }
+
+        function requestStatusLabel(status) {
+            if (status === 'draft') return 'Borrador';
+            if (status === 'completed') return 'Completada';
+            if (status === 'closed') return 'Cerrada';
+            return 'Abierta';
+        }
+
+        function responseControlHtml(field, response, employeeId) {
+            const value = response ? response.value : '';
+            const fieldArg = encodeURIComponent(field.id);
+            const employeeArg = employeeId == null ? '' : encodeURIComponent(employeeId);
+            const action = employeeId == null ? 'setGeneralResponseEncoded' : 'setEmployeeResponseEncoded';
+            const call = encodedValue => `${action}('${fieldArg}','${employeeArg}','${encodedValue}')`;
+            const required = field.required ? '<span style="color:var(--danger-color)" aria-label="obligatorio"> *</span>' : '';
+            let control = '';
+            if (field.type === 'boolean' || field.type === 'boolean_comment') {
+                control = `<div class="req-btn-group"><button type="button" class="req-ans-btn ${value === true ? 'active-yes' : ''}" onclick="${call('bool:true')}"><span class="ic" data-icon="check"></span> Sí</button><button type="button" class="req-ans-btn ${value === false ? 'active-no' : ''}" onclick="${call('bool:false')}"><span class="ic" data-icon="close"></span> No</button></div>`;
+            } else if (field.type === 'check') {
+                control = `<button type="button" class="req-ans-btn ${value === true ? 'active-yes' : ''}" onclick="${call(value === true ? 'bool:false' : 'bool:true')}"><span class="ic" data-icon="check"></span> ${value === true ? 'Marcado ✓' : 'Marcar'}</button>`;
+            } else if (field.type === 'single_choice' || field.type === 'choice_comment') {
+                control = `<div class="req-btn-group" style="flex-wrap:wrap">${(field.options || []).map(option => `<button type="button" class="req-ans-btn ${value === option ? 'active-opt' : ''}" onclick="${call('str:' + encodeURIComponent(option))}">${esc(option)}</button>`).join('')}</div>`;
+            } else if (field.type === 'multiple_choice') {
+                const selected = Array.isArray(value) ? value : [];
+                control = `<div class="req-btn-group" style="flex-wrap:wrap">${(field.options || []).map(option => `<button type="button" class="req-ans-btn ${selected.includes(option) ? 'active-opt' : ''}" onclick="toggleMultipleResponseEncoded('${fieldArg}','${employeeArg}','${encodeURIComponent(option)}')">${selected.includes(option) ? '✓ ' : ''}${esc(option)}</button>`).join('')}</div>`;
+            } else if (field.type === 'number' || field.type === 'number_unit') {
+                control = `<div style="display:flex;align-items:center;gap:7px"><input type="number" inputmode="decimal" class="search-input" value="${esc(value ?? '')}" placeholder="Cantidad" onblur="${action}('${fieldArg}','${employeeArg}','num:'+encodeURIComponent(this.value),false)">${field.unit ? `<span style="font-size:12px;color:var(--text-muted)">${esc(field.unit)}</span>` : ''}</div>`;
+            } else if (field.type === 'text_long') {
+                control = `<textarea class="search-input" style="min-height:72px;resize:vertical" placeholder="Escribir respuesta..." onblur="${action}('${fieldArg}','${employeeArg}','str:'+encodeURIComponent(this.value),false)">${esc(value ?? '')}</textarea>`;
+            } else {
+                control = `<input type="text" class="search-input" value="${esc(value ?? '')}" placeholder="Escribir respuesta..." onblur="${action}('${fieldArg}','${employeeArg}','str:'+encodeURIComponent(this.value),false)">`;
+            }
+            return `<div class="req-field-control" style="display:flex;flex-direction:column;gap:6px"><label style="font-size:12px;font-weight:700">${esc(field.label)}${required}</label>${control}</div>`;
+        }
+
+        function renderPersonalAnswering(container, req) {
+            const targets = req.targets || [];
+            if (!targets.length) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-icon"><span class="ic" data-icon="employees"></span></div><div style="font-weight:700">La solicitud no tiene destinatarios</div><div style="font-size:12px;color:var(--text-muted);margin-top:5px">El snapshot original está vacío; duplique o cree una solicitud con destinatarios.</div></div>';
+                return;
+            }
+            container.innerHTML = '';
+            targets.forEach(employee => {
+                const answeredFields = (req.fields || []).filter(field => getRequestResponse(req, field.id, employee.id)).length;
+                const comments = (req.fields || []).map(field => getRequestResponse(req, field.id, employee.id)).filter(response => response && response.comment).length;
+                const primaryFields = (req.fields || []).slice(0, 1);
+                const detailFields = (req.fields || []).slice(1);
+                const card = document.createElement('article');
+                card.className = 'req-answer-card';
+                card.id = `req-emp-card-${employee.id}`;
+                card.innerHTML = `
+                    <div class="req-emp-header"><div class="req-emp-avatar">${esc(employee.number || '')}</div><div style="flex:1"><div class="req-emp-name">${esc(employee.name || '')}</div><div class="req-emp-role">${esc(employee.position || 'Sin cargo')}</div></div><span class="req-badge ${answeredFields ? 'req-badge-shared' : ''}">${answeredFields}/${(req.fields || []).length}</span></div>
+                    ${primaryFields.map(field => responseControlHtml(field, getRequestResponse(req, field.id, employee.id), employee.id)).join('')}
+                    ${(detailFields.length || primaryFields.some(field => field.allowComment || field.type.endsWith('_comment'))) ? `<button type="button" class="req-details-toggle" onclick="toggleEmployeeDetails('${encodeURIComponent(employee.id)}')"><span class="ic" data-icon="edit"></span> Detalles ${comments ? `• ${comments} nota(s)` : ''}<span class="req-detail-indicator">${answeredFields > 1 || comments ? '●' : '○'}</span></button><div class="req-details-panel" id="req-details-${encodeURIComponent(employee.id)}" style="display:${expandedRequestEmployeeIds.has(employee.id) ? 'flex' : 'none'}">${detailFields.map(field => responseControlHtml(field, getRequestResponse(req, field.id, employee.id), employee.id)).join('')}${(req.fields || []).map(field => field.allowComment || field.type.endsWith('_comment') ? `<div><label style="font-size:11px;font-weight:600">Comentario: ${esc(field.label)}</label><input type="text" class="search-input" value="${esc(getRequestResponse(req, field.id, employee.id)?.comment || '')}" placeholder="Detalle opcional" onblur="updateEmployeeCommentEncoded('${encodeURIComponent(field.id)}','${encodeURIComponent(employee.id)}',this.value)"></div>` : '').join('')}</div>` : ''}`;
+                container.appendChild(card);
+            });
+        }
+
+        function renderGeneralAnswering(container, req) {
+            container.innerHTML = (req.fields || []).map(field => `<div class="req-answer-card">${responseControlHtml(field, getRequestResponse(req, field.id), null)}${field.allowComment || field.type.endsWith('_comment') ? `<input type="text" class="search-input" value="${esc(getRequestResponse(req, field.id)?.comment || '')}" placeholder="Nota o comentario adicional" onblur="setGeneralCommentEncoded('${encodeURIComponent(field.id)}',this.value)">` : ''}</div>`).join('');
+        }
+
+        function decodeResponseValue(encoded) {
+            if (encoded === 'bool:true') return true;
+            if (encoded === 'bool:false') return false;
+            if (encoded.startsWith('num:')) return encoded.slice(4) === '' ? '' : Number(decodeURIComponent(encoded.slice(4)));
+            if (encoded.startsWith('str:')) return decodeURIComponent(encoded.slice(4));
+            return decodeURIComponent(encoded);
+        }
+
+        function persistRequestResponse(fieldId, employeeId, value, comment, shouldRender = true) {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req || req.status === 'closed') return;
+            requests = window.FieldRequestCoordinator.recordResponse(requests, req.id, { fieldId, employeeId: employeeId || null, value, comment }, window.FieldRequests);
+            saveData();
+            if (shouldRender) renderRequestAnsweringView();
+            else updateRequestAnsweringProgress();
+        }
+
+        function updateRequestAnsweringProgress() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+            const summary = window.FieldRequests.summarizeResults(req);
+            const personal = Array.isArray(req.targets) && req.targets.length > 0;
+            const answered = personal ? summary.respondedTargets : Object.keys(req.responses || {}).length;
+            const total = personal ? summary.totalTargets : (req.fields || []).length;
+            const pct = total ? Math.round((answered / total) * 100) : 0;
+            const progressText = document.getElementById('req-answering-progress-text');
+            const progressBar = document.getElementById('req-answering-progress-bar');
+            if (progressText) progressText.textContent = personal ? `${answered} de ${total} trabajadores con respuesta (${pct}%)` : `${answered} de ${total} campos respondidos`;
+            if (progressBar) progressBar.style.width = pct + '%';
+        }
+
+        function setEmployeeResponseEncoded(fieldArg, employeeArg, valueArg, shouldRender = true) {
+            const fieldId = decodeURIComponent(fieldArg); const employeeId = decodeURIComponent(employeeArg);
+            const existing = getRequestResponse(requests.find(r => r.id === activeRequestId), fieldId, employeeId);
+            persistRequestResponse(fieldId, employeeId, decodeResponseValue(valueArg), existing?.comment, shouldRender);
+        }
+
+        function setGeneralResponseEncoded(fieldArg, _employeeArg, valueArg, shouldRender = true) {
+            const fieldId = decodeURIComponent(fieldArg);
+            const req = requests.find(r => r.id === activeRequestId);
+            persistRequestResponse(fieldId, null, decodeResponseValue(valueArg), getRequestResponse(req, fieldId)?.comment, shouldRender);
+        }
+
+        function toggleMultipleResponseEncoded(fieldArg, employeeArg, optionArg) {
+            const fieldId = decodeURIComponent(fieldArg); const employeeId = employeeArg ? decodeURIComponent(employeeArg) : null;
+            const req = requests.find(r => r.id === activeRequestId); if (!req) return;
+            const existing = getRequestResponse(req, fieldId, employeeId); const values = Array.isArray(existing?.value) ? [...existing.value] : [];
+            const option = decodeURIComponent(optionArg); const index = values.indexOf(option);
+            if (index >= 0) values.splice(index, 1); else values.push(option);
+            persistRequestResponse(fieldId, employeeId, values, existing?.comment);
+        }
+
+        function updateEmployeeCommentEncoded(fieldArg, employeeArg, comment) {
+            const fieldId = decodeURIComponent(fieldArg); const employeeId = decodeURIComponent(employeeArg);
+            const req = requests.find(r => r.id === activeRequestId); const existing = getRequestResponse(req, fieldId, employeeId);
+            persistRequestResponse(fieldId, employeeId, existing ? existing.value : '', comment.trim() || null, false);
+        }
+
+        function setGeneralCommentEncoded(fieldArg, comment) {
+            const fieldId = decodeURIComponent(fieldArg); const req = requests.find(r => r.id === activeRequestId); const existing = getRequestResponse(req, fieldId);
+            persistRequestResponse(fieldId, null, existing ? existing.value : '', comment.trim() || null, false);
+        }
+
+        function toggleEmployeeDetails(employeeArg) {
+            const panel = document.getElementById(`req-details-${employeeArg}`);
+            if (panel) {
+                const employeeId = decodeURIComponent(employeeArg);
+                const opening = panel.style.display === 'none';
+                panel.style.display = opening ? 'flex' : 'none';
+                if (opening) expandedRequestEmployeeIds.add(employeeId);
+                else expandedRequestEmployeeIds.delete(employeeId);
+            }
+        }
+
+        // ==========================================
+        // REVISIÓN Y COMPARTIR RESULTADOS
+        // ==========================================
+
+        function openRequestReview(reqId) {
+            activeRequestId = reqId;
+            const req = requests.find(r => r.id === reqId);
+            if (!req) return;
+
+            document.getElementById('req-review-title').textContent = req.title;
+            const badgesEl = document.getElementById('req-review-badges');
+            if (badgesEl) {
+                badgesEl.innerHTML = `
+                    <span class="req-badge req-badge-${req.category || 'general'}">${esc(req.category || 'general')}</span>
+                    <span class="req-badge req-badge-${req.priority || 'normal'}">${esc(req.priority || 'normal')}</span>
+                    <span class="req-badge req-badge-${req.status || 'open'}">${requestStatusLabel(req.status)}</span>
+                `;
+            }
+
+            const dateEl = document.getElementById('req-review-date');
+            if (dateEl) {
+                dateEl.textContent = req.createdAt ? 'Creada: ' + new Date(req.createdAt).toLocaleString('es-ES') : '';
+            }
+
+            const bodyEl = document.getElementById('req-review-body');
+            if (bodyEl) {
+                const summary = window.FieldRequests.summarizeResults(req);
+                let html = '';
+
+                if (req.targets && req.targets.length) {
+                    html += `<div style="font-weight:700;margin-bottom:10px">Estado de respuestas: ${summary.respondedTargets} de ${summary.totalTargets} (${summary.completionPercentage}%)</div>`;
+                    summary.fieldSummaries.forEach(fieldSummary => {
+                        html += `<section style="margin-bottom:12px"><div style="font-weight:700">${esc(fieldSummary.label)}</div>`;
+                        if (fieldSummary.booleanCounts) html += `<div style="display:flex;gap:14px"><span style="color:var(--success-color)">✅ Sí: ${fieldSummary.booleanCounts.yes}</span><span style="color:var(--danger-color)">❌ No: ${fieldSummary.booleanCounts.no}</span><span>⏳ ${fieldSummary.booleanCounts.pending}</span></div>`;
+                        if (fieldSummary.choiceCounts) html += Object.entries(fieldSummary.choiceCounts).filter(([,count]) => count).map(([option,count]) => `<div>• ${esc(option)}: ${count}</div>`).join('') || '<div><i>Sin respuestas</i></div>';
+                        if (fieldSummary.numericValues) html += fieldSummary.numericValues.map(item => `<div>${item.targetName ? `<b>${esc(item.targetName)}:</b> ` : ''}${esc(item.value)} ${esc(item.unit || '')}${item.comment ? ` — ${esc(item.comment)}` : ''}</div>`).join('');
+                        if (fieldSummary.textResponses) html += fieldSummary.textResponses.map(item => `<div>${item.targetName ? `<b>${esc(item.targetName)}:</b> ` : ''}${esc(Array.isArray(item.value) ? item.value.join(', ') : item.value)}${item.comment ? ` — ${esc(item.comment)}` : ''}</div>`).join('');
+                        html += '</section>';
+                    });
+                    const comments = Object.values(req.responses || {}).filter(response => response.comment);
+                    if (comments.length) html += `<div style="font-weight:700;margin-top:10px">Detalles y observaciones</div>${comments.map(response => { const employee = req.targets.find(item => item.id === response.employeeId); return `<div style="font-size:12px"><b>${esc(employee?.name || 'General')}:</b> ${esc(response.comment)}</div>`; }).join('')}`;
+                } else {
+                    html += '<div style="font-weight:700;margin-bottom:8px">Respuestas registradas:</div>';
+                    (req.fields || []).forEach(field => {
+                        const response = getRequestResponse(req, field.id);
+                        const renderedValue = Array.isArray(response?.value) ? response.value.join(', ') : response?.value;
+                        html += `<div style="margin-bottom:8px"><b>${esc(field.label)}:</b> ${renderedValue !== undefined && renderedValue !== '' ? esc(String(renderedValue)) : '<i>Sin respuesta</i>'}${response?.comment ? `<div style="font-size:12px;color:var(--text-muted)">Nota: ${esc(response.comment)}</div>` : ''}</div>`;
+                    });
+                }
+                bodyEl.innerHTML = html;
+            }
+
+            const statusToggleBtn = document.getElementById('btn-review-status-toggle');
+            if (statusToggleBtn) {
+                statusToggleBtn.textContent = req.status === 'draft' ? 'Abrir solicitud' : (req.status === 'open' ? 'Marcar completada' : (req.status === 'completed' ? 'Cerrar' : 'Reabrir'));
+            }
+
+            openModal('modal-request-review');
+        }
+
+        function shareActiveRequestWhatsApp(mode) {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+
+            let text = '';
+            if (mode === 'summary') {
+                text = window.FieldRequests.formatWhatsAppSummary(req);
+            } else {
+                text = window.FieldRequests.formatWhatsAppDetail(req);
+            }
+
+            requests = window.FieldRequestCoordinator.recordShare(requests, req.id, window.FieldRequests);
+            saveData();
+
+            const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+            window.open(url, '_blank');
+            showToast('Abriendo WhatsApp...');
+            renderRequestsDashboard();
+        }
+
+        function toggleActiveRequestStatus() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+
+            let nextStatus = req.status === 'draft' ? 'open' : (req.status === 'open' ? 'completed' : (req.status === 'completed' ? 'closed' : 'open'));
+            if (nextStatus === 'completed' && !window.FieldRequests.isRequestComplete(req)) {
+                showToast('Faltan respuestas obligatorias antes de completar');
+                return;
+            }
+            requests = window.FieldRequestCoordinator.changeStatus(requests, req.id, nextStatus, window.FieldRequests);
+            saveData();
+            openRequestReview(req.id);
+            renderRequestsDashboard();
+            showToast(`Solicitud ${nextStatus === 'open' ? 'reabierta' : (nextStatus === 'completed' ? 'completada' : 'cerrada')}`);
+        }
+
+        function duplicateActiveRequest() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+
+            const copy = window.FieldRequests.duplicateRequest(req);
+            requests.unshift(copy);
+            saveData();
+            closeModal('modal-request-review');
+            openRequestAnswering(copy.id);
+            renderRequestsDashboard();
+            showToast('Solicitud duplicada');
+        }
+
+        function saveActiveRequestAsTemplate() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+
+            const tpl = window.FieldRequests.createTemplateFromRequest(req);
+            requestTemplates.push(tpl);
+            saveData();
+            showToast('Guardada como plantilla');
+        }
+
+        function deleteActiveRequest() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+
+            showConfirm('¿Eliminar esta solicitud permanentemente?', { title: 'Eliminar solicitud', confirmText: 'Eliminar' }).then(ok => {
+                if (!ok) return;
+                requests = requests.filter(r => r.id !== req.id);
+                saveData();
+                closeModal('modal-request-review');
+                renderRequestsDashboard();
+                showToast('Solicitud eliminada');
+            });
         }
 
         function renderEmployeesList() {
@@ -3875,7 +5339,9 @@
                 const v = localStorage.getItem(k);
                 if (v !== null) settings[k] = v;
             });
-            const data = { users, attendance: attendanceData, settings };
+            normalizeRequestState();
+            const requestExport = fieldRequestsRepository.exportCollections(requests, requestTemplates);
+            const data = { schemaVersion: 1, exportedAt: new Date().toISOString(), users, attendance: attendanceData, requests: requestExport.requests, templates: requestExport.templates, settings };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -3935,11 +5401,12 @@
                 const parsed = JSON.parse(raw);
                 const hasUsers = Array.isArray(parsed.users) && parsed.users.length > 0;
                 const hasAtt = parsed.attendance && typeof parsed.attendance === 'object';
-                if (!hasUsers && !hasAtt) throw new Error('No se encontraron datos válidos de empleados ni asistencia.');
+                const hasReqs = Array.isArray(parsed.requests) && parsed.requests.length > 0;
+                if (!hasUsers && !hasAtt && !hasReqs) throw new Error('No se encontraron datos válidos.');
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
                 const hasSettings = parsed.settings && typeof parsed.settings === 'object' && Object.keys(parsed.settings).length > 0;
-                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasSettings ? ' + ajustes.' : '.');
+                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasSettings ? ' + ajustes.' : '.');
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
             } catch (err) {
@@ -3957,17 +5424,23 @@
             const raw = document.getElementById('restore-backup-textarea').value.trim();
             try {
                 const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed.users)) users = parsed.users;
-                if (parsed.attendance) attendanceData = parsed.attendance;
-                if (parsed.settings && typeof parsed.settings === 'object') {
-                    BACKUP_SETTINGS_KEYS.forEach(k => {
-                        if (typeof parsed.settings[k] === 'string') localStorage.setItem(k, parsed.settings[k]);
-                    });
+                if (parsed.users !== undefined && !Array.isArray(parsed.users)) throw new Error('La lista de empleados no es válida');
+                if (parsed.attendance !== undefined && (!parsed.attendance || typeof parsed.attendance !== 'object' || Array.isArray(parsed.attendance))) throw new Error('La asistencia no es válida');
+                if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) throw new Error('Los ajustes no son válidos');
+                if (parsed.requests !== undefined && !Array.isArray(parsed.requests)) throw new Error('Las solicitudes no son válidas');
+                if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) throw new Error('Las plantillas no son válidas');
+                const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
+                imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
+                const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
+                const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings };
+                const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) } };
+                fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
+                    users = state.users; attendanceData = state.attendance; requests = state.requests; requestTemplates = state.templates;
+                    BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
                     applyRestoredSettings();
-                }
-                saveData();
+                }, saveData);
                 closeModal('modal-restore-backup');
-                renderList(); renderEmployeesList();
+                renderList(); renderEmployeesList(); renderRequestsDashboard();
                 document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
             } catch (err) {
                 document.getElementById('restore-validation-msg').innerHTML = '&#x274C; Error: ' + err.message;
