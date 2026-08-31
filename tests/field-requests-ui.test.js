@@ -120,3 +120,30 @@ test('custom template UI supports edit, duplicate and confirmed delete', () => {
   assert.match(html, /FieldRequests\.updateTemplate/);
   assert.match(html, /FieldRequests\.duplicateTemplate/);
 });
+
+test('Solicitudes keeps bottom navigation geometry stable across scrollbar changes', () => {
+  const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+  assert.match(html, /html\s*\{[^}]*scrollbar-gutter:\s*stable/s);
+  assert.match(html, /\.bottom-nav\s*\{[^}]*box-sizing:\s*border-box/s);
+});
+
+test('center FAB opens Nueva solicitud contextually and still closes a big modal first', () => {
+  const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+  const handler = html.slice(html.indexOf('function handleNavFab()'), html.indexOf('function topmostModal'));
+  assert.match(handler, /if \(activeBigModal\) \{ closeModal\(activeBigModal\); return; \}/);
+  assert.match(handler, /if \(currentView === 'requests'\) \{ openNewRequestModal\(\); return; \}/);
+});
+
+test('request cards are compact and expose confirmed non-bubbling delete', () => {
+  const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+  assert.match(html, /class="req-card-delete"[^>]+event\.stopPropagation\(\); deleteRequestFromCard/);
+  assert.match(html, /class="req-card-delete"[\s\S]+?data-icon="trash"/);
+  assert.match(html, /function deleteRequestFromCard\(requestId\)[\s\S]+showConfirm[\s\S]+if \(!confirmed\) return;[\s\S]+requests = requests\.filter[\s\S]+saveData\(\)/);
+  assert.match(html, /\.req-card\s*\{[^}]*padding:\s*12px[^}]*margin-bottom:\s*8px[^}]*gap:\s*6px/s);
+  assert.match(html, /\.req-card-delete\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s);
+});
+
+test('service worker cache version advances for Solicitudes UI release', () => {
+  const sw = readFileSync(path.resolve(__dirname, '../sw.js'), 'utf8');
+  assert.match(sw, /asistencia-v2\.12\.0/);
+});

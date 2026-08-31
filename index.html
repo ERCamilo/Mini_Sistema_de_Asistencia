@@ -92,6 +92,11 @@
             -webkit-tap-highlight-color: transparent;
         }
 
+        html {
+            overflow-y: scroll;
+            scrollbar-gutter: stable;
+        }
+
         /* Controles que ahora son <button> reales (a11y por teclado/lector de pantalla):
            reset temprano para que las clases de abajo definan su tipografia/colores. */
         .check-box,
@@ -1179,6 +1184,23 @@
             gap: 12px;
         }
 
+        .settings-section {
+            margin-bottom: 24px;
+        }
+
+        .settings-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            padding-left: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         .export-option {
             background: var(--input-bg);
             padding: 16px;
@@ -1191,6 +1213,20 @@
             text-align: left;
             width: 100%;
             color: var(--text-color);
+            transition: border-color 0.2s, transform 0.1s;
+        }
+
+        .export-option:active {
+            transform: scale(0.99);
+        }
+
+        .export-option-danger {
+            border-color: rgba(239, 68, 68, 0.35);
+            background: rgba(239, 68, 68, 0.06);
+        }
+
+        .export-option-danger:hover {
+            border-color: var(--danger-color);
         }
 
         .empty-state {
@@ -1425,6 +1461,7 @@
             border-top: 1px solid var(--border-color);
             z-index: 100;
             padding-bottom: env(safe-area-inset-bottom, 0px);
+            box-sizing: border-box;
         }
 
         .nav-item {
@@ -1783,15 +1820,16 @@
             background: var(--card-bg);
             border: 1px solid var(--border-color);
             border-radius: 20px;
-            padding: 16px;
-            margin-bottom: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 6px;
             transition: transform 0.15s ease, border-color 0.2s ease;
             box-shadow: 0 4px 14px rgba(0,0,0,0.2);
             cursor: pointer;
         }
+        #requests-container { gap: 0; }
         .req-card:active {
             transform: scale(0.985);
             border-color: var(--accent-color);
@@ -1870,10 +1908,20 @@
             border-radius: 12px;
             cursor: pointer;
             transition: all 0.15s ease;
+            min-height: 40px;
         }
         .req-cta-btn:active {
             background: var(--accent-color);
             color: #fff;
+        }
+        .req-card-delete {
+            min-width: 44px;
+            min-height: 44px;
+            border: 1px solid var(--danger-color);
+            border-radius: 12px;
+            background: transparent;
+            color: var(--danger-color);
+            cursor: pointer;
         }
 
         /* Answering UI */
@@ -2394,92 +2442,154 @@
         </div>
     </div>
 
-    <!-- VISTA MÁS / GESTIÓN DE DATOS -->
+    <!-- VISTA MÁS (AJUSTES Y GESTIÓN DE DATOS) -->
     <div id="more-view" class="hidden">
-        <div class="dashboard-panel">
-            <div class="export-options">
-                <button type="button" class="export-option" onclick="openModal('theme-menu')">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="palette"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--text-color);">Apariencia</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Tema de color e íconos</div>
-                    </div>
+        <div class="view-selector">
+            <div class="view-mode-pills">
+                <button type="button" class="view-btn active" id="btn-more-tab-settings" onclick="setMoreTab('settings')">
+                    <span class="ic" data-icon="settings"></span> Ajustes
                 </button>
-                <button type="button" class="export-option" onclick="downloadJSON()">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados y asistencia</div>
-                    </div>
+                <button type="button" class="view-btn" id="btn-more-tab-data" onclick="setMoreTab('data')">
+                    <span class="ic" data-icon="backup"></span> Gestión de Datos
                 </button>
-                <button type="button" class="export-option" onclick="openImportBackupModal()">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="restore"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Pegar JSON de respaldo completo</div>
+            </div>
+        </div>
+
+        <div class="dashboard-panel" style="padding-top:0;">
+
+            <!-- PESTAÑA 1: AJUSTES -->
+            <div id="more-tab-settings-panel">
+                <!-- SECCIÓN: HERRAMIENTAS Y REPORTES -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span class="ic" data-icon="reports"></span> Herramientas y Reportes
                     </div>
-                </button>
-                <button type="button" class="export-option" onclick="openImportEmployeesModal()">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="replace"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--danger-color);">Borrar y reemplazar todo</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Reemplaza TODA la lista con un JSON (peligroso)</div>
+                    <div class="export-options">
+                        <button type="button" class="export-option" onclick="switchView('reports')">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="reports"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-color);">Reportes de asistencia</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Generar reporte en PDF o Excel</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" onclick="openModal('theme-menu')">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="palette"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-color);">Apariencia</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Tema de color e íconos</div>
+                            </div>
+                        </button>
                     </div>
-                </button>
-                <button type="button" class="export-option" onclick="openDraftImportModal()">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="addMany"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--accent-color);">Agregar varios</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Crear varios empleados a mano</div>
+                </div>
+
+                <!-- SECCIÓN: SISTEMA Y AJUSTES -->
+                <div class="settings-section" style="margin-bottom:0;">
+                    <div class="settings-section-title">
+                        <span class="ic" data-icon="settings"></span> Sistema y Notificaciones
                     </div>
-                </button>
-                <button type="button" class="export-option" onclick="switchView('reports')">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="reports"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--text-color);">Reportes de asistencia</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Generar reporte en PDF o Excel</div>
-                    </div>
-                </button>
-                <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
-                <button type="button" class="export-option" id="btn-install-pwa" onclick="installPWA()"
-                    style="opacity:0.4; cursor:not-allowed;">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="install"></span></span>
-                    <div>
-                        <div style="font-weight: 600; color: var(--text-color);" id="install-pwa-label">Instalar App
+                    <div class="reminder-config" style="margin-bottom:12px;">
+                        <div class="reminder-row">
+                            <div>
+                                <div class="reminder-label">Recordatorio diario</div>
+                                <div class="reminder-hint" id="reminder-status">Desactivado</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="reminder-toggle" onchange="toggleReminder(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
                         </div>
-                        <div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando
-                            disponibilidad...</div>
-                    </div>
-                </button>
-                <button type="button" class="export-option" onclick="clearCacheAndReload()">
-                    <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
-                    <div>
-                        <div style="font-weight: 600;">Buscar actualización</div>
-                        <div style="font-size: 12px; color: var(--text-muted);">Limpia el caché y carga la última versión</div>
-                    </div>
-                </button>
-                <hr style="border:none; border-top:1px solid var(--border-color); margin:8px 0;">
-                <div class="reminder-config">
-                    <div class="reminder-row">
-                        <div>
-                            <div class="reminder-label">Recordatorio diario</div>
-                            <div class="reminder-hint" id="reminder-status">Desactivado</div>
+                        <div class="reminder-row" id="reminder-time-row" style="display:none;">
+                            <div>
+                                <div class="reminder-label">Hora del recordatorio</div>
+                                <div class="reminder-hint">Aviso local: solo suena con la app abierta</div>
+                            </div>
+                            <input type="time" id="reminder-time" class="time-input" value="09:00"
+                                onchange="updateReminderTime(this.value)">
                         </div>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="reminder-toggle" onchange="toggleReminder(this.checked)">
-                            <span class="toggle-slider"></span>
-                        </label>
                     </div>
-                    <div class="reminder-row" id="reminder-time-row" style="display:none;">
-                        <div>
-                            <div class="reminder-label">Hora del recordatorio</div>
-                            <div class="reminder-hint">Aviso local: solo suena con la app abierta</div>
-                        </div>
-                        <input type="time" id="reminder-time" class="time-input" value="09:00"
-                            onchange="updateReminderTime(this.value)">
+                    <div class="export-options">
+                        <button type="button" class="export-option" id="btn-install-pwa" onclick="installPWA()"
+                            style="opacity:0.4; cursor:not-allowed;">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="install"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-color);" id="install-pwa-label">Instalar App</div>
+                                <div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando disponibilidad...</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" onclick="clearCacheAndReload()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
+                            <div>
+                                <div style="font-weight: 600;">Buscar actualización</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Limpia el caché y carga la última versión</div>
+                            </div>
+                        </button>
                     </div>
                 </div>
             </div>
+
+            <!-- PESTAÑA 2: GESTIÓN DE DATOS -->
+            <div id="more-tab-data-panel" class="hidden">
+                <!-- SECCIÓN: DATOS Y RESPALDOS -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span class="ic" data-icon="backup"></span> Respaldos e Importación
+                    </div>
+                    <div class="export-options">
+                        <button type="button" class="export-option" onclick="downloadJSON()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados, asistencias, solicitudes y ajustes</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" onclick="openImportBackupModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="restore"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Restaurar respaldo (JSON)</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Restaurar desde archivo .json o texto pegado</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" onclick="openImportEmployeesModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="employees"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Importar / Actualizar empleados (JSON)</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Actualizar existentes (preserva asistencias) o reemplazar</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" onclick="openDraftImportModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="addMany"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Agregar varios / Foto OCR</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Crear empleados a mano o escanear con cámara</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" onclick="openCopyClipboardModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="copy"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Copiar al portapapeles</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Copiar JSON simple de empleados o con 30 días de asistencia</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN: ZONA DE PELIGRO -->
+                <div class="settings-section" style="margin-bottom:0;">
+                    <div class="settings-section-title" style="color:var(--danger-color);">
+                        <span class="ic" data-icon="warning"></span> Zona de Peligro
+                    </div>
+                    <div class="export-options">
+                        <button type="button" class="export-option export-option-danger" onclick="clearAllData()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="trash"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--danger-color);">Borrar todos los datos</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Elimina permanentemente empleados, asistencias y solicitudes</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -2505,13 +2615,13 @@
         </div>
     </div>
 
-    <!-- MODAL IMPORTAR EMPLEADOS (PEGAR JSON) -->
+    <!-- MODAL IMPORTAR / ACTUALIZAR EMPLEADOS (PEGAR JSON) -->
     <div class="modal big" id="modal-import-employees">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
-                <div class="modal-title">&#x26A0;&#xFE0F; Borrar y reemplazar todo</div>
-                <div class="modal-subtitle">Esto BORRA todos los empleados y los reemplaza con el JSON pegado</div>
+                <div class="modal-title">&#x1F465; Importar / Actualizar Empleados</div>
+                <div class="modal-subtitle">Pegá un JSON para actualizar datos existentes o sustituir la nómina</div>
             </div>
 
             <details
@@ -2521,13 +2631,13 @@
                 </summary>
                 <pre
                     style="margin-top:10px;font-size:11px;color:var(--accent-color);white-space:pre-wrap;word-break:break-all;line-height:1.6;">[
-  { "number": "1", "name": "Ana Garcia",   "position": "Gerente" },
+  { "number": "1", "name": "Ana Garcia",   "position": "Gerente", "sueldo": "2500" },
   { "number": "2", "name": "Carlos Perez", "position": "Dev" },
   { "number": "3", "name": "Maria Lopez" }
 ]</pre>
             </details>
 
-            <textarea id="import-employees-textarea" placeholder="Pega aqui tu JSON..."
+            <textarea id="import-employees-textarea" placeholder="Pegá aquí tu JSON de empleados..."
                 style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
                 oninput="validateImportTextarea(this)"
                 onpaste="setTimeout(function(){validateImportTextarea(document.getElementById('import-employees-textarea'))},50)"></textarea>
@@ -2535,11 +2645,48 @@
             <div id="import-validation-msg"
                 style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
 
-            <button type="button" id="btn-do-import" data-ready="no"
-                style="width:100%;padding:16px;border-radius:16px;border:none;background:var(--danger-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
-                onclick="doImportEmployeesFromText()">
-                Borrar y reemplazar
-            </button>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+                <button type="button" id="btn-do-import-merge" data-ready="no"
+                    class="btn-full btn-primary"
+                    style="opacity:0.4;cursor:not-allowed;"
+                    onclick="doImportEmployeesFromText('merge')">
+                    <span class="ic" data-icon="refresh"></span> Actualizar y agregar (Conservar IDs)
+                </button>
+                <button type="button" id="btn-do-import" data-ready="no"
+                    class="btn-full btn-danger"
+                    style="opacity:0.4;cursor:not-allowed;margin-top:0;"
+                    onclick="doImportEmployeesFromText('replace')">
+                    <span class="ic" data-icon="trash"></span> Borrar y reemplazar todo
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL COPIAR AL PORTAPAPELES -->
+    <div class="modal big" id="modal-copy-clipboard" role="dialog" aria-modal="true" aria-labelledby="copy-clipboard-title">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title" id="copy-clipboard-title">&#x1F4CB; Copiar al Portapapeles</div>
+                <div class="modal-subtitle">Elegí qué formato de datos querés copiar como JSON</div>
+            </div>
+            <div class="export-options" style="margin-bottom:14px;">
+                <button type="button" class="export-option" onclick="copyEmployeesOnly()">
+                    <span style="font-size: 24px;"><span class="ic" data-icon="employees"></span></span>
+                    <div>
+                        <div style="font-weight: 600; color: var(--accent-color);">1. Solo datos de empleados (Simple)</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Nombres, números, cargos y sueldos en JSON</div>
+                    </div>
+                </button>
+                <button type="button" class="export-option" onclick="copyDataWith30DaysAttendance()">
+                    <span style="font-size: 24px;"><span class="ic" data-icon="attendance"></span></span>
+                    <div>
+                        <div style="font-weight: 600; color: var(--accent-color);">2. Completo con asistencia (Hasta 30 días)</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Empleados + registro de asistencia del último mes</div>
+                    </div>
+                </button>
+            </div>
+            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-copy-clipboard')">Cerrar</button>
         </div>
     </div>
 
@@ -2794,6 +2941,7 @@
         let customFieldsDraft = [];
         let editingRequestTemplateId = null;
         let currentFilter = 'all';
+        let currentView = 'attendance';
         let selectedDate = new Date().toISOString().split('T')[0];
         let currentWeekStart = new Date();
         let selectedUserId = null;
@@ -2805,6 +2953,7 @@
         let pendingEmployeeConflict = null;
         let draftSession = null;
         let pendingDraftConflict = null;
+        let moreTab = 'settings';
 
         const {
             initializeEmployeeNumberState,
@@ -3598,6 +3747,7 @@
         // The center + is contextual: closes the open big modal, else toggles the add sheet.
         function handleNavFab() {
             if (activeBigModal) { closeModal(activeBigModal); return; }
+            if (currentView === 'requests') { openNewRequestModal(); return; }
             toggleAddMenu();
         }
 
@@ -4468,6 +4618,7 @@
                 if (el) el.classList.toggle('hidden', v !== view);
             });
             document.getElementById('section-title').textContent = VIEW_TITLES[view] || '';
+            currentView = view;
             if (view === 'attendance') updateDashboard();
             else if (view === 'requests') renderRequestsDashboard();
             else if (view === 'employees') renderEmployeesList();
@@ -4500,6 +4651,19 @@
             });
             renderRequestsDashboard();
         }
+
+        window.setMoreTab = (tab) => {
+            moreTab = tab;
+            document.querySelectorAll('#more-view .view-mode-pills .view-btn').forEach(b => {
+                b.classList.toggle('active', b.id === 'btn-more-tab-' + tab);
+            });
+            const settingsPanel = document.getElementById('more-tab-settings-panel');
+            const dataPanel = document.getElementById('more-tab-data-panel');
+            if (settingsPanel && dataPanel) {
+                settingsPanel.classList.toggle('hidden', tab !== 'settings');
+                dataPanel.classList.toggle('hidden', tab !== 'data');
+            }
+        };
 
         function setRequestsCategory(cat) {
             requestsCategory = cat;
@@ -4579,6 +4743,7 @@
                                 </div>
                             </div>
                         </div>
+                        <button type="button" class="req-card-delete" aria-label="Eliminar solicitud" onclick="event.stopPropagation(); deleteRequestFromCard('${esc(req.id)}')"><span class="ic" data-icon="trash"></span></button>
                     </div>
                     ${req.category === 'personal' && summary.targetCount > 0 ? `
                         <div class="req-progress-bar">
@@ -5291,6 +5456,16 @@
             });
         }
 
+        function deleteRequestFromCard(requestId) {
+            showConfirm('¿Eliminar esta solicitud permanentemente?', { title: 'Eliminar solicitud', confirmText: 'Eliminar' }).then(confirmed => {
+                if (!confirmed) return;
+                requests = requests.filter(request => request.id !== requestId);
+                saveData();
+                renderRequestsDashboard();
+                showToast('Solicitud eliminada');
+            });
+        }
+
         function renderEmployeesList() {
             const container = document.getElementById('employees-container');
             const search = document.getElementById('search-employees').value.toLowerCase();
@@ -5447,32 +5622,47 @@
             }
         }
 
-        // --- IMPORTAR EMPLEADOS DESDE CAMPO DE TEXTO ---
+        // --- IMPORTAR / ACTUALIZAR EMPLEADOS DESDE JSON ---
         window.openImportEmployeesModal = () => {
             closeModal('export-menu');
             const ta = document.getElementById('import-employees-textarea');
-            const btn = document.getElementById('btn-do-import');
+            const btnMerge = document.getElementById('btn-do-import-merge');
+            const btnReplace = document.getElementById('btn-do-import');
             const msg = document.getElementById('import-validation-msg');
             ta.value = '';
             ta.style.borderColor = '';
             msg.innerHTML = '';
-            btn.style.opacity = '0.4';
-            btn.style.cursor = 'not-allowed';
-            btn.setAttribute('data-ready', 'no');
+            [btnMerge, btnReplace].forEach(btn => {
+                if (btn) {
+                    btn.style.opacity = '0.4';
+                    btn.style.cursor = 'not-allowed';
+                    btn.setAttribute('data-ready', 'no');
+                }
+            });
             openModal('modal-import-employees');
         }
 
         window.validateImportTextarea = (ta) => {
             const msg = document.getElementById('import-validation-msg');
-            const btn = document.getElementById('btn-do-import');
+            const btnMerge = document.getElementById('btn-do-import-merge');
+            const btnReplace = document.getElementById('btn-do-import');
             const raw = ta.value.trim();
 
+            const setReady = (ready, text, isSuccess) => {
+                ta.style.borderColor = ready ? 'var(--success-color)' : (raw ? 'var(--danger-color)' : '');
+                msg.style.color = ready ? 'var(--success-color)' : 'var(--danger-color)';
+                msg.innerHTML = text;
+                [btnMerge, btnReplace].forEach(btn => {
+                    if (btn) {
+                        btn.style.opacity = ready ? '1' : '0.4';
+                        btn.style.cursor = ready ? 'pointer' : 'not-allowed';
+                        btn.setAttribute('data-ready', ready ? 'yes' : 'no');
+                    }
+                });
+            };
+
             if (!raw) {
-                ta.style.borderColor = '';
-                msg.innerHTML = '';
-                btn.style.opacity = '0.4';
-                btn.style.cursor = 'not-allowed';
-                btn.setAttribute('data-ready', 'no');
+                setReady(false, '', false);
                 return;
             }
 
@@ -5484,81 +5674,254 @@
 
                 if (!arr) throw new Error('Debe ser un array [ ] o un objeto con clave "employees".');
 
-                const valid = arr.filter(e => e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== '');
+                const valid = arr.filter(e => e && e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== '');
                 const skipped = arr.length - valid.length;
                 if (valid.length === 0) throw new Error('Ningún objeto tiene los campos "name" y "number".');
 
-                ta.style.borderColor = 'var(--success-color)';
-                msg.style.color = 'var(--success-color)';
-                msg.innerHTML = '&#x2705; ' + valid.length + ' empleado(s) válidos' + (skipped > 0 ? ' (' + skipped + ' se omitirán).' : '.');
-                btn.style.opacity = '1';
-                btn.style.cursor = 'pointer';
-                btn.setAttribute('data-ready', 'yes');
+                const normalizeNum = window.EmployeeNumberRules?.normalizeEmployeeNumber || (v => parseInt(v, 10) || null);
+                let matchingCount = 0;
+                let newCount = 0;
 
+                valid.forEach(emp => {
+                    const normNum = normalizeNum(emp.number);
+                    const match = users.some(u => (emp.id && u.id === emp.id) || (normNum !== null && normalizeNum(u.number) === normNum));
+                    if (match) matchingCount++;
+                    else newCount++;
+                });
+
+                let statusMsg = '&#x2705; ' + valid.length + ' empleado(s) válido(s)';
+                if (matchingCount > 0 && newCount > 0) {
+                    statusMsg += ' (' + matchingCount + ' actualizarán existentes, ' + newCount + ' nuevos)';
+                } else if (matchingCount > 0) {
+                    statusMsg += ' (' + matchingCount + ' actualizarán existentes)';
+                } else {
+                    statusMsg += ' (' + newCount + ' nuevos)';
+                }
+                if (skipped > 0) statusMsg += ' · ' + skipped + ' omitidos';
+
+                setReady(true, statusMsg, true);
             } catch (err) {
-                ta.style.borderColor = 'var(--danger-color)';
-                msg.style.color = 'var(--danger-color)';
-                msg.innerHTML = '&#x274C; ' + err.message;
-                btn.style.opacity = '0.4';
-                btn.style.cursor = 'not-allowed';
-                btn.setAttribute('data-ready', 'no');
+                setReady(false, '&#x274C; ' + err.message, false);
             }
         }
 
-        window.doImportEmployeesFromText = () => {
-            const btn = document.getElementById('btn-do-import');
+        window.doImportEmployeesFromText = (mode = 'merge') => {
+            const btnMerge = document.getElementById('btn-do-import-merge');
+            const btnReplace = document.getElementById('btn-do-import');
+            const targetBtn = mode === 'replace' ? btnReplace : btnMerge;
+            if (targetBtn && targetBtn.getAttribute('data-ready') !== 'yes') return;
 
-            // Guard: solo actuar si la validación fue exitosa
-            if (btn.getAttribute('data-ready') !== 'yes') return;
+            const raw = document.getElementById('import-employees-textarea').value.trim();
 
-            // Confirmación explícita: acción destructiva (reemplaza TODA la lista).
-            showConfirm('Esto BORRARÁ los ' + users.length + ' empleados actuales y los reemplazará con la lista pegada. Esta acción no se puede deshacer. ¿Continuar?', { title: 'Borrar y reemplazar todo', confirmText: 'Borrar y reemplazar' }).then(ok => {
-              if (!ok) return;
+            const executeImport = () => {
+                try {
+                    const parsed = JSON.parse(raw);
+                    let incoming = Array.isArray(parsed)
+                        ? parsed
+                        : (Array.isArray(parsed.employees) ? parsed.employees : null);
 
-              const raw = document.getElementById('import-employees-textarea').value.trim();
+                    incoming = incoming.filter(e =>
+                        e && e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== ''
+                    );
 
-              try {
-                const parsed = JSON.parse(raw);
-                let incoming = Array.isArray(parsed)
-                    ? parsed
-                    : (Array.isArray(parsed.employees) ? parsed.employees : null);
+                    if (incoming.length === 0) {
+                        document.getElementById('import-validation-msg').innerHTML =
+                            '&#x274C; No se encontraron empleados válidos.';
+                        return;
+                    }
 
-                incoming = incoming.filter(e =>
-                    e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== ''
-                );
+                    const normalizeNum = window.EmployeeNumberRules?.normalizeEmployeeNumber || (v => parseInt(v, 10) || null);
 
-                if (incoming.length === 0) {
+                    if (mode === 'replace') {
+                        users = incoming.map(emp => ({
+                            id: emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
+                            name: String(emp.name).trim(),
+                            number: String(emp.number).trim(),
+                            position: emp.position ? String(emp.position).trim() : '',
+                            sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined
+                        }));
+                        saveData();
+                        closeModal('modal-import-employees');
+                        renderList();
+                        renderEmployeesList();
+                        showToast(`Nómina reemplazada: ${users.length} empleado(s).`);
+                    } else {
+                        // Merge mode
+                        let updatedCount = 0;
+                        let createdCount = 0;
+
+                        incoming.forEach(emp => {
+                            const normNum = normalizeNum(emp.number);
+                            const existing = users.find(u => (emp.id && u.id === emp.id) || (normNum !== null && normalizeNum(u.number) === normNum));
+                            if (existing) {
+                                existing.name = String(emp.name).trim();
+                                if (emp.position !== undefined) existing.position = String(emp.position).trim();
+                                if (emp.sueldo !== undefined) {
+                                    const s = String(emp.sueldo).trim();
+                                    existing.sueldo = s ? s : undefined;
+                                }
+                                updatedCount++;
+                            } else {
+                                users.push({
+                                    id: emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
+                                    name: String(emp.name).trim(),
+                                    number: String(emp.number).trim(),
+                                    position: emp.position ? String(emp.position).trim() : '',
+                                    sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined
+                                });
+                                createdCount++;
+                            }
+                        });
+
+                        saveData();
+                        closeModal('modal-import-employees');
+                        renderList();
+                        renderEmployeesList();
+                        showToast(`Importación: ${updatedCount} actualizado(s), ${createdCount} agregado(s).`);
+                    }
+                } catch (err) {
                     document.getElementById('import-validation-msg').innerHTML =
-                        '&#x274C; No se encontraron empleados válidos.';
-                    return;
+                        '&#x274C; Error: ' + err.message;
                 }
+            };
 
-                // Normalizar y guardar
-                users = incoming.map(emp => ({
-                    id: emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
-                    name: String(emp.name).trim(),
-                    number: String(emp.number).trim(),
-                    position: emp.position ? String(emp.position).trim() : ''
-                }));
+            if (mode === 'replace') {
+                showConfirm('Esto BORRARÁ los ' + users.length + ' empleados actuales y los reemplazará con la lista pegada. Esta acción no se puede deshacer. ¿Continuar?', {
+                    title: 'Borrar y reemplazar todo',
+                    confirmText: 'Borrar y reemplazar',
+                    danger: true
+                }).then(ok => {
+                    if (ok) executeImport();
+                });
+            } else {
+                executeImport();
+            }
+        }
 
+        // --- BORRAR TODOS LOS DATOS (RESET DE FÁBRICA) ---
+        window.clearAllData = () => {
+            showConfirm('¿Estás seguro de que deseas borrar TODOS los datos? Se eliminarán permanentemente todos los empleados, asistencias, solicitudes y plantillas personalizadas. Esta acción no se puede deshacer.', {
+                title: 'Borrar todos los datos',
+                confirmText: 'Sí, borrar todo',
+                danger: true
+            }).then(ok => {
+                if (!ok) return;
+                users = [];
+                attendanceData = {};
+                requests = [];
+                requestTemplates = [];
+                lastActionTime = '';
+
+                // Limpiar llaves persistidas
+                ['users', 'weeklyAttendance', 'requests', 'requestTemplates', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
                 saveData();
-                closeModal('modal-import-employees');
 
-                // Refrescar vistas
                 renderList();
                 renderEmployeesList();
-
-                // Feedback final (sin confirm ni alert bloqueante)
-                const msg = document.getElementById('import-validation-msg');
-                msg.style.color = 'var(--success-color)';
-                msg.innerHTML = '&#x2705; ' + users.length + ' empleados importados correctamente.';
-
-              } catch (err) {
-                document.getElementById('import-validation-msg').innerHTML =
-                    '&#x274C; Error: ' + err.message;
-              }
+                renderRequestsDashboard();
+                updateDashboard();
+                showToast('Todos los datos han sido borrados.');
             });
         }
+
+        // --- COPIAR AL PORTAPAPELES ---
+        function copyTextToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text);
+            }
+            return new Promise((resolve, reject) => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.top = '0';
+                    ta.style.left = '0';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    if (successful) resolve();
+                    else reject(new Error('No se pudo copiar'));
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        }
+
+        window.openCopyClipboardModal = () => {
+            openModal('modal-copy-clipboard');
+        };
+
+        window.copyEmployeesOnly = () => {
+            if (!users || users.length === 0) {
+                showToast('No hay empleados para copiar.');
+                return;
+            }
+            const cleanList = users.map(u => {
+                const item = {
+                    number: u.number,
+                    name: u.name
+                };
+                if (u.position) item.position = u.position;
+                if (u.sueldo) item.sueldo = u.sueldo;
+                return item;
+            });
+            const jsonStr = JSON.stringify(cleanList, null, 2);
+            copyTextToClipboard(jsonStr)
+                .then(() => {
+                    closeModal('modal-copy-clipboard');
+                    showToast(`${cleanList.length} empleado(s) copiados al portapapeles ✅`);
+                })
+                .catch(() => {
+                    showToast('Error al copiar al portapapeles ❌');
+                });
+        };
+
+        window.copyDataWith30DaysAttendance = () => {
+            if (!users || users.length === 0) {
+                showToast('No hay empleados para copiar.');
+                return;
+            }
+
+            const now = new Date();
+            const cutoffDate = new Date();
+            cutoffDate.setDate(now.getDate() - 30);
+            const cutoffStr = cutoffDate.toISOString().split('T')[0];
+
+            const filteredAttendance = {};
+            for (const d in attendanceData) {
+                if (d >= cutoffStr) {
+                    filteredAttendance[d] = attendanceData[d];
+                }
+            }
+
+            const payload = {
+                schemaVersion: 1,
+                exportedAt: new Date().toISOString(),
+                period: 'last-30-days',
+                users: users.map(u => ({
+                    id: u.id,
+                    number: u.number,
+                    name: u.name,
+                    position: u.position || '',
+                    sueldo: u.sueldo || undefined
+                })),
+                attendance: filteredAttendance
+            };
+
+            const jsonStr = JSON.stringify(payload, null, 2);
+            copyTextToClipboard(jsonStr)
+                .then(() => {
+                    closeModal('modal-copy-clipboard');
+                    const daysCount = Object.keys(filteredAttendance).length;
+                    showToast(`Datos con ${daysCount} día(s) de asistencia copiados ✅`);
+                })
+                .catch(() => {
+                    showToast('Error al copiar al portapapeles ❌');
+                });
+        };
 
         init();
     </script>
