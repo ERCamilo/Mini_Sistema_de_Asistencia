@@ -11,6 +11,7 @@ const PRECACHE_ASSETS = [
   './attendance-report.js',
   './attendance-repository.js',
   './attendance-coordinator.js',
+  './import-history-repository.js',
   './icon-set.js',
   './check-cycle.js',
   './local-db.js',

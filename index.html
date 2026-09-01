@@ -2599,6 +2599,13 @@
                                 <div style="font-size: 12px; color: var(--text-muted);">Copiar JSON simple de empleados o con 30 días de asistencia</div>
                             </div>
                         </button>
+                        <button type="button" class="export-option" id="btn-undo-import" onclick="undoLastImport()" style="display:none;">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Deshacer última importación</div>
+                                <div style="font-size: 12px; color: var(--text-muted);" id="undo-import-hint">Revertir el último lote importado</div>
+                            </div>
+                        </button>
                     </div>
                 </div>
 
@@ -2960,6 +2967,7 @@
     <script src="./employee-repository.js"></script>
     <script src="./attendance-repository.js"></script>
     <script src="./attendance-coordinator.js"></script>
+    <script src="./import-history-repository.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -3013,6 +3021,12 @@
         const attendanceCoordinator = window.AttendanceCoordinator.createAttendanceCoordinator({
             repository: attendanceRepository,
             storage: localStorage
+        });
+        const importHistoryRepository = window.ImportHistoryRepository.createImportHistoryRepository({
+            storage: localStorage,
+            onHistoryChanged: () => {
+                if (typeof updateUndoImportButton === 'function') updateUndoImportButton();
+            }
         });
 
         // --- SISTEMA DE ICONOS (emoji <-> Lucide) ---
@@ -3344,6 +3358,7 @@
             markActiveCheckMode(currentCheckMode);
             updateNavActive('attendance');
             applyIcons(document);
+            updateUndoImportButton();
             initLocalPersistence();
         }
 
@@ -5796,6 +5811,52 @@
             }
         }
 
+        window.updateUndoImportButton = () => {
+            const btn = document.getElementById('btn-undo-import');
+            const hint = document.getElementById('undo-import-hint');
+            if (!btn) return;
+            const latest = importHistoryRepository.getLatest();
+            if (latest) {
+                btn.style.display = 'flex';
+                if (hint) {
+                    const count = (latest.summary.createdCount || 0) + (latest.summary.updatedCount || 0);
+                    hint.textContent = `Revertir lote de ${count} emp (${latest.mode === 'merge' ? 'combinado' : 'reemplazo'})`;
+                }
+            } else {
+                btn.style.display = 'none';
+            }
+        };
+
+        window.undoLastImport = () => {
+            const latest = importHistoryRepository.getLatest();
+            if (!latest) {
+                showToast('No hay importaciones recientes para revertir.');
+                return;
+            }
+            showConfirm(`¿Deseas revertir la última importación (${latest.source})? Se restaurará el estado previo de empleados y asistencias.`, {
+                title: 'Deshacer importación',
+                confirmText: 'Revertir',
+                danger: true
+            }).then(ok => {
+                if (!ok) return;
+                const result = importHistoryRepository.rollbackLatest({
+                    employeeRepository,
+                    attendanceRepository
+                });
+                if (result.success) {
+                    users = employeeRepository.getAll();
+                    attendanceData = attendanceRepository.getAll();
+                    saveData();
+                    renderList();
+                    renderEmployeesList();
+                    updateUndoImportButton();
+                    showToast('Importación revertida exitosamente ✅');
+                } else {
+                    showToast(result.message || 'No se pudo revertir la importación ❌');
+                }
+            });
+        };
+
         window.doImportEmployeesFromText = (mode = 'merge') => {
             const btnMerge = document.getElementById('btn-do-import-merge');
             const btnReplace = document.getElementById('btn-do-import');
@@ -5811,7 +5872,7 @@
                         ? parsed
                         : (Array.isArray(parsed.employees) ? parsed.employees : null);
 
-                    incoming = incoming.filter(e =>
+                    incoming = (incoming || []).filter(e =>
                         e && e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== ''
                     );
 
@@ -5821,65 +5882,35 @@
                         return;
                     }
 
-                    const normalizeNum = window.EmployeeNumberRules?.normalizeEmployeeNumber || (v => parseInt(v, 10) || null);
+                    const snapshotBefore = {
+                        users: employeeRepository.getAll(),
+                        attendance: attendanceRepository.getAll()
+                    };
+
+                    const result = employeeRepository.importBatch(incoming, mode);
+                    users = employeeRepository.getAll();
+
+                    importHistoryRepository.recordImport({
+                        source: 'json',
+                        mode: mode,
+                        summary: {
+                            totalIncoming: incoming.length,
+                            createdCount: result.created,
+                            updatedCount: result.updated
+                        },
+                        snapshotBefore
+                    });
+
+                    saveData();
+                    closeModal('modal-import-employees');
+                    renderList();
+                    renderEmployeesList();
+                    updateUndoImportButton();
 
                     if (mode === 'replace') {
-                        users = incoming.map(emp => ({
-                            id: emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
-                            name: String(emp.name).trim(),
-                            number: String(emp.number).trim(),
-                            position: emp.position ? String(emp.position).trim() : '',
-                            sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
-                            paused: (emp.paused === true || emp.paused === 'true' || emp.status === 'paused' || emp.status === 'inactive' || emp.active === false) ? true : undefined
-                        }));
-                        saveData();
-                        closeModal('modal-import-employees');
-                        renderList();
-                        renderEmployeesList();
                         showToast(`Nómina reemplazada: ${users.length} empleado(s).`);
                     } else {
-                        // Merge mode
-                        let updatedCount = 0;
-                        let createdCount = 0;
-
-                        incoming.forEach(emp => {
-                            const normNum = normalizeNum(emp.number);
-                            const isPaused = (emp.paused === true || emp.paused === 'true' || emp.status === 'paused' || emp.status === 'inactive' || emp.active === false)
-                                ? true
-                                : (emp.paused === false || emp.active === true || emp.status === 'active')
-                                    ? false
-                                    : undefined;
-
-                            const existing = users.find(u => (emp.id && u.id === emp.id) || (normNum !== null && normalizeNum(u.number) === normNum));
-                            if (existing) {
-                                existing.name = String(emp.name).trim();
-                                if (emp.position !== undefined) existing.position = String(emp.position).trim();
-                                if (emp.sueldo !== undefined) {
-                                    const s = String(emp.sueldo).trim();
-                                    existing.sueldo = s ? s : undefined;
-                                }
-                                if (isPaused !== undefined) {
-                                    existing.paused = isPaused ? true : undefined;
-                                }
-                                updatedCount++;
-                            } else {
-                                users.push({
-                                    id: emp.id || ('u' + Date.now() + Math.random().toString(36).slice(2, 7)),
-                                    name: String(emp.name).trim(),
-                                    number: String(emp.number).trim(),
-                                    position: emp.position ? String(emp.position).trim() : '',
-                                    sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
-                                    paused: isPaused ? true : undefined
-                                });
-                                createdCount++;
-                            }
-                        });
-
-                        saveData();
-                        closeModal('modal-import-employees');
-                        renderList();
-                        renderEmployeesList();
-                        showToast(`Importación: ${updatedCount} actualizado(s), ${createdCount} agregado(s).`);
+                        showToast(`Importación: ${result.updated} actualizado(s), ${result.created} agregado(s).`);
                     }
                 } catch (err) {
                     document.getElementById('import-validation-msg').innerHTML =
@@ -5898,7 +5929,7 @@
             } else {
                 executeImport();
             }
-        }
+        };
 
         // --- BORRAR TODOS LOS DATOS (RESET DE FÁBRICA) ---
         window.clearAllData = () => {
@@ -5919,17 +5950,19 @@
                 attendanceRepository.clearTombstones();
                 employeeRepository.clearTombstones();
                 attendanceCoordinator.clearOutbox();
+                importHistoryRepository.clearHistory();
 
-                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
+                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
                 saveData();
 
                 renderList();
                 renderEmployeesList();
                 renderRequestsDashboard();
                 updateDashboard();
+                updateUndoImportButton();
                 showToast('Todos los datos han sido borrados.');
             });
-        }
+        };
 
         // --- COPIAR AL PORTAPAPELES ---
         function copyTextToClipboard(text) {
