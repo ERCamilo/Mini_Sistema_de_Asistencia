@@ -58,8 +58,8 @@ test('resolveIcon describes the chosen rendering', () => {
   assert.ok(svg.value.startsWith('<svg'));
 });
 
-test('core navigation icons are all registered', () => {
-  ['attendance', 'employees', 'reports', 'more', 'add'].forEach(name => {
-    assert.equal(IconSet.hasIcon(name), true, 'missing nav icon: ' + name);
+test('core navigation and domain icons are all registered', () => {
+  ['attendance', 'employees', 'reports', 'more', 'add', 'hardHat', 'briefcase', 'building'].forEach(name => {
+    assert.equal(IconSet.hasIcon(name), true, 'missing icon: ' + name);
   });
 });

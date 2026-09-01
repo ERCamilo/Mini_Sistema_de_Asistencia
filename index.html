@@ -2286,11 +2286,11 @@
                 <button type="button" class="export-btn" style="flex:1;min-width:70px;font-size:12px;padding:8px 6px;" onclick="doBulkPause(false)">
                     <span class="ic" data-icon="play"></span> Activar
                 </button>
-                <button type="button" class="export-btn" style="flex:1;min-width:80px;font-size:12px;padding:8px 6px;" onclick="openBulkContextModal()">
-                    🏗️ Obra
+                <button type="button" class="export-btn" style="flex:1;min-width:80px;font-size:12px;padding:8px 6px;display:flex;align-items:center;justify-content:center;gap:4px;" onclick="openBulkContextModal()">
+                    <span class="ic" data-icon="hardHat"></span> Obra
                 </button>
-                <button type="button" class="export-btn" style="flex:1;min-width:80px;font-size:12px;padding:8px 6px;" onclick="openBulkPositionModal()">
-                    💼 Cargo
+                <button type="button" class="export-btn" style="flex:1;min-width:80px;font-size:12px;padding:8px 6px;display:flex;align-items:center;justify-content:center;gap:4px;" onclick="openBulkPositionModal()">
+                    <span class="ic" data-icon="briefcase"></span> Cargo
                 </button>
                 <button type="button" class="export-btn" style="color:var(--danger-color);min-width:44px;padding:8px 6px;" onclick="doBulkDelete()" aria-label="Eliminar seleccionados" title="Eliminar">
                     <span class="ic" data-icon="trash"></span>
@@ -2635,7 +2635,7 @@
                             </div>
                         </button>
                         <button type="button" class="export-option" onclick="openWorkContextsModal()">
-                            <span style="font-size: 24px;">🏗️</span>
+                            <span style="font-size: 24px;"><span class="ic" data-icon="hardHat"></span></span>
                             <div>
                                 <div style="font-weight: 600; color: var(--accent-color);">Obras y Cuadrillas locales</div>
                                 <div style="font-size: 12px; color: var(--text-muted);">Crear y organizar grupos locales de trabajo</div>
@@ -2675,19 +2675,40 @@
     <div class="modal big" id="modal-work-contexts">
         <div class="modal-content">
             <div class="modal-handle"></div>
-            <div class="modal-header">
-                <div class="modal-title">🏗️ Obras y Cuadrillas</div>
-                <div class="modal-subtitle">Organiza tus empleados por obra o cuadrilla local</div>
+            <div class="modal-header" style="margin-bottom:14px;">
+                <div class="modal-title" style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <span class="ic" data-icon="hardHat"></span> Obras y Cuadrillas
+                </div>
+                <div class="modal-subtitle">Organiza y filtra tus empleados por obra o grupo de trabajo</div>
             </div>
-            <div style="display:flex;gap:8px;margin-bottom:14px;">
-                <input type="text" id="new-context-name" class="search-input" placeholder="Nombre (ej. Torre A)" style="flex:1;">
-                <select id="new-context-type" class="search-input" style="width:110px;cursor:pointer;">
-                    <option value="project">🏗️ Obra</option>
-                    <option value="squad">👥 Cuadrilla</option>
-                </select>
-                <button type="button" class="btn-full btn-primary" style="width:auto;padding:0 16px;margin:0;" onclick="createWorkContextFromUI()">Agregar</button>
+
+            <!-- Formulario de creación con selector de tipo visual -->
+            <div style="background:var(--input-bg);border:1px solid var(--border-color);border-radius:16px;padding:14px;margin-bottom:16px;">
+                <label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Tipo de contexto</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                    <button type="button" id="btn-ctx-type-project" class="btn-secondary active" style="padding:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;" onclick="selectWorkContextType('project')">
+                        <span class="ic" data-icon="hardHat"></span> Obra / Proyecto
+                    </button>
+                    <button type="button" id="btn-ctx-type-squad" class="btn-secondary" style="padding:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:10px;" onclick="selectWorkContextType('squad')">
+                        <span class="ic" data-icon="users"></span> Cuadrilla / Equipo
+                    </button>
+                </div>
+                <input type="hidden" id="new-context-type" value="project">
+
+                <label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Nombre</label>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="new-context-name" class="search-input" placeholder="Ej: Torre A, Sector Norte, Cuadrilla 1" style="flex:1;">
+                    <button type="button" class="btn-full btn-primary" style="width:auto;padding:0 18px;margin:0;white-space:nowrap;font-weight:700;display:flex;align-items:center;gap:6px;" onclick="createWorkContextFromUI()">
+                        <span class="ic" data-icon="add"></span> Crear
+                    </button>
+                </div>
             </div>
-            <div id="work-contexts-list" style="max-height:48vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;"></div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px;">
+                <span style="font-size:13px;font-weight:700;color:var(--text-color);">Obras y Cuadrillas creadas</span>
+                <span id="work-contexts-count-badge" style="font-size:11px;font-weight:600;background:var(--input-bg);border:1px solid var(--border-color);padding:2px 8px;border-radius:12px;color:var(--text-muted);">0 creadas</span>
+            </div>
+            <div id="work-contexts-list" style="max-height:40vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;"></div>
         </div>
     </div>
 
@@ -5682,7 +5703,8 @@
                 const isPaused = !!u.paused;
                 const isSelected = isBulkMode && bulkSelection.isSelected(u.id);
                 const ctx = u.workContextId && window.workContextManager ? window.workContextManager.getById(u.workContextId) : null;
-                const ctxTag = ctx ? `<span class="badge-tag" style="background:var(--input-bg);border:1px solid var(--border-color);font-size:11px;padding:2px 6px;border-radius:6px;margin-left:6px;color:var(--text-muted);font-weight:600;">${ctx.type === 'squad' ? '👥' : '🏗️'} ${esc(ctx.name)}</span>` : '';
+                const ctxIcon = ctx ? (ctx.type === 'squad' ? 'users' : 'hardHat') : '';
+                const ctxTag = ctx ? `<span class="badge-tag" style="background:var(--input-bg);border:1px solid var(--border-color);font-size:11px;padding:2px 7px;border-radius:6px;margin-left:6px;color:var(--text-muted);font-weight:600;display:inline-flex;align-items:center;gap:4px;"><span class="ic" data-icon="${ctxIcon}"></span>${esc(ctx.name)}</span>` : '';
 
                 const div = document.createElement('div');
                 let cardClass = 'user-card' + (isPaused ? ' paused' : '');
@@ -5831,8 +5853,8 @@
                 const contexts = workContextManager.getAll();
                 let html = '<option value="">(Sin obra / cuadrilla)</option>';
                 contexts.forEach(c => {
-                    const typeIcon = c.type === 'squad' ? '👥' : '🏗️';
-                    html += `<option value="${esc(c.id)}">${typeIcon} ${esc(c.name)}</option>`;
+                    const typeLabel = c.type === 'squad' ? '[Cuadrilla] ' : '[Obra] ';
+                    html += `<option value="${esc(c.id)}">${typeLabel}${esc(c.name)}</option>`;
                 });
                 sel.innerHTML = html;
             }
@@ -5926,8 +5948,8 @@
             let html = '<option value="">(Sin obra / cuadrilla)</option>';
             contexts.forEach(c => {
                 const isSel = selectedId === c.id ? 'selected' : '';
-                const typeIcon = c.type === 'squad' ? '👥' : '🏗️';
-                html += `<option value="${esc(c.id)}" ${isSel}>${typeIcon} ${esc(c.name)}</option>`;
+                const typePrefix = c.type === 'squad' ? '[Cuadrilla] ' : '[Obra] ';
+                html += `<option value="${esc(c.id)}" ${isSel}>${typePrefix}${esc(c.name)}</option>`;
             });
             sel.innerHTML = html;
         }
@@ -5981,10 +6003,11 @@
                 let html = `<button type="button" class="category-pill ${!activeId ? 'active' : ''}" onclick="setWorkContextFilter(null)">Todas</button>`;
                 contexts.forEach(ctx => {
                     const isActive = activeId === ctx.id;
-                    const typeIcon = ctx.type === 'squad' ? '👥' : '🏗️';
-                    html += `<button type="button" class="category-pill ${isActive ? 'active' : ''}" onclick="setWorkContextFilter('${esc(ctx.id)}')">${typeIcon} ${esc(ctx.name)}</button>`;
+                    const iconName = ctx.type === 'squad' ? 'users' : 'hardHat';
+                    html += `<button type="button" class="category-pill ${isActive ? 'active' : ''}" onclick="setWorkContextFilter('${esc(ctx.id)}')"><span class="ic" data-icon="${iconName}"></span> ${esc(ctx.name)}</button>`;
                 });
                 container.innerHTML = html;
+                applyIcons(container);
             });
         }
 
@@ -5994,7 +6017,17 @@
             }
         };
 
+        window.selectWorkContextType = (type) => {
+            const hiddenInput = document.getElementById('new-context-type');
+            if (hiddenInput) hiddenInput.value = type;
+            const btnProj = document.getElementById('btn-ctx-type-project');
+            const btnSquad = document.getElementById('btn-ctx-type-squad');
+            if (btnProj) btnProj.className = 'btn-secondary ' + (type === 'project' ? 'active' : '');
+            if (btnSquad) btnSquad.className = 'btn-secondary ' + (type === 'squad' ? 'active' : '');
+        };
+
         window.openWorkContextsModal = () => {
+            selectWorkContextType('project');
             renderWorkContextsModalList();
             const nameInput = document.getElementById('new-context-name');
             if (nameInput) nameInput.value = '';
@@ -6003,23 +6036,43 @@
 
         function renderWorkContextsModalList() {
             const listEl = document.getElementById('work-contexts-list');
+            const countBadge = document.getElementById('work-contexts-count-badge');
             if (!listEl || !window.workContextManager) return;
             const contexts = workContextManager.getAll();
+            if (countBadge) countBadge.textContent = `${contexts.length} ${contexts.length === 1 ? 'creada' : 'creadas'}`;
+
             if (contexts.length === 0) {
-                listEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">No hay obras ni cuadrillas creadas aún.</div>`;
+                listEl.innerHTML = `
+                    <div style="text-align:center;padding:28px 16px;color:var(--text-muted);font-size:13px;background:var(--input-bg);border-radius:14px;border:1px dashed var(--border-color);">
+                        <div style="font-size:28px;margin-bottom:8px;opacity:0.7;"><span class="ic" data-icon="hardHat"></span></div>
+                        <div style="font-weight:600;margin-bottom:4px;color:var(--text-color);">No hay obras ni cuadrillas creadas</div>
+                        <div style="font-size:12px;">Crea una arriba para comenzar a clasificar y filtrar tu personal en campo.</div>
+                    </div>
+                `;
+                applyIcons(listEl);
                 return;
             }
+
             listEl.innerHTML = contexts.map(c => {
                 const count = users.filter(u => u.workContextId === c.id).length;
-                const typeIcon = c.type === 'squad' ? '👥' : '🏗️';
-                const typeLabel = c.type === 'squad' ? 'Cuadrilla' : 'Obra';
+                const iconName = c.type === 'squad' ? 'users' : 'hardHat';
+                const typeLabel = c.type === 'squad' ? 'Cuadrilla / Equipo' : 'Obra / Proyecto';
                 return `
-                    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--input-bg);padding:10px 14px;border-radius:12px;border:1px solid var(--border-color);">
-                        <div>
-                            <div style="font-weight:700;font-size:14px;color:var(--text-color);">${typeIcon} ${esc(c.name)}</div>
-                            <div style="font-size:12px;color:var(--text-muted);">${typeLabel} · ${count} empleado(s)</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--card-bg);padding:12px 14px;border-radius:14px;border:1px solid var(--border-color);">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <div style="width:38px;height:38px;border-radius:10px;background:var(--input-bg);border:1px solid var(--border-color);display:flex;align-items:center;justify-content:center;color:var(--accent-color);font-size:18px;flex-shrink:0;">
+                                <span class="ic" data-icon="${iconName}"></span>
+                            </div>
+                            <div>
+                                <div style="font-weight:700;font-size:14px;color:var(--text-color);line-height:1.2;margin-bottom:2px;">${esc(c.name)}</div>
+                                <div style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+                                    <span>${typeLabel}</span>
+                                    <span>·</span>
+                                    <span style="font-weight:600;color:var(--accent-color);">${count} empleado(s)</span>
+                                </div>
+                            </div>
                         </div>
-                        <button type="button" class="export-btn" style="color:var(--danger-color);font-size:16px;" onclick="deleteWorkContextFromUI('${esc(c.id)}')">
+                        <button type="button" class="export-btn" style="color:var(--danger-color);font-size:16px;width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;" onclick="deleteWorkContextFromUI('${esc(c.id)}')" aria-label="Eliminar ${esc(c.name)}" title="Eliminar">
                             <span class="ic" data-icon="trash"></span>
                         </button>
                     </div>
