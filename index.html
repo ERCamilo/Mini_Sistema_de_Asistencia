@@ -2207,6 +2207,8 @@
                     </div>
                 </div>
 
+                <div class="category-pills" id="work-context-pills" style="margin-top: 10px; margin-bottom: 8px; display: none;"></div>
+
                 <div class="search-container">
                     <span class="search-icon"><span class="ic" data-icon="search"></span></span>
                     <input type="text" class="search-input" id="search-input" placeholder="Buscar empleado...">
@@ -2260,6 +2262,7 @@
     <!-- VISTA EMPLEADOS -->
     <div id="employees-view" class="hidden">
         <div class="dashboard-panel">
+            <div class="category-pills" id="work-context-pills-emp" style="margin-bottom: 10px; display: none;"></div>
             <div class="search-container">
                 <span class="search-icon"><span class="ic" data-icon="search"></span></span>
                 <input type="text" class="search-input" id="search-employees" placeholder="Gestionar empleados...">
@@ -2419,6 +2422,11 @@
                     <datalist id="position-options"></datalist></div>
                 <div style="margin-bottom: 16px;"><input type="text" id="user-sueldo"
                         placeholder="Sueldo (Opcional)" aria-label="Sueldo (opcional)" class="search-input"></div>
+                <div style="margin-bottom: 16px;">
+                    <select id="user-work-context" class="search-input" style="cursor:pointer;" aria-label="Obra o cuadrilla">
+                        <option value="">(Sin obra / cuadrilla)</option>
+                    </select>
+                </div>
                 <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; background: var(--input-bg); padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-color);">
                     <div>
                         <div style="font-weight: 600; font-size: 14px; color: var(--text-color);">Pausar empleado</div>
@@ -2599,6 +2607,13 @@
                                 <div style="font-size: 12px; color: var(--text-muted);">Copiar JSON simple de empleados o con 30 días de asistencia</div>
                             </div>
                         </button>
+                        <button type="button" class="export-option" onclick="openWorkContextsModal()">
+                            <span style="font-size: 24px;">🏗️</span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Obras y Cuadrillas locales</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Crear y organizar grupos locales de trabajo</div>
+                            </div>
+                        </button>
                         <button type="button" class="export-option" id="btn-undo-import" onclick="undoLastImport()" style="display:none;">
                             <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
                             <div>
@@ -2626,6 +2641,26 @@
                 </div>
             </div>
 
+        </div>
+    </div>
+
+    <!-- MODAL GESTIONAR OBRAS Y CUADRILLAS -->
+    <div class="modal big" id="modal-work-contexts">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">🏗️ Obras y Cuadrillas</div>
+                <div class="modal-subtitle">Organiza tus empleados por obra o cuadrilla local</div>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:14px;">
+                <input type="text" id="new-context-name" class="search-input" placeholder="Nombre (ej. Torre A)" style="flex:1;">
+                <select id="new-context-type" class="search-input" style="width:110px;cursor:pointer;">
+                    <option value="project">🏗️ Obra</option>
+                    <option value="squad">👥 Cuadrilla</option>
+                </select>
+                <button type="button" class="btn-full btn-primary" style="width:auto;padding:0 16px;margin:0;" onclick="createWorkContextFromUI()">Agregar</button>
+            </div>
+            <div id="work-contexts-list" style="max-height:48vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;"></div>
         </div>
     </div>
 
@@ -2968,6 +3003,7 @@
     <script src="./attendance-repository.js"></script>
     <script src="./attendance-coordinator.js"></script>
     <script src="./import-history-repository.js"></script>
+    <script src="./work-context.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -3026,6 +3062,15 @@
             storage: localStorage,
             onHistoryChanged: () => {
                 if (typeof updateUndoImportButton === 'function') updateUndoImportButton();
+            }
+        });
+        const workContextManager = window.WorkContextManager.createWorkContextManager({
+            storage: localStorage,
+            onStateChanged: () => {
+                if (typeof renderWorkContextBar === 'function') renderWorkContextBar();
+                if (typeof renderList === 'function') renderList();
+                if (typeof renderEmployeesList === 'function') renderEmployeesList();
+                if (typeof updateDashboard === 'function') updateDashboard();
             }
         });
 
@@ -3359,6 +3404,7 @@
             updateNavActive('attendance');
             applyIcons(document);
             updateUndoImportButton();
+            renderWorkContextBar();
             initLocalPersistence();
         }
 
@@ -3597,7 +3643,8 @@
             const search = document.getElementById('search-input').value.toLowerCase();
             container.innerHTML = '';
 
-            const filtered = users.filter(u => {
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const filtered = contextUsers.filter(u => {
                 const record = getRecord(u.id);
                 const isPresent = !!record;
                 if (u.paused && !isPresent) return false;
@@ -3702,7 +3749,8 @@
                 </thead>
                 <tbody>`;
 
-            const sortedUsers = users.filter(u => {
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const sortedUsers = contextUsers.filter(u => {
                 if (!u.paused) return true;
                 return weekDates.some(d => {
                     const year = d.getFullYear();
@@ -3782,7 +3830,8 @@
             'modal-calendar', 'modal-date-jump', 'user-modal',
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
             'modal-quick-actions', 'modal-hours', 'theme-menu',
-            'modal-request-create', 'modal-request-answering', 'modal-request-review'
+            'modal-request-create', 'modal-request-answering', 'modal-request-review',
+            'modal-work-contexts'
         ]);
         let activeBigModal = null;
 
@@ -3871,12 +3920,15 @@
         }
 
         function readEmployeeDraft() {
+            const ctxSelect = document.getElementById('user-work-context');
+            const workContextId = ctxSelect && ctxSelect.value ? ctxSelect.value : undefined;
             return {
                 id: document.getElementById('edit-user-id').value,
                 name: document.getElementById('user-name').value.trim(),
                 number: document.getElementById('user-number').value,
                 position: document.getElementById('user-position').value.trim(),
                 sueldo: document.getElementById('user-sueldo').value.trim(),
+                workContextId: workContextId,
                 paused: document.getElementById('user-paused').checked
             };
         }
@@ -4456,6 +4508,7 @@
             document.getElementById('edit-user-id').value = '';
             document.getElementById('btn-delete-user').style.display = 'none';
             populatePositionOptions();
+            populateWorkContextOptions(window.workContextManager ? workContextManager.getActiveId() : null);
             document.getElementById('user-number').value = window.EmployeeNumberRules.getNextEmployeeNumber(users);
             openModal('user-modal');
         }
@@ -5552,13 +5605,17 @@
         function renderEmployeesList() {
             const container = document.getElementById('employees-container');
             const search = document.getElementById('search-employees').value.toLowerCase();
-            const filtered = users
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const filtered = contextUsers
                 .filter(u => u.name.toLowerCase().includes(search) || u.number.includes(search))
                 .sort((a, b) => parseInt(a.number) - parseInt(b.number));
             container.innerHTML = '';
 
             filtered.forEach(u => {
                 const isPaused = !!u.paused;
+                const ctx = u.workContextId && window.workContextManager ? window.workContextManager.getById(u.workContextId) : null;
+                const ctxTag = ctx ? `<span class="badge-tag" style="background:var(--input-bg);border:1px solid var(--border-color);font-size:11px;padding:2px 6px;border-radius:6px;margin-left:6px;color:var(--text-muted);font-weight:600;">${ctx.type === 'squad' ? '👥' : '🏗️'} ${esc(ctx.name)}</span>` : '';
+
                 const div = document.createElement('div');
                 div.className = 'user-card' + (isPaused ? ' paused' : '');
                 div.innerHTML = `
@@ -5568,6 +5625,7 @@
                             <div class="user-name">
                                 ${esc(u.name)}
                                 ${isPaused ? '<span class="badge-paused">Pausado</span>' : ''}
+                                ${ctxTag}
                             </div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
@@ -5597,6 +5655,33 @@
             showToast(u.paused ? `Empleado pausado: ${u.name}` : `Empleado reactivado: ${u.name}`);
         };
 
+        function populateWorkContextOptions(selectedId) {
+            const sel = document.getElementById('user-work-context');
+            if (!sel || !window.workContextManager) return;
+            const contexts = workContextManager.getAll();
+            let html = '<option value="">(Sin obra / cuadrilla)</option>';
+            contexts.forEach(c => {
+                const isSel = selectedId === c.id ? 'selected' : '';
+                const typeIcon = c.type === 'squad' ? '👥' : '🏗️';
+                html += `<option value="${esc(c.id)}" ${isSel}>${typeIcon} ${esc(c.name)}</option>`;
+            });
+            sel.innerHTML = html;
+        }
+
+        window.openAddUserModal = () => {
+            document.getElementById('form-title').textContent = 'Agregar Empleado';
+            document.getElementById('edit-user-id').value = '';
+            document.getElementById('user-name').value = '';
+            document.getElementById('user-number').value = '';
+            populatePositionOptions();
+            populateWorkContextOptions(window.workContextManager ? workContextManager.getActiveId() : null);
+            document.getElementById('user-position').value = '';
+            document.getElementById('user-sueldo').value = '';
+            document.getElementById('user-paused').checked = false;
+            document.getElementById('btn-delete-user').style.display = 'none';
+            openModal('user-modal');
+        };
+
         window.editUser = (id) => {
             const u = users.find(x => x.id === id);
             if (!u) return;
@@ -5605,12 +5690,117 @@
             document.getElementById('user-name').value = u.name;
             document.getElementById('user-number').value = u.number;
             populatePositionOptions();
+            populateWorkContextOptions(u.workContextId);
             document.getElementById('user-position').value = u.position || '';
             document.getElementById('user-sueldo').value = u.sueldo || '';
             document.getElementById('user-paused').checked = !!u.paused;
             document.getElementById('btn-delete-user').style.display = 'block';
             openModal('user-modal');
+        };
+
+        function renderWorkContextBar() {
+            if (!window.workContextManager) return;
+            const contexts = workContextManager.getAll();
+            const activeId = workContextManager.getActiveId();
+            const containers = [
+                document.getElementById('work-context-pills'),
+                document.getElementById('work-context-pills-emp')
+            ];
+
+            containers.forEach(container => {
+                if (!container) return;
+                if (contexts.length === 0) {
+                    container.style.display = 'none';
+                    return;
+                }
+                container.style.display = 'flex';
+                let html = `<button type="button" class="category-pill ${!activeId ? 'active' : ''}" onclick="setWorkContextFilter(null)">Todas</button>`;
+                contexts.forEach(ctx => {
+                    const isActive = activeId === ctx.id;
+                    const typeIcon = ctx.type === 'squad' ? '👥' : '🏗️';
+                    html += `<button type="button" class="category-pill ${isActive ? 'active' : ''}" onclick="setWorkContextFilter('${esc(ctx.id)}')">${typeIcon} ${esc(ctx.name)}</button>`;
+                });
+                container.innerHTML = html;
+            });
         }
+
+        window.setWorkContextFilter = (contextId) => {
+            if (window.workContextManager) {
+                workContextManager.setActive(contextId);
+            }
+        };
+
+        window.openWorkContextsModal = () => {
+            renderWorkContextsModalList();
+            const nameInput = document.getElementById('new-context-name');
+            if (nameInput) nameInput.value = '';
+            openModal('modal-work-contexts');
+        };
+
+        function renderWorkContextsModalList() {
+            const listEl = document.getElementById('work-contexts-list');
+            if (!listEl || !window.workContextManager) return;
+            const contexts = workContextManager.getAll();
+            if (contexts.length === 0) {
+                listEl.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px;">No hay obras ni cuadrillas creadas aún.</div>`;
+                return;
+            }
+            listEl.innerHTML = contexts.map(c => {
+                const count = users.filter(u => u.workContextId === c.id).length;
+                const typeIcon = c.type === 'squad' ? '👥' : '🏗️';
+                const typeLabel = c.type === 'squad' ? 'Cuadrilla' : 'Obra';
+                return `
+                    <div style="display:flex;align-items:center;justify-content:space-between;background:var(--input-bg);padding:10px 14px;border-radius:12px;border:1px solid var(--border-color);">
+                        <div>
+                            <div style="font-weight:700;font-size:14px;color:var(--text-color);">${typeIcon} ${esc(c.name)}</div>
+                            <div style="font-size:12px;color:var(--text-muted);">${typeLabel} · ${count} empleado(s)</div>
+                        </div>
+                        <button type="button" class="export-btn" style="color:var(--danger-color);font-size:16px;" onclick="deleteWorkContextFromUI('${esc(c.id)}')">
+                            <span class="ic" data-icon="trash"></span>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+            applyIcons(listEl);
+        }
+
+        window.createWorkContextFromUI = () => {
+            if (!window.workContextManager) return;
+            const nameInput = document.getElementById('new-context-name');
+            const typeInput = document.getElementById('new-context-type');
+            const name = (nameInput?.value || '').trim();
+            if (!name) {
+                showToast('Ingresa un nombre para la obra o cuadrilla');
+                return;
+            }
+            workContextManager.saveContext({
+                name: name,
+                type: typeInput?.value || 'project'
+            });
+            nameInput.value = '';
+            renderWorkContextsModalList();
+            renderWorkContextBar();
+            showToast('Contexto creado exitosamente ✅');
+        };
+
+        window.deleteWorkContextFromUI = (id) => {
+            if (!window.workContextManager) return;
+            showConfirm('¿Eliminar esta obra/cuadrilla? Los empleados asignados volverán a no tener contexto asignado.', {
+                title: 'Eliminar contexto',
+                confirmText: 'Eliminar',
+                danger: true
+            }).then(ok => {
+                if (!ok) return;
+                workContextManager.removeContext(id, { employeeRepository });
+                users = employeeRepository.getAll();
+                saveData();
+                renderWorkContextsModalList();
+                renderWorkContextBar();
+                renderEmployeesList();
+                renderList();
+                showToast('Contexto eliminado');
+            });
+        };
 
         const BACKUP_SETTINGS_KEYS = ['appTheme', 'iconStyle', 'checkMode', 'reminderConfig', 'expectedHoursPerDay'];
 
@@ -5951,13 +6141,15 @@
                 employeeRepository.clearTombstones();
                 attendanceCoordinator.clearOutbox();
                 importHistoryRepository.clearHistory();
+                if (window.workContextManager) workContextManager.clearAll();
 
-                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
+                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
                 saveData();
 
                 renderList();
                 renderEmployeesList();
                 renderRequestsDashboard();
+                renderWorkContextBar();
                 updateDashboard();
                 updateUndoImportButton();
                 showToast('Todos los datos han sido borrados.');
