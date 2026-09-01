@@ -2263,13 +2263,40 @@
     <div id="employees-view" class="hidden">
         <div class="dashboard-panel">
             <div class="category-pills" id="work-context-pills-emp" style="margin-bottom: 10px; display: none;"></div>
-            <div class="search-container">
-                <span class="search-icon"><span class="ic" data-icon="search"></span></span>
-                <input type="text" class="search-input" id="search-employees" placeholder="Gestionar empleados...">
-                <button type="button" class="search-clear" aria-label="Limpiar búsqueda" onclick="clearSearch('search-employees', renderEmployeesList)"><span class="ic" data-icon="close"></span></button>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <div class="search-container" style="flex:1;">
+                    <span class="search-icon"><span class="ic" data-icon="search"></span></span>
+                    <input type="text" class="search-input" id="search-employees" placeholder="Gestionar empleados...">
+                    <button type="button" class="search-clear" aria-label="Limpiar búsqueda" onclick="clearSearch('search-employees', renderEmployeesList)"><span class="ic" data-icon="close"></span></button>
+                </div>
+                <button type="button" class="btn-secondary" id="btn-toggle-bulk-mode" style="white-space:nowrap;padding:10px 14px;border-radius:12px;font-weight:600;font-size:13px;border:1px solid var(--border-color);" onclick="toggleBulkMode()">Seleccionar</button>
             </div>
         </div>
-        <div class="users-list" id="employees-container"></div>
+        <div class="users-list" id="employees-container" style="padding-bottom:90px;"></div>
+        <!-- BARRA FLOTANTE DE ACCIONES MASIVAS -->
+        <div id="bulk-action-bar" style="display:none;position:fixed;bottom:72px;left:12px;right:12px;max-width:500px;margin:0 auto;background:var(--card-bg);border:1px solid var(--accent-color);border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.4);padding:10px 14px;z-index:90;backdrop-filter:blur(10px);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span id="bulk-selected-count" style="font-weight:700;font-size:14px;color:var(--text-color);">0 seleccionados</span>
+                <button type="button" class="btn-link" style="font-size:13px;color:var(--accent-color);cursor:pointer;background:none;border:none;padding:0;font-weight:600;" onclick="toggleSelectAllVisibleEmployees()" id="btn-bulk-toggle-all">Seleccionar todos</button>
+            </div>
+            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;">
+                <button type="button" class="export-btn" style="flex:1;min-width:70px;font-size:12px;padding:8px 6px;" onclick="doBulkPause(true)">
+                    <span class="ic" data-icon="pause"></span> Pausar
+                </button>
+                <button type="button" class="export-btn" style="flex:1;min-width:70px;font-size:12px;padding:8px 6px;" onclick="doBulkPause(false)">
+                    <span class="ic" data-icon="play"></span> Activar
+                </button>
+                <button type="button" class="export-btn" style="flex:1;min-width:80px;font-size:12px;padding:8px 6px;" onclick="openBulkContextModal()">
+                    🏗️ Obra
+                </button>
+                <button type="button" class="export-btn" style="flex:1;min-width:80px;font-size:12px;padding:8px 6px;" onclick="openBulkPositionModal()">
+                    💼 Cargo
+                </button>
+                <button type="button" class="export-btn" style="color:var(--danger-color);min-width:44px;padding:8px 6px;" onclick="doBulkDelete()" aria-label="Eliminar seleccionados" title="Eliminar">
+                    <span class="ic" data-icon="trash"></span>
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- MODAL DE TEMAS (NUEVO) -->
@@ -2664,6 +2691,40 @@
         </div>
     </div>
 
+    <!-- MODAL ASIGNAR OBRA MASIVAMENTE -->
+    <div class="modal" id="modal-bulk-context">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">Asignar Obra / Cuadrilla</div>
+                <div class="modal-subtitle" id="bulk-context-subtitle">Para los empleados seleccionados</div>
+            </div>
+            <div style="margin-bottom:16px;">
+                <select id="bulk-context-select" class="search-input" style="cursor:pointer;" aria-label="Seleccionar obra o cuadrilla">
+                    <option value="">(Sin obra / cuadrilla)</option>
+                </select>
+            </div>
+            <button type="button" class="btn-full btn-primary" onclick="applyBulkContext()">Aplicar a seleccionados</button>
+            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-bulk-context')" style="margin-top:8px;">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- MODAL CAMBIAR CARGO MASIVAMENTE -->
+    <div class="modal" id="modal-bulk-position">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title">Asignar Cargo / Puesto</div>
+                <div class="modal-subtitle" id="bulk-position-subtitle">Para los empleados seleccionados</div>
+            </div>
+            <div style="margin-bottom:16px;">
+                <input type="text" id="bulk-position-input" list="position-options" placeholder="Cargo (ej. Albañil, Fierrero)" class="search-input" aria-label="Cargo o puesto">
+            </div>
+            <button type="button" class="btn-full btn-primary" onclick="applyBulkPosition()">Aplicar a seleccionados</button>
+            <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-bulk-position')" style="margin-top:8px;">Cancelar</button>
+        </div>
+    </div>
+
     <!-- MODAL RESTAURAR RESPALDO -->
     <div class="modal big" id="modal-restore-backup">
         <div class="modal-content">
@@ -3004,6 +3065,7 @@
     <script src="./attendance-coordinator.js"></script>
     <script src="./import-history-repository.js"></script>
     <script src="./work-context.js"></script>
+    <script src="./bulk-actions.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -3030,6 +3092,8 @@
         let draftSession = null;
         let pendingDraftConflict = null;
         let moreTab = 'settings';
+        let isBulkMode = false;
+        const bulkSelection = window.BulkEmployeeOperations.createBulkSelectionManager();
 
         const {
             initializeEmployeeNumberState,
@@ -5613,11 +5677,40 @@
 
             filtered.forEach(u => {
                 const isPaused = !!u.paused;
+                const isSelected = isBulkMode && bulkSelection.isSelected(u.id);
                 const ctx = u.workContextId && window.workContextManager ? window.workContextManager.getById(u.workContextId) : null;
                 const ctxTag = ctx ? `<span class="badge-tag" style="background:var(--input-bg);border:1px solid var(--border-color);font-size:11px;padding:2px 6px;border-radius:6px;margin-left:6px;color:var(--text-muted);font-weight:600;">${ctx.type === 'squad' ? '👥' : '🏗️'} ${esc(ctx.name)}</span>` : '';
 
                 const div = document.createElement('div');
-                div.className = 'user-card' + (isPaused ? ' paused' : '');
+                let cardClass = 'user-card' + (isPaused ? ' paused' : '');
+                let cardStyle = '';
+                if (isBulkMode) {
+                    cardStyle = 'cursor:pointer;' + (isSelected ? 'border:2px solid var(--accent-color);background:rgba(59,130,246,0.06);' : '');
+                    div.onclick = () => toggleEmployeeSelection(u.id);
+                }
+                div.className = cardClass;
+                if (cardStyle) div.style.cssText = cardStyle;
+
+                let rightActions = '';
+                if (isBulkMode) {
+                    rightActions = `
+                        <div class="check-box ${isSelected ? 'checked green' : ''}" style="pointer-events:none;margin-left:8px;">
+                            ${isSelected ? '<span class="ic" data-icon="check"></span>' : ''}
+                        </div>
+                    `;
+                } else {
+                    rightActions = `
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <button type="button" class="export-btn" style="font-size:16px;" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
+                                <span class="ic" data-icon="${isPaused ? 'play' : 'pause'}"></span>
+                            </button>
+                            <button type="button" class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
+                                <span class="ic" data-icon="edit"></span>
+                            </button>
+                        </div>
+                    `;
+                }
+
                 div.innerHTML = `
                     <div class="avatar-placeholder">${esc(u.number)}</div>
                     <div class="user-info-area">
@@ -5630,19 +5723,187 @@
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <button type="button" class="export-btn" style="font-size:16px;" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
-                            <span class="ic" data-icon="${isPaused ? 'play' : 'pause'}"></span>
-                        </button>
-                        <button type="button" class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
-                            <span class="ic" data-icon="edit"></span>
-                        </button>
-                    </div>
+                    ${rightActions}
                 `;
                 container.appendChild(div);
             });
             applyIcons(container);
         }
+
+        window.toggleBulkMode = () => {
+            isBulkMode = !isBulkMode;
+            if (!isBulkMode) {
+                bulkSelection.deselectAll();
+            }
+            const toggleBtn = document.getElementById('btn-toggle-bulk-mode');
+            if (toggleBtn) {
+                toggleBtn.textContent = isBulkMode ? 'Listo' : 'Seleccionar';
+                toggleBtn.className = isBulkMode ? 'btn-primary' : 'btn-secondary';
+            }
+            updateBulkActionBar();
+            renderEmployeesList();
+        };
+
+        window.toggleEmployeeSelection = (id) => {
+            bulkSelection.toggle(id);
+            updateBulkActionBar();
+            renderEmployeesList();
+        };
+
+        function updateBulkActionBar() {
+            const bar = document.getElementById('bulk-action-bar');
+            const countEl = document.getElementById('bulk-selected-count');
+            const toggleAllBtn = document.getElementById('btn-bulk-toggle-all');
+            if (!bar) return;
+
+            if (!isBulkMode) {
+                bar.style.display = 'none';
+                return;
+            }
+
+            bar.style.display = 'block';
+            const count = bulkSelection.getSelectedCount();
+            if (countEl) countEl.textContent = `${count} seleccionado(s)`;
+
+            const search = (document.getElementById('search-employees')?.value || '').toLowerCase();
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const visibleIds = contextUsers
+                .filter(u => u.name.toLowerCase().includes(search) || u.number.includes(search))
+                .map(u => u.id);
+
+            const allSelected = visibleIds.length > 0 && bulkSelection.isAllSelected(visibleIds);
+            if (toggleAllBtn) {
+                toggleAllBtn.textContent = allSelected ? 'Deseleccionar todos' : 'Seleccionar todos';
+            }
+            applyIcons(bar);
+        }
+
+        window.toggleSelectAllVisibleEmployees = () => {
+            const search = (document.getElementById('search-employees')?.value || '').toLowerCase();
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const visibleIds = contextUsers
+                .filter(u => u.name.toLowerCase().includes(search) || u.number.includes(search))
+                .map(u => u.id);
+
+            if (visibleIds.length === 0) return;
+
+            if (bulkSelection.isAllSelected(visibleIds)) {
+                visibleIds.forEach(id => bulkSelection.setSelected(id, false));
+            } else {
+                bulkSelection.selectAll(visibleIds);
+            }
+            updateBulkActionBar();
+            renderEmployeesList();
+        };
+
+        window.doBulkPause = (paused) => {
+            const ids = bulkSelection.getSelectedIds();
+            if (ids.length === 0) {
+                showToast('Selecciona al menos un empleado');
+                return;
+            }
+            const res = window.BulkEmployeeOperations.bulkSetPaused(users, ids, paused);
+            if (res.affectedCount > 0) {
+                users = res.updatedEmployees;
+                saveData();
+                renderEmployeesList();
+                renderList();
+                updateDashboard();
+                showToast(`${res.affectedCount} empleado(s) ${paused ? 'pausado(s)' : 'reactivado(s)'} ✅`);
+            } else {
+                showToast('No hubo cambios (los empleados ya tenían ese estado)');
+            }
+        };
+
+        window.openBulkContextModal = () => {
+            const ids = bulkSelection.getSelectedIds();
+            if (ids.length === 0) {
+                showToast('Selecciona al menos un empleado');
+                return;
+            }
+            const sel = document.getElementById('bulk-context-select');
+            const sub = document.getElementById('bulk-context-subtitle');
+            if (sub) sub.textContent = `Asignar a ${ids.length} empleado(s) seleccionado(s)`;
+            if (sel && window.workContextManager) {
+                const contexts = workContextManager.getAll();
+                let html = '<option value="">(Sin obra / cuadrilla)</option>';
+                contexts.forEach(c => {
+                    const typeIcon = c.type === 'squad' ? '👥' : '🏗️';
+                    html += `<option value="${esc(c.id)}">${typeIcon} ${esc(c.name)}</option>`;
+                });
+                sel.innerHTML = html;
+            }
+            openModal('modal-bulk-context');
+        };
+
+        window.applyBulkContext = () => {
+            const ids = bulkSelection.getSelectedIds();
+            if (ids.length === 0) return;
+            const sel = document.getElementById('bulk-context-select');
+            const contextId = sel && sel.value ? sel.value : null;
+
+            const res = window.BulkEmployeeOperations.bulkAssignContext(users, ids, contextId);
+            users = res.updatedEmployees;
+            saveData();
+            closeModal('modal-bulk-context');
+            renderEmployeesList();
+            renderList();
+            renderWorkContextBar();
+            showToast(`Obra/cuadrilla asignada a ${res.affectedCount} empleado(s) ✅`);
+        };
+
+        window.openBulkPositionModal = () => {
+            const ids = bulkSelection.getSelectedIds();
+            if (ids.length === 0) {
+                showToast('Selecciona al menos un empleado');
+                return;
+            }
+            populatePositionOptions();
+            const sub = document.getElementById('bulk-position-subtitle');
+            if (sub) sub.textContent = `Asignar a ${ids.length} empleado(s) seleccionado(s)`;
+            const input = document.getElementById('bulk-position-input');
+            if (input) input.value = '';
+            openModal('modal-bulk-position');
+        };
+
+        window.applyBulkPosition = () => {
+            const ids = bulkSelection.getSelectedIds();
+            if (ids.length === 0) return;
+            const input = document.getElementById('bulk-position-input');
+            const pos = (input?.value || '').trim();
+
+            const res = window.BulkEmployeeOperations.bulkAssignPosition(users, ids, pos);
+            users = res.updatedEmployees;
+            saveData();
+            closeModal('modal-bulk-position');
+            renderEmployeesList();
+            renderList();
+            showToast(`Cargo asignado a ${res.affectedCount} empleado(s) ✅`);
+        };
+
+        window.doBulkDelete = () => {
+            const ids = bulkSelection.getSelectedIds();
+            if (ids.length === 0) {
+                showToast('Selecciona al menos un empleado');
+                return;
+            }
+            showConfirm(`¿Eliminar permanentemente ${ids.length} empleado(s) seleccionado(s)?`, {
+                title: 'Eliminar empleados',
+                confirmText: 'Eliminar',
+                danger: true
+            }).then(ok => {
+                if (!ok) return;
+                const res = window.BulkEmployeeOperations.bulkDelete(users, ids);
+                users = res.remainingEmployees;
+                bulkSelection.deselectAll();
+                saveData();
+                updateBulkActionBar();
+                renderEmployeesList();
+                renderList();
+                updateDashboard();
+                showToast(`${res.deletedCount} empleado(s) eliminado(s)`);
+            });
+        };
 
         window.togglePauseUser = (id) => {
             const u = users.find(x => x.id === id);

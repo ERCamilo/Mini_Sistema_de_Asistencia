@@ -145,5 +145,5 @@ test('request cards are compact and expose confirmed non-bubbling delete', () =>
 
 test('service worker cache version advances for Solicitudes UI release', () => {
   const sw = readFileSync(path.resolve(__dirname, '../sw.js'), 'utf8');
-  assert.match(sw, /asistencia-v2\.12\.0/);
+  assert.match(sw, /asistencia-v2\.(?:1[2-9]|[2-9]\d)\.0/);
 });
