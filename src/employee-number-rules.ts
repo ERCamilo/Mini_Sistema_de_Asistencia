@@ -21,6 +21,8 @@ interface EmployeeDraft {
   name: string;
   number: string;
   position: string;
+  sueldo?: string;
+  paused?: boolean;
 }
 
 type ConflictOperation = 'create' | 'edit';

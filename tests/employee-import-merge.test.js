@@ -9,6 +9,12 @@ function mergeEmployees(currentUsers, incoming, normalizeNum = EmployeeNumberRul
 
   incoming.forEach(emp => {
     const normNum = normalizeNum(emp.number);
+    const isPaused = (emp.paused === true || emp.paused === 'true' || emp.status === 'paused' || emp.status === 'inactive' || emp.active === false)
+      ? true
+      : (emp.paused === false || emp.active === true || emp.status === 'active')
+        ? false
+        : undefined;
+
     const existing = users.find(u => (emp.id && u.id === emp.id) || (normNum !== null && normalizeNum(u.number) === normNum));
     if (existing) {
       existing.name = String(emp.name).trim();
@@ -17,6 +23,9 @@ function mergeEmployees(currentUsers, incoming, normalizeNum = EmployeeNumberRul
         const s = String(emp.sueldo).trim();
         existing.sueldo = s ? s : undefined;
       }
+      if (isPaused !== undefined) {
+        existing.paused = isPaused ? true : undefined;
+      }
       updatedCount++;
     } else {
       users.push({
@@ -24,7 +33,8 @@ function mergeEmployees(currentUsers, incoming, normalizeNum = EmployeeNumberRul
         name: String(emp.name).trim(),
         number: String(emp.number).trim(),
         position: emp.position ? String(emp.position).trim() : '',
-        sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined
+        sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
+        paused: isPaused ? true : undefined
       });
       createdCount++;
     }
@@ -121,22 +131,49 @@ test('attendance keys keyed by user id remain valid after employee merge', () =>
   assert.equal(attendanceData['2026-08-31'][updatedAna.id].hours, 8);
 });
 
-test('clipboard export simple employee list formats clean JSON without internal overhead', () => {
+test('clipboard export simple employee list formats clean JSON with paused flag when present', () => {
   const users = [
-    { id: 'u_1', name: 'Ana', number: '1', position: 'Dev', sueldo: '2000' },
-    { id: 'u_2', name: 'Carlos', number: '2', position: '', sueldo: '' }
+    { id: 'u_1', name: 'Ana', number: '1', position: 'Dev', sueldo: '2000', paused: false },
+    { id: 'u_2', name: 'Carlos', number: '2', position: 'Designer', paused: true }
   ];
 
   const simple = users.map(u => {
     const item = { number: u.number, name: u.name };
     if (u.position) item.position = u.position;
     if (u.sueldo) item.sueldo = u.sueldo;
+    if (u.paused) item.paused = true;
     return item;
   });
 
   assert.equal(simple.length, 2);
   assert.deepEqual(simple[0], { number: '1', name: 'Ana', position: 'Dev', sueldo: '2000' });
-  assert.deepEqual(simple[1], { number: '2', name: 'Carlos' });
+  assert.deepEqual(simple[1], { number: '2', name: 'Carlos', position: 'Designer', paused: true });
+});
+
+test('merge mode imports and updates paused status correctly', () => {
+  const initialUsers = [
+    { id: 'user-1', name: 'Ana', number: '1', paused: false },
+    { id: 'user-2', name: 'Carlos', number: '2', paused: true }
+  ];
+
+  const incoming = [
+    { number: '1', name: 'Ana', paused: true }, // Pausing Ana
+    { number: '2', name: 'Carlos', paused: false }, // Reactivating Carlos
+    { number: '3', name: 'Bruno', paused: true } // New paused employee
+  ];
+
+  const { users, updatedCount, createdCount } = mergeEmployees(initialUsers, incoming);
+
+  assert.equal(updatedCount, 2);
+  assert.equal(createdCount, 1);
+
+  const ana = users.find(u => u.number === '1');
+  const carlos = users.find(u => u.number === '2');
+  const bruno = users.find(u => u.number === '3');
+
+  assert.equal(ana.paused, true);
+  assert.equal(carlos.paused, undefined);
+  assert.equal(bruno.paused, true);
 });
 
 test('clipboard export with 30 days filters only dates within the 30-day window', () => {

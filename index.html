@@ -585,7 +585,26 @@
             align-items: center;
             gap: 12px;
             min-height: 72px;
-            transition: background-color 0.3s ease;
+            transition: background-color 0.3s ease, opacity 0.2s ease;
+        }
+
+        .user-card.paused {
+            opacity: 0.75;
+        }
+
+        .badge-paused {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            background: var(--input-bg);
+            color: var(--text-muted);
+            padding: 1px 6px;
+            border-radius: 6px;
+            margin-left: 6px;
+            border: 1px solid var(--border-color);
+            vertical-align: middle;
         }
 
         .user-info-area {
@@ -2398,8 +2417,18 @@
                 <div style="margin-bottom: 16px;"><input type="text" id="user-position" list="position-options"
                         placeholder="Cargo / Puesto (Opcional)" aria-label="Cargo o puesto (opcional)" class="search-input">
                     <datalist id="position-options"></datalist></div>
-                <div style="margin-bottom: 24px;"><input type="text" id="user-sueldo"
+                <div style="margin-bottom: 16px;"><input type="text" id="user-sueldo"
                         placeholder="Sueldo (Opcional)" aria-label="Sueldo (opcional)" class="search-input"></div>
+                <div style="margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; background: var(--input-bg); padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border-color);">
+                    <div>
+                        <div style="font-weight: 600; font-size: 14px; color: var(--text-color);">Pausar empleado</div>
+                        <div style="font-size: 12px; color: var(--text-muted);">No aparecerá en el pase de lista diario</div>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="user-paused" aria-label="Pausar empleado">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <button type="submit" class="btn-full btn-primary">Guardar Empleado</button>
                 <button type="button" id="btn-delete-user" class="btn-full btn-danger"
                     style="display: none; margin-top: 12px;">Eliminar</button>
@@ -2928,6 +2957,9 @@
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
     <script src="./field-requests-repository.js"></script>
+    <script src="./employee-repository.js"></script>
+    <script src="./attendance-repository.js"></script>
+    <script src="./attendance-coordinator.js"></script>
     <script>
         let users = [];
         let attendanceData = {};
@@ -2965,6 +2997,23 @@
             modalId: 'employee-number-conflict-modal'
         });
         const draftImport = window.DraftImport.createDraftImport(window.EmployeeNumberRules);
+        const employeeRepository = window.EmployeeRepository.createEmployeeRepository({
+            storage: localStorage,
+            rules: window.EmployeeNumberRules,
+            onSnapshotChanged: (nextUsers) => {
+                users = nextUsers;
+            }
+        });
+        const attendanceRepository = window.AttendanceRepository.createAttendanceRepository({
+            storage: localStorage,
+            onSnapshotChanged: (nextAttendance) => {
+                attendanceData = nextAttendance;
+            }
+        });
+        const attendanceCoordinator = window.AttendanceCoordinator.createAttendanceCoordinator({
+            repository: attendanceRepository,
+            storage: localStorage
+        });
 
         // --- SISTEMA DE ICONOS (emoji <-> Lucide) ---
         let currentIconStyle = window.IconSet.normalizeIconStyle(localStorage.getItem('iconStyle'));
@@ -3312,21 +3361,18 @@
 
         function loadData() {
             const u = localStorage.getItem('users');
-            const a = localStorage.getItem('weeklyAttendance');
+            const a = localStorage.getItem('attendance') || localStorage.getItem('weeklyAttendance');
             const t = localStorage.getItem('lastUpdateTimestamp');
             const requestState = fieldRequestsRepository.load();
 
             if (u) users = JSON.parse(u);
             if (a) {
-                const parsed = JSON.parse(a);
-                for (let d in parsed) {
-                    if (!attendanceData[d]) attendanceData[d] = {};
-                    for (let id in parsed[d]) {
-                        let rec = parsed[d][id];
-                        attendanceData[d][id] = (typeof rec === 'string') ? { status: rec, hours: 8 } : rec;
-                    }
-                }
+                try {
+                    const parsed = JSON.parse(a);
+                    attendanceRepository.importBatch(parsed, 'replace');
+                } catch { }
             }
+            attendanceData = attendanceRepository.getAll();
             if (t) lastActionTime = t;
             requests = requestState.requests;
             requestTemplates = requestState.templates;
@@ -3351,7 +3397,7 @@
             return {
                 schemaVersion: 1,
                 users: users,
-                attendance: attendanceData,
+                attendance: attendanceRepository.getAll(),
                 settings,
                 requests: requests,
                 templates: requestTemplates,
@@ -3361,9 +3407,9 @@
 
         function writeLegacyMirror(snapshot) {
             localStorage.setItem('users', JSON.stringify(snapshot.users));
+            localStorage.setItem('attendance', JSON.stringify(snapshot.attendance));
             localStorage.setItem('weeklyAttendance', JSON.stringify(snapshot.attendance));
             localStorage.setItem('lastUpdateTimestamp', snapshot.lastUpdateTimestamp);
-
         }
 
         function queueLocalSnapshot() {
@@ -3386,7 +3432,10 @@
 
         function applyLocalSnapshot(snapshot) {
             users = snapshot.users;
-            attendanceData = snapshot.attendance;
+            if (snapshot.attendance) {
+                attendanceRepository.importBatch(snapshot.attendance, 'replace');
+            }
+            attendanceData = attendanceRepository.getAll();
             lastActionTime = snapshot.lastUpdateTimestamp;
             if (Array.isArray(snapshot.requests)) requests = snapshot.requests;
             if (Array.isArray(snapshot.templates)) requestTemplates = snapshot.templates;
@@ -3436,15 +3485,14 @@
             updateDashboard();
         }
 
-        function getRecord(uid, date = selectedDate) { return attendanceData[date]?.[uid]; }
+        function getRecord(uid, date = selectedDate) {
+            return attendanceRepository.getRecord(uid, date);
+        }
 
         function setRecord(uid, status, hours) {
-            if (!attendanceData[selectedDate]) attendanceData[selectedDate] = {};
-            if (status === 'absent' || status === 'pending') {
-                delete attendanceData[selectedDate][uid];
-            } else {
-                attendanceData[selectedDate][uid] = { status: 'present', hours: parseFloat(hours) };
-            }
+            const emp = users.find(u => u.id === uid) || { id: uid, name: '', number: '' };
+            attendanceCoordinator.recordAttendance(emp, selectedDate, status, hours);
+            attendanceData = attendanceRepository.getAll();
 
             const now = new Date();
             lastActionTime = now.toLocaleTimeString('es-ES', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -3483,7 +3531,6 @@
             const options = { weekday: 'short', day: 'numeric', month: 'short' };
             document.getElementById('header-date').textContent = dateObj.toLocaleDateString('es-ES', options).replace('.', '');
 
-            const total = users.length;
             const records = attendanceData[selectedDate] || {};
             let presentCount = 0;
             let extraCount = 0;
@@ -3496,7 +3543,9 @@
                 }
             }
 
-            const absentCount = total - presentCount;
+            const activeCount = users.filter(u => !u.paused || (records[u.id] && records[u.id].status === 'present')).length;
+            const total = activeCount;
+            const absentCount = Math.max(0, total - presentCount);
 
             document.getElementById('stat-total').textContent = total;
             document.getElementById('stat-present').textContent = presentCount;
@@ -3534,9 +3583,11 @@
             container.innerHTML = '';
 
             const filtered = users.filter(u => {
-                const matchesSearch = u.name.toLowerCase().includes(search) || u.number.includes(search);
                 const record = getRecord(u.id);
                 const isPresent = !!record;
+                if (u.paused && !isPresent) return false;
+
+                const matchesSearch = u.name.toLowerCase().includes(search) || u.number.includes(search);
                 const hours = isPresent ? record.hours : 0;
 
                 let matchesFilter = true;
@@ -3559,6 +3610,7 @@
                 const record = getRecord(u.id);
                 const isPresent = !!record;
                 const hours = isPresent ? record.hours : 0;
+                const isPaused = !!u.paused;
 
                 let colorClass = '';
                 if (isPresent) {
@@ -3568,12 +3620,15 @@
                 }
 
                 const div = document.createElement('div');
-                div.className = 'user-card';
+                div.className = 'user-card' + (isPaused ? ' paused' : '');
                 div.innerHTML = `
                     <button type="button" class="avatar-placeholder tap-calendar" onclick="openCalendar('${esc(u.id)}')" aria-label="Ver historial de ${esc(u.name)}" title="Ver historial">${esc(u.number)}</button>
                     <div class="user-info-area">
                         <div class="user-details">
-                            <div class="user-name">${esc(u.name)}</div>
+                            <div class="user-name">
+                                ${esc(u.name)}
+                                ${isPaused ? '<span class="badge-paused">Pausado</span>' : ''}
+                            </div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
                         ${isPresent ? `<button type="button" class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" aria-label="Modificar horas de ${esc(u.name)}" title="Modificar horas"><span class="state-glyph">${stateGlyph(colorClass)}</span>${hours}h</button>` : ''}
@@ -3594,9 +3649,9 @@
 
         function renderWeeklyTable() {
             const table = document.getElementById('week-table');
-
             const weekDates = [];
             const curr = new Date(currentWeekStart);
+
             for (let i = 0; i < 7; i++) {
                 weekDates.push(new Date(curr));
                 curr.setDate(curr.getDate() + 1);
@@ -3632,7 +3687,16 @@
                 </thead>
                 <tbody>`;
 
-            const sortedUsers = [...users].sort((a, b) => parseInt(a.number) - parseInt(b.number));
+            const sortedUsers = users.filter(u => {
+                if (!u.paused) return true;
+                return weekDates.some(d => {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${day}`;
+                    return !!attendanceData[dateStr]?.[u.id];
+                });
+            }).sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
             sortedUsers.forEach(u => {
                 let row = `<tr><td class="week-num">${esc(u.number)}</td>`;
@@ -3797,13 +3861,16 @@
                 name: document.getElementById('user-name').value.trim(),
                 number: document.getElementById('user-number').value,
                 position: document.getElementById('user-position').value.trim(),
-                sueldo: document.getElementById('user-sueldo').value.trim()
+                sueldo: document.getElementById('user-sueldo').value.trim(),
+                paused: document.getElementById('user-paused').checked
             };
         }
 
         function refreshEmployeeViews() {
             saveData();
             renderEmployeesList();
+            renderList();
+            updateDashboard();
         }
 
         function showEmployeeNumberConflict(conflict) {
@@ -4369,6 +4436,7 @@
 
         function openAddUserModal() {
             document.getElementById('user-form').reset();
+            document.getElementById('user-paused').checked = false;
             document.getElementById('form-title').textContent = 'Nuevo Empleado';
             document.getElementById('edit-user-id').value = '';
             document.getElementById('btn-delete-user').style.display = 'none';
@@ -5470,27 +5538,49 @@
             const container = document.getElementById('employees-container');
             const search = document.getElementById('search-employees').value.toLowerCase();
             const filtered = users
-                .filter(u => u.name.toLowerCase().includes(search))
+                .filter(u => u.name.toLowerCase().includes(search) || u.number.includes(search))
                 .sort((a, b) => parseInt(a.number) - parseInt(b.number));
             container.innerHTML = '';
 
             filtered.forEach(u => {
+                const isPaused = !!u.paused;
                 const div = document.createElement('div');
-                div.className = 'user-card';
+                div.className = 'user-card' + (isPaused ? ' paused' : '');
                 div.innerHTML = `
                     <div class="avatar-placeholder">${esc(u.number)}</div>
                     <div class="user-info-area">
                         <div class="user-details">
-                            <div class="user-name">${esc(u.name)}</div>
+                            <div class="user-name">
+                                ${esc(u.name)}
+                                ${isPaused ? '<span class="badge-paused">Pausado</span>' : ''}
+                            </div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
                         </div>
                     </div>
-                    <button class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')"><span class="ic" data-icon="edit"></span></button>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <button type="button" class="export-btn" style="font-size:16px;" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
+                            <span class="ic" data-icon="${isPaused ? 'play' : 'pause'}"></span>
+                        </button>
+                        <button type="button" class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
+                            <span class="ic" data-icon="edit"></span>
+                        </button>
+                    </div>
                 `;
                 container.appendChild(div);
             });
             applyIcons(container);
         }
+
+        window.togglePauseUser = (id) => {
+            const u = users.find(x => x.id === id);
+            if (!u) return;
+            u.paused = !u.paused;
+            saveData();
+            renderEmployeesList();
+            renderList();
+            updateDashboard();
+            showToast(u.paused ? `Empleado pausado: ${u.name}` : `Empleado reactivado: ${u.name}`);
+        };
 
         window.editUser = (id) => {
             const u = users.find(x => x.id === id);
@@ -5502,6 +5592,7 @@
             populatePositionOptions();
             document.getElementById('user-position').value = u.position || '';
             document.getElementById('user-sueldo').value = u.sueldo || '';
+            document.getElementById('user-paused').checked = !!u.paused;
             document.getElementById('btn-delete-user').style.display = 'block';
             openModal('user-modal');
         }
@@ -5738,7 +5829,8 @@
                             name: String(emp.name).trim(),
                             number: String(emp.number).trim(),
                             position: emp.position ? String(emp.position).trim() : '',
-                            sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined
+                            sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
+                            paused: (emp.paused === true || emp.paused === 'true' || emp.status === 'paused' || emp.status === 'inactive' || emp.active === false) ? true : undefined
                         }));
                         saveData();
                         closeModal('modal-import-employees');
@@ -5752,6 +5844,12 @@
 
                         incoming.forEach(emp => {
                             const normNum = normalizeNum(emp.number);
+                            const isPaused = (emp.paused === true || emp.paused === 'true' || emp.status === 'paused' || emp.status === 'inactive' || emp.active === false)
+                                ? true
+                                : (emp.paused === false || emp.active === true || emp.status === 'active')
+                                    ? false
+                                    : undefined;
+
                             const existing = users.find(u => (emp.id && u.id === emp.id) || (normNum !== null && normalizeNum(u.number) === normNum));
                             if (existing) {
                                 existing.name = String(emp.name).trim();
@@ -5760,6 +5858,9 @@
                                     const s = String(emp.sueldo).trim();
                                     existing.sueldo = s ? s : undefined;
                                 }
+                                if (isPaused !== undefined) {
+                                    existing.paused = isPaused ? true : undefined;
+                                }
                                 updatedCount++;
                             } else {
                                 users.push({
@@ -5767,7 +5868,8 @@
                                     name: String(emp.name).trim(),
                                     number: String(emp.number).trim(),
                                     position: emp.position ? String(emp.position).trim() : '',
-                                    sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined
+                                    sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
+                                    paused: isPaused ? true : undefined
                                 });
                                 createdCount++;
                             }
@@ -5812,8 +5914,13 @@
                 requestTemplates = [];
                 lastActionTime = '';
 
-                // Limpiar llaves persistidas
-                ['users', 'weeklyAttendance', 'requests', 'requestTemplates', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
+                // Limpiar llaves y repositorios
+                attendanceRepository.clearAll();
+                attendanceRepository.clearTombstones();
+                employeeRepository.clearTombstones();
+                attendanceCoordinator.clearOutbox();
+
+                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
                 saveData();
 
                 renderList();
@@ -5866,6 +5973,7 @@
                 };
                 if (u.position) item.position = u.position;
                 if (u.sueldo) item.sueldo = u.sueldo;
+                if (u.paused) item.paused = true;
                 return item;
             });
             const jsonStr = JSON.stringify(cleanList, null, 2);
@@ -5906,7 +6014,8 @@
                     number: u.number,
                     name: u.name,
                     position: u.position || '',
-                    sueldo: u.sueldo || undefined
+                    sueldo: u.sueldo || undefined,
+                    paused: u.paused ? true : undefined
                 })),
                 attendance: filteredAttendance
             };

@@ -3,3 +3,6 @@ graphify-out/
 
 # Node
 node_modules/
+
+# Local Architecture Guide
+GUIA_DESARROLLO_SA_MINI.md
