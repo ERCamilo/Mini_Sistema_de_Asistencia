@@ -6390,23 +6390,44 @@
                 danger: true
             }).then(ok => {
                 if (!ok) return;
+
+                // 1. Limpiar repositorios y persistencia desacoplada
+                if (employeeRepository && typeof employeeRepository.clearAll === 'function') {
+                    employeeRepository.clearAll();
+                }
+                if (attendanceRepository && typeof attendanceRepository.clearAll === 'function') {
+                    attendanceRepository.clearAll();
+                }
+                if (attendanceCoordinator && typeof attendanceCoordinator.clearOutbox === 'function') {
+                    attendanceCoordinator.clearOutbox();
+                }
+                if (importHistoryRepository && typeof importHistoryRepository.clearHistory === 'function') {
+                    importHistoryRepository.clearHistory();
+                }
+                if (fieldRequestsRepository && typeof fieldRequestsRepository.save === 'function') {
+                    fieldRequestsRepository.save([], []);
+                }
+                if (window.workContextManager && typeof workContextManager.clearAll === 'function') {
+                    workContextManager.clearAll();
+                }
+                if (window.bulkSelection && typeof bulkSelection.deselectAll === 'function') {
+                    bulkSelection.deselectAll();
+                }
+
+                // 2. Limpiar variables reactivas en memoria
                 users = [];
                 attendanceData = {};
                 requests = [];
                 requestTemplates = [];
                 lastActionTime = '';
 
-                // Limpiar llaves y repositorios
-                attendanceRepository.clearAll();
-                attendanceRepository.clearTombstones();
-                employeeRepository.clearTombstones();
-                attendanceCoordinator.clearOutbox();
-                importHistoryRepository.clearHistory();
-                if (window.workContextManager) workContextManager.clearAll();
-
+                // 3. Limpiar todas las llaves legacy en localStorage
                 ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
+                
+                // 4. Persistir snapshot completamente limpio (localStorage + IndexedDB)
                 saveData();
 
+                // 5. Re-renderizar la interfaz limpia
                 renderList();
                 renderEmployeesList();
                 renderRequestsDashboard();

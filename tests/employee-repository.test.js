@@ -262,3 +262,31 @@ test('exportSnapshot returns schemaVersion 1 with employees and tombstones', () 
   assert.equal(snapshot.tombstones.length, 1);
   assert.equal(snapshot.tombstones[0].id, 'u_old');
 });
+
+test('clearAll removes all employees and tombstones and notifies listeners', () => {
+  let notifiedUsers = null;
+  let notifiedTombstones = null;
+  const initial = [
+    { id: 'u1', name: 'Pablo', number: '1', position: 'Jefe' }
+  ];
+  const storage = createMemoryStorage({
+    users: JSON.stringify(initial),
+    employee_tombstones: JSON.stringify([
+      { id: 'u_old', type: 'employee', deletedAt: '2026-08-30T00:00:00.000Z', schemaVersion: 1 }
+    ])
+  });
+  const repo = EmployeeRepository.createEmployeeRepository({
+    storage,
+    rules: EmployeeNumberRules,
+    onSnapshotChanged: (u, t) => {
+      notifiedUsers = u;
+      notifiedTombstones = t;
+    }
+  });
+
+  repo.clearAll();
+  assert.equal(repo.getAll().length, 0);
+  assert.equal(repo.getTombstones().length, 0);
+  assert.deepEqual(notifiedUsers, []);
+  assert.deepEqual(notifiedTombstones, []);
+});

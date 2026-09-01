@@ -386,6 +386,11 @@ interface BatchImportResult {
       persistTombstones([]);
     }
 
+    function clearAll(): void {
+      persistUsers([]);
+      persistTombstones([]);
+    }
+
     return {
       getAll,
       getById,
@@ -396,7 +401,8 @@ interface BatchImportResult {
       importBatch,
       exportSnapshot,
       getTombstones,
-      clearTombstones
+      clearTombstones,
+      clearAll
     };
   }
 

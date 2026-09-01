@@ -295,6 +295,10 @@
         function clearTombstones() {
             persistTombstones([]);
         }
+        function clearAll() {
+            persistUsers([]);
+            persistTombstones([]);
+        }
         return {
             getAll,
             getById,
@@ -305,7 +309,8 @@
             importBatch,
             exportSnapshot,
             getTombstones,
-            clearTombstones
+            clearTombstones,
+            clearAll
         };
     }
     return {
