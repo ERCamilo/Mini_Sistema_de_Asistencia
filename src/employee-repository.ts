@@ -7,6 +7,7 @@ interface EmployeeRecord {
   number: string;
   position?: string;
   sueldo?: string;
+  workContextId?: string;
   paused?: boolean;
   localOnly?: boolean;
   createdAt?: string;
@@ -21,6 +22,7 @@ interface EmployeeDraftInput {
   number: string;
   position?: string;
   sueldo?: string;
+  workContextId?: string;
   paused?: boolean;
   [extra: string]: unknown;
 }
@@ -150,6 +152,7 @@ interface BatchImportResult {
         number: String(draft.number || '').trim(),
         position: draft.position ? String(draft.position).trim() : '',
         sueldo: draft.sueldo !== undefined && draft.sueldo !== null && String(draft.sueldo).trim() !== '' ? String(draft.sueldo).trim() : undefined,
+        workContextId: draft.workContextId ? String(draft.workContextId).trim() : undefined,
         paused: !!draft.paused
       };
 
@@ -290,6 +293,7 @@ interface BatchImportResult {
             number: String(emp.number).trim(),
             position: emp.position ? String(emp.position).trim() : '',
             sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
+            workContextId: emp.workContextId ? String(emp.workContextId).trim() : undefined,
             paused: isPaused,
             schemaVersion: CURRENT_SCHEMA_VERSION,
             localOnly: true,
@@ -330,6 +334,10 @@ interface BatchImportResult {
             const s = String(emp.sueldo).trim();
             existing.sueldo = s ? s : undefined;
           }
+          if (emp.workContextId !== undefined) {
+            const c = String(emp.workContextId).trim();
+            existing.workContextId = c ? c : undefined;
+          }
           if (isPaused !== undefined) {
             existing.paused = isPaused ? true : undefined;
           }
@@ -344,6 +352,7 @@ interface BatchImportResult {
             number: String(emp.number).trim(),
             position: emp.position ? String(emp.position).trim() : '',
             sueldo: emp.sueldo !== undefined && emp.sueldo !== null && String(emp.sueldo).trim() !== '' ? String(emp.sueldo).trim() : undefined,
+            workContextId: emp.workContextId ? String(emp.workContextId).trim() : undefined,
             paused: isPaused ? true : undefined,
             schemaVersion: CURRENT_SCHEMA_VERSION,
             localOnly: true,

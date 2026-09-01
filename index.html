@@ -3627,7 +3627,8 @@
 
         function shareToWhatsApp() {
             const records = attendanceData[selectedDate] || {};
-            const presentUsers = users.filter(u => records[u.id]).sort((a, b) => parseInt(a.number) - parseInt(b.number));
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const presentUsers = contextUsers.filter(u => records[u.id]).sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
             if (presentUsers.length === 0) {
                 showToast('No hay asistencia registrada para hoy.');
@@ -3637,8 +3638,10 @@
             const [y, m, d] = selectedDate.split('-');
             const dateObj = new Date(y, m - 1, d);
             const dateStr = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+            const activeCtx = window.workContextManager ? window.workContextManager.getActive() : null;
+            const ctxSuffix = activeCtx ? ` · ${activeCtx.type === 'squad' ? '👥' : '🏗️'} ${activeCtx.name}` : '';
 
-            let message = `*Asistencia de hoy ${dateStr}*\n`;
+            let message = `*Asistencia de hoy ${dateStr}${ctxSuffix}*\n`;
             message += `_Última actualización: ${lastActionTime || 'Reciente'}_\n\n`;
 
             presentUsers.forEach(u => {
@@ -6073,7 +6076,8 @@
             });
             normalizeRequestState();
             const requestExport = fieldRequestsRepository.exportCollections(requests, requestTemplates);
-            const data = { schemaVersion: 1, exportedAt: new Date().toISOString(), users, attendance: attendanceData, requests: requestExport.requests, templates: requestExport.templates, settings };
+            const workContexts = window.workContextManager ? window.workContextManager.exportSnapshot() : [];
+            const data = { schemaVersion: 1, exportedAt: new Date().toISOString(), users, attendance: attendanceData, requests: requestExport.requests, templates: requestExport.templates, workContexts, settings };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -6138,7 +6142,8 @@
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
                 const hasSettings = parsed.settings && typeof parsed.settings === 'object' && Object.keys(parsed.settings).length > 0;
-                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasSettings ? ' + ajustes.' : '.');
+                const hasCtx = Array.isArray(parsed.workContexts) && parsed.workContexts.length > 0;
+                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasCtx ? ', ' + parsed.workContexts.length + ' obras' : '') + (hasSettings ? ' + ajustes.' : '.');
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
             } catch (err) {
@@ -6161,6 +6166,7 @@
                 if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) throw new Error('Los ajustes no son válidos');
                 if (parsed.requests !== undefined && !Array.isArray(parsed.requests)) throw new Error('Las solicitudes no son válidas');
                 if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) throw new Error('Las plantillas no son válidas');
+                if (parsed.workContexts !== undefined && !Array.isArray(parsed.workContexts)) throw new Error('Las obras y cuadrillas no son válidas');
                 const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
                 imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
                 const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
@@ -6169,10 +6175,18 @@
                 fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
                     users = state.users; attendanceData = state.attendance; requests = state.requests; requestTemplates = state.templates;
                     BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
+                    if (Array.isArray(parsed.workContexts) && window.workContextManager) {
+                        window.workContextManager.importSnapshot(parsed.workContexts);
+                    }
                     applyRestoredSettings();
                 }, saveData);
                 closeModal('modal-restore-backup');
-                renderList(); renderEmployeesList(); renderRequestsDashboard();
+                renderList(); renderEmployeesList(); renderRequestsDashboard(); renderWorkContextBar();
+                document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
+            } catch (err) {
+                document.getElementById('restore-validation-msg').innerHTML = '&#x274C; Error: ' + err.message;
+            }
+        }
                 document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
             } catch (err) {
                 document.getElementById('restore-validation-msg').innerHTML = '&#x274C; Error: ' + err.message;

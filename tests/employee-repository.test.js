@@ -290,3 +290,22 @@ test('clearAll removes all employees and tombstones and notifies listeners', () 
   assert.deepEqual(notifiedUsers, []);
   assert.deepEqual(notifiedTombstones, []);
 });
+
+test('save and importBatch preserve workContextId assignment', () => {
+  const storage = createMemoryStorage({});
+  const repo = EmployeeRepository.createEmployeeRepository({
+    storage,
+    rules: EmployeeNumberRules
+  });
+
+  const saveRes = repo.save({ name: 'Rodrigo', number: '10', workContextId: 'ctx_obra_1' });
+  assert.equal(saveRes.status, 'saved');
+  assert.equal(saveRes.employee.workContextId, 'ctx_obra_1');
+
+  const batchRes = repo.importBatch([
+    { name: 'Sofia', number: '11', workContextId: 'ctx_cuadrilla_a' }
+  ], 'merge');
+  assert.equal(batchRes.createdCount, 1);
+  const sofia = repo.getByNumber('11');
+  assert.equal(sofia.workContextId, 'ctx_cuadrilla_a');
+});
