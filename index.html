@@ -2712,7 +2712,7 @@
 
                 <label style="display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Nombre</label>
                 <div style="display:flex;gap:8px;">
-                    <input type="text" id="new-context-name" class="search-input" placeholder="Ej: Torre A, Sector Norte, Cuadrilla 1" style="flex:1;">
+                    <input type="text" id="new-context-name" class="search-input" placeholder="Ej: Torre A, Sector Norte, Cuadrilla 1" style="flex:1;padding-left:14px;" onkeydown="if(event.key==='Enter'){event.preventDefault();createWorkContextFromUI();}">
                     <button type="button" class="btn-full btn-primary" style="width:auto;padding:0 18px;margin:0;white-space:nowrap;font-weight:700;display:flex;align-items:center;gap:6px;" onclick="createWorkContextFromUI()">
                         <span class="ic" data-icon="add"></span> Crear
                     </button>
@@ -3173,6 +3173,9 @@
                 if (typeof updateDashboard === 'function') updateDashboard();
             }
         });
+        window.workContextManager = workContextManager;
+        window.employeeRepository = employeeRepository;
+        window.attendanceRepository = attendanceRepository;
 
         // --- SISTEMA DE ICONOS (emoji <-> Lucide) ---
         let currentIconStyle = window.IconSet.normalizeIconStyle(localStorage.getItem('iconStyle'));
@@ -6147,21 +6150,30 @@
         }
 
         window.createWorkContextFromUI = () => {
-            if (!window.workContextManager) return;
+            const mgr = window.workContextManager || (typeof workContextManager !== 'undefined' ? workContextManager : null);
+            if (!mgr) {
+                showToast('Error: Gestor de obras no disponible');
+                return;
+            }
             const nameInput = document.getElementById('new-context-name');
             const typeInput = document.getElementById('new-context-type');
             const name = (nameInput?.value || '').trim();
             if (!name) {
                 showToast('Ingresa un nombre para la obra o cuadrilla');
+                if (nameInput) nameInput.focus();
                 return;
             }
-            workContextManager.saveContext({
+            mgr.saveContext({
                 name: name,
                 type: typeInput?.value || 'project'
             });
-            nameInput.value = '';
+            if (nameInput) {
+                nameInput.value = '';
+                nameInput.focus();
+            }
             renderWorkContextsModalList();
             renderWorkContextBar();
+            saveData();
             showToast('Contexto creado exitosamente ✅');
         };
 

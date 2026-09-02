@@ -147,3 +147,25 @@ test('removeContext cleans active context and unassigns from employees', () => {
   const empAfter = empRepo.getAll()[0];
   assert.equal(empAfter.workContextId, undefined);
 });
+
+test('index.html contains full work-context markup, script and window binding', () => {
+  const { readFileSync } = require('node:fs');
+  const path = require('node:path');
+  const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+
+  // Script inclusion
+  assert.match(html, /src="\.\/work-context\.js"/);
+
+  // Global window assignment so UI functions can access it
+  assert.match(html, /window\.workContextManager\s*=\s*workContextManager/);
+
+  // Modal and creation elements
+  assert.match(html, /id="modal-work-contexts"/);
+  assert.match(html, /id="new-context-name"/);
+  assert.match(html, /id="new-context-type"/);
+  assert.match(html, /createWorkContextFromUI\(\)/);
+
+  // Filter bar pills
+  assert.match(html, /id="work-context-pills"/);
+  assert.match(html, /id="work-context-pills-emp"/);
+});
