@@ -6474,22 +6474,26 @@
 
                     const snapshotBefore = {
                         users: employeeRepository.getAll(),
-                        attendance: attendanceRepository.getAll()
+                        attendance: mode === 'replace' ? attendanceRepository.getAll() : undefined
                     };
 
                     const result = employeeRepository.importBatch(incoming, mode);
                     users = employeeRepository.getAll();
 
-                    importHistoryRepository.recordImport({
-                        source: 'json',
-                        mode: mode,
-                        summary: {
-                            totalIncoming: incoming.length,
-                            createdCount: result.created,
-                            updatedCount: result.updated
-                        },
-                        snapshotBefore
-                    });
+                    try {
+                        importHistoryRepository.recordImport({
+                            source: 'json',
+                            mode: mode,
+                            summary: {
+                                totalIncoming: incoming.length,
+                                createdCount: result.created,
+                                updatedCount: result.updated
+                            },
+                            snapshotBefore
+                        });
+                    } catch (historyErr) {
+                        console.warn('No se pudo guardar el historial de importación:', historyErr);
+                    }
 
                     saveData();
                     closeModal('modal-import-employees');

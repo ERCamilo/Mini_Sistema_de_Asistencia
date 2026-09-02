@@ -49,7 +49,7 @@ interface ImportHistoryOptions {
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createImportHistoryRepositoryModule() {
   const STORAGE_KEY_HISTORY = 'import_history_v1';
   const CURRENT_SCHEMA_VERSION = 1;
-  const DEFAULT_MAX_ENTRIES = 10;
+  const DEFAULT_MAX_ENTRIES = 3;
 
   function defaultNow(): string {
     return new Date().toISOString();
@@ -79,7 +79,38 @@ interface ImportHistoryOptions {
     function persistEntries(entries: ImportHistoryEntry[]): void {
       // Keep only up to maxEntries to preserve local storage budget
       const trimmed = entries.slice(-maxEntries);
-      storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(trimmed));
+
+      // Conserve quota: only the most recent entry needs the full snapshotBefore.
+      // Older entries retain all metadata (summary, source, timestamp, status) but drop heavy snapshots.
+      for (let i = 0; i < trimmed.length - 1; i++) {
+        if (trimmed[i].snapshotBefore) {
+          trimmed[i].snapshotBefore = { users: [] };
+        }
+      }
+
+      try {
+        storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(trimmed));
+      } catch {
+        // Quota exceeded: retry with aggressive pruning (keep only latest entry without attendance)
+        try {
+          const latestOnly = trimmed.slice(-1);
+          if (latestOnly.length > 0 && latestOnly[0].snapshotBefore) {
+            latestOnly[0].snapshotBefore.attendance = undefined;
+          }
+          storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(latestOnly));
+        } catch {
+          // If still failing, strip snapshot completely to avoid crashing calling process
+          try {
+            const metadataOnly = trimmed.slice(-1).map(e => ({
+              ...e,
+              snapshotBefore: { users: [] }
+            }));
+            storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(metadataOnly));
+          } catch {
+            // Storage quota exhausted at device/browser level; ignore write cleanly
+          }
+        }
+      }
       options.onHistoryChanged?.(trimmed);
     }
 
@@ -168,6 +199,7 @@ interface ImportHistoryOptions {
 
       target.status = 'rolled_back';
       target.rolledBackAt = nowFn();
+      target.snapshotBefore = { users: [] };
       persistEntries(entries);
 
       return {
@@ -189,6 +221,16 @@ interface ImportHistoryOptions {
 
     function clearHistory(): void {
       persistEntries([]);
+    }
+
+    // Auto-heal existing storage on initialization if it exceeds maxEntries or contains stale bloated snapshots
+    try {
+      const existing = loadEntries();
+      if (existing.length > maxEntries || existing.some((e, idx) => idx < existing.length - 1 && e.snapshotBefore?.attendance)) {
+        persistEntries(existing);
+      }
+    } catch {
+      // Ignore initial cleanup failure
     }
 
     return {

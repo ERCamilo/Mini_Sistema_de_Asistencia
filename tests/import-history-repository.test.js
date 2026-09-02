@@ -155,3 +155,69 @@ test('history respects maxEntries limit', () => {
   assert.equal(all[0].summary.totalIncoming, 3);
   assert.equal(all[2].summary.totalIncoming, 5);
 });
+
+test('older entries prune snapshotBefore to save quota while latest retains it', () => {
+  const storage = createMemoryStorage();
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({
+    storage,
+    maxEntries: 3
+  });
+
+  historyRepo.recordImport({
+    source: 'json',
+    mode: 'merge',
+    summary: { totalIncoming: 1, createdCount: 1, updatedCount: 0 },
+    snapshotBefore: { users: [{ id: 'u1', name: 'Ana' }] }
+  });
+
+  historyRepo.recordImport({
+    source: 'json',
+    mode: 'merge',
+    summary: { totalIncoming: 1, createdCount: 1, updatedCount: 0 },
+    snapshotBefore: { users: [{ id: 'u2', name: 'Carlos' }] }
+  });
+
+  const all = historyRepo.getAll();
+  assert.equal(all.length, 2);
+  // Older entry snapshot has been pruned
+  assert.equal(all[0].snapshotBefore.users.length, 0);
+  // Latest entry retains its full snapshot for rollback
+  assert.equal(all[1].snapshotBefore.users.length, 1);
+  assert.equal(all[1].snapshotBefore.users[0].name, 'Carlos');
+});
+
+test('recovers gracefully from QuotaExceededError without throwing', () => {
+  let failCount = 0;
+  const map = new Map();
+  const failingStorage = {
+    getItem(k) { return map.get(k) || null; },
+    setItem(k, v) {
+      // Simulate quota error on full payload, then accept pruned version
+      if (failCount < 1) {
+        failCount++;
+        const quotaError = new Error('Setting the value of "import_history_v1" exceeded the quota');
+        quotaError.name = 'QuotaExceededError';
+        throw quotaError;
+      }
+      map.set(k, v);
+    }
+  };
+
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({
+    storage: failingStorage
+  });
+
+  assert.doesNotThrow(() => {
+    historyRepo.recordImport({
+      source: 'json',
+      mode: 'replace',
+      summary: { totalIncoming: 5, createdCount: 5, updatedCount: 0 },
+      snapshotBefore: {
+        users: [{ id: 'u1' }],
+        attendance: { '2026-09-01': { u1: { status: 'present' } } }
+      }
+    });
+  });
+
+  assert.equal(historyRepo.getAll().length, 1);
+});
