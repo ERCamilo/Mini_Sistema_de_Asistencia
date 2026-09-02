@@ -589,21 +589,31 @@
         }
 
         .user-card.paused {
-            opacity: 0.75;
+            opacity: 0.65;
+            border: 1px dashed var(--border-color);
+            background: var(--input-bg);
+        }
+
+        .user-card.paused .avatar-placeholder {
+            filter: grayscale(1);
+            opacity: 0.6;
+            border-style: dashed;
         }
 
         .badge-paused {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
             font-size: 10px;
             font-weight: 700;
             letter-spacing: 0.05em;
             text-transform: uppercase;
-            background: var(--input-bg);
-            color: var(--text-muted);
-            padding: 1px 6px;
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning-color);
+            padding: 2px 7px;
             border-radius: 6px;
             margin-left: 6px;
-            border: 1px solid var(--border-color);
+            border: 1px solid rgba(245, 158, 11, 0.35);
             vertical-align: middle;
         }
 
@@ -2263,6 +2273,11 @@
     <div id="employees-view" class="hidden">
         <div class="dashboard-panel">
             <div class="category-pills" id="work-context-pills-emp" style="margin-bottom: 10px; display: none;"></div>
+            <div class="category-pills" id="emp-status-pills" style="margin-bottom: 12px; display: flex;">
+                <button type="button" class="category-pill active" id="pill-emp-status-all" onclick="setEmployeeStatusFilter('all')">Todos <span id="emp-count-all" style="font-weight:600;opacity:0.8;"></span></button>
+                <button type="button" class="category-pill" id="pill-emp-status-active" onclick="setEmployeeStatusFilter('active')">Activos <span id="emp-count-active" style="font-weight:600;opacity:0.8;"></span></button>
+                <button type="button" class="category-pill" id="pill-emp-status-paused" onclick="setEmployeeStatusFilter('paused')"><span class="ic" data-icon="pause"></span> Pausados <span id="emp-count-paused" style="font-weight:600;opacity:0.8;"></span></button>
+            </div>
             <div style="display:flex;gap:8px;align-items:center;">
                 <div class="search-container" style="flex:1;">
                     <span class="search-icon"><span class="ic" data-icon="search"></span></span>
@@ -5690,14 +5705,63 @@
             });
         }
 
+        let employeeStatusFilter = 'all'; // 'all' | 'active' | 'paused'
+
+        window.setEmployeeStatusFilter = (status) => {
+            employeeStatusFilter = status;
+            updateEmployeeStatusPills();
+            renderEmployeesList();
+        };
+
+        function updateEmployeeStatusPills() {
+            const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            const totalCount = contextUsers.length;
+            const activeCount = contextUsers.filter(u => !u.paused).length;
+            const pausedCount = contextUsers.filter(u => !!u.paused).length;
+
+            const cAll = document.getElementById('emp-count-all');
+            const cActive = document.getElementById('emp-count-active');
+            const cPaused = document.getElementById('emp-count-paused');
+            if (cAll) cAll.textContent = `(${totalCount})`;
+            if (cActive) cActive.textContent = `(${activeCount})`;
+            if (cPaused) cPaused.textContent = `(${pausedCount})`;
+
+            const pAll = document.getElementById('pill-emp-status-all');
+            const pActive = document.getElementById('pill-emp-status-active');
+            const pPaused = document.getElementById('pill-emp-status-paused');
+            if (pAll) pAll.classList.toggle('active', employeeStatusFilter === 'all');
+            if (pActive) pActive.classList.toggle('active', employeeStatusFilter === 'active');
+            if (pPaused) pPaused.classList.toggle('active', employeeStatusFilter === 'paused');
+        }
+
         function renderEmployeesList() {
             const container = document.getElementById('employees-container');
             const search = document.getElementById('search-employees').value.toLowerCase();
             const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
+            updateEmployeeStatusPills();
+
             const filtered = contextUsers
-                .filter(u => u.name.toLowerCase().includes(search) || u.number.includes(search))
+                .filter(u => {
+                    if (employeeStatusFilter === 'active' && u.paused) return false;
+                    if (employeeStatusFilter === 'paused' && !u.paused) return false;
+                    return u.name.toLowerCase().includes(search) || u.number.includes(search);
+                })
                 .sort((a, b) => parseInt(a.number) - parseInt(b.number));
             container.innerHTML = '';
+
+            if (filtered.length === 0) {
+                const emptyLabel = employeeStatusFilter === 'paused'
+                    ? 'No hay empleados pausados'
+                    : (employeeStatusFilter === 'active' ? 'No hay empleados activos' : 'No se encontraron empleados');
+                container.innerHTML = `
+                    <div style="text-align:center;padding:28px 16px;color:var(--text-muted);font-size:13px;background:var(--input-bg);border-radius:14px;border:1px dashed var(--border-color);margin:10px 0;">
+                        <div style="font-size:24px;margin-bottom:6px;opacity:0.7;"><span class="ic" data-icon="${employeeStatusFilter === 'paused' ? 'pause' : 'users'}"></span></div>
+                        <div style="font-weight:600;color:var(--text-color);">${emptyLabel}</div>
+                    </div>
+                `;
+                applyIcons(container);
+                return;
+            }
 
             filtered.forEach(u => {
                 const isPaused = !!u.paused;
@@ -5705,6 +5769,7 @@
                 const ctx = u.workContextId && window.workContextManager ? window.workContextManager.getById(u.workContextId) : null;
                 const ctxIcon = ctx ? (ctx.type === 'squad' ? 'users' : 'hardHat') : '';
                 const ctxTag = ctx ? `<span class="badge-tag" style="background:var(--input-bg);border:1px solid var(--border-color);font-size:11px;padding:2px 7px;border-radius:6px;margin-left:6px;color:var(--text-muted);font-weight:600;display:inline-flex;align-items:center;gap:4px;"><span class="ic" data-icon="${ctxIcon}"></span>${esc(ctx.name)}</span>` : '';
+                const pausedBadge = isPaused ? `<span class="badge-paused"><span class="ic" data-icon="pause"></span> Pausado</span>` : '';
 
                 const div = document.createElement('div');
                 let cardClass = 'user-card' + (isPaused ? ' paused' : '');
@@ -5742,7 +5807,7 @@
                         <div class="user-details">
                             <div class="user-name">
                                 ${esc(u.name)}
-                                ${isPaused ? '<span class="badge-paused">Pausado</span>' : ''}
+                                ${pausedBadge}
                                 ${ctxTag}
                             </div>
                             <div class="user-role">${esc(u.position || 'Sin cargo')}</div>
