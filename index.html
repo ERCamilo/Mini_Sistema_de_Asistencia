@@ -1965,86 +1965,54 @@
             gap: 10px;
         }
 
-        /* Material Quick Count Grid */
+        /* Material Quick Count Vertical List */
+        .material-cards-list,
         .material-cards-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
             margin-bottom: 12px;
-        }
-        @media (min-width: 480px) {
-            .material-cards-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
         }
         .material-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 10px 12px;
+            border-radius: 14px;
+            padding: 8px 12px;
             display: flex;
-            flex-direction: column;
+            align-items: center;
             justify-content: space-between;
-            min-height: 106px;
-            position: relative;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            gap: 10px;
+            min-height: 50px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
             transition: border-color 0.2s, transform 0.12s;
         }
         .material-card:focus-within {
             border-color: var(--accent-color);
         }
-        .material-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 4px;
-        }
         .material-name-input {
+            flex: 1;
+            min-width: 90px;
             border: none;
             background: transparent;
-            font-size: 13px;
-            font-weight: 700;
+            font-size: 14px;
+            font-weight: 600;
             color: var(--text-color);
-            width: 100%;
             outline: none;
-            padding: 2px 0;
-            border-bottom: 1px dashed transparent;
-        }
-        .material-name-input:focus {
-            border-bottom-color: var(--accent-color);
+            padding: 4px 0;
         }
         .material-name-input::placeholder {
             color: var(--text-muted);
-            font-weight: 500;
+            font-weight: 400;
+            font-size: 13px;
         }
-        .material-card-del {
-            background: none;
-            border: none;
-            color: var(--text-muted);
-            cursor: pointer;
-            font-size: 16px;
-            padding: 2px 4px;
-            line-height: 1;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0.6;
-            transition: opacity 0.15s, color 0.15s;
-        }
-        .material-card-del:hover {
-            opacity: 1;
-            color: var(--danger-color);
-        }
-        .material-qty-row {
+        .material-card-controls {
             display: flex;
             align-items: center;
             gap: 6px;
-            margin-top: 6px;
+            flex-shrink: 0;
         }
         .material-qty-input {
-            flex: 1;
-            min-width: 0;
+            width: 62px;
             background: var(--input-bg);
             border: 1px solid var(--border-color);
             border-radius: 10px;
@@ -2059,7 +2027,7 @@
             border-color: var(--accent-color);
         }
         .material-unit-input {
-            width: 48px;
+            width: 50px;
             background: var(--input-bg);
             border: 1px solid var(--border-color);
             border-radius: 8px;
@@ -2074,15 +2042,35 @@
             border-color: var(--accent-color);
             color: var(--text-color);
         }
-        /* La tarjeta con el signo + (como la imagen del usuario) */
-        .material-card-add {
-            background: var(--input-bg);
-            border: 2px dashed var(--border-color);
-            border-radius: 16px;
+        .material-card-del {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            padding: 4px 6px;
+            border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 106px;
+            opacity: 0.6;
+            transition: opacity 0.15s, color 0.15s;
+        }
+        .material-card-del:hover {
+            opacity: 1;
+            color: var(--danger-color);
+        }
+        /* La tarjeta con el signo + (en lista una debajo de la otra, como la imagen del usuario) */
+        .material-card-add {
+            width: 100%;
+            background: var(--input-bg);
+            border: 2px dashed var(--border-color);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 48px;
             cursor: pointer;
             transition: all 0.2s ease;
             color: var(--text-muted);
@@ -2093,10 +2081,10 @@
             border-color: var(--accent-color);
             color: var(--accent-color);
             background: rgba(0, 212, 255, 0.05);
-            transform: scale(0.98);
+            transform: scale(0.99);
         }
         .material-card-add .add-plus-icon {
-            font-size: 34px;
+            font-size: 28px;
             font-weight: 300;
             line-height: 1;
             user-select: none;
@@ -5639,7 +5627,7 @@
 
         function renderMaterialCountGrid(container, req) {
             const fields = req.fields || [];
-            let html = '<div class="material-cards-grid" id="material-cards-grid">';
+            let html = '<div class="material-cards-list" id="material-cards-list">';
 
             fields.forEach(field => {
                 const res = getRequestResponse(req, field.id, null);
@@ -5650,20 +5638,16 @@
 
                 html += `
                     <div class="material-card" id="mat-card-${fieldIdEsc}">
-                        <div class="material-card-header">
-                            <input type="text" class="material-name-input" 
-                                value="${esc(field.label || '')}" 
-                                placeholder="Material..." 
-                                onblur="updateMaterialCardName('${fieldArg}', this.value)"
-                                onkeydown="if(event.key==='Enter')this.blur()">
-                            <button type="button" class="material-card-del" 
-                                onclick="deleteMaterialCard('${fieldArg}')" 
-                                title="Eliminar material" aria-label="Eliminar material">×</button>
-                        </div>
-                        <div class="material-qty-row">
+                        <input type="text" class="material-name-input" 
+                            value="${esc(field.label || '')}" 
+                            placeholder="Material (ej: Cemento)..." 
+                            onblur="updateMaterialCardName('${fieldArg}', this.value)"
+                            onkeydown="if(event.key==='Enter')this.blur()">
+                        <div class="material-card-controls">
                             <input type="number" inputmode="decimal" class="material-qty-input" 
                                 value="${esc(qtyVal)}" 
                                 placeholder="0" 
+                                title="Cantidad"
                                 onblur="updateMaterialCardQty('${fieldArg}', this.value)"
                                 onkeydown="if(event.key==='Enter')this.blur()">
                             <input type="text" class="material-unit-input" 
@@ -5672,12 +5656,15 @@
                                 title="Unidad" 
                                 onblur="updateMaterialCardUnit('${fieldArg}', this.value)"
                                 onkeydown="if(event.key==='Enter')this.blur()">
+                            <button type="button" class="material-card-del" 
+                                onclick="deleteMaterialCard('${fieldArg}')" 
+                                title="Eliminar material" aria-label="Eliminar material">×</button>
                         </div>
                     </div>
                 `;
             });
 
-            // La tarjeta con el signo + exactamente como la imagen del usuario
+            // La tarjeta con el signo + (en lista una debajo de la otra, exactamente como la imagen del usuario)
             html += `
                 <div class="material-card-add" onclick="addMaterialCountCard()" role="button" tabindex="0" title="Añadir material" aria-label="Añadir material">
                     <span class="add-plus-icon">+</span>

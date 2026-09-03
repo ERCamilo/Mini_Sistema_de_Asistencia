@@ -30,7 +30,7 @@ test('index.html contains complete markup for Solicitudes module', () => {
   assert.match(html, /VIEW_TITLES\s*=\s*\{[^}]*requests:\s*'Reportes y Solicitudes'[^}]*\}/);
 
   // Material quick count compact cards & add card
-  assert.match(html, /\.material-cards-grid/);
+  assert.match(html, /\.material-cards-list/);
   assert.match(html, /\.material-card/);
   assert.match(html, /\.material-card-add/);
   assert.match(html, /addMaterialCountCard/);
