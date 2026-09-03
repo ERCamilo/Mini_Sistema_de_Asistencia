@@ -1964,6 +1964,143 @@
             flex-direction: column;
             gap: 10px;
         }
+
+        /* Material Quick Count Grid */
+        .material-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        @media (min-width: 480px) {
+            .material-cards-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        .material-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 106px;
+            position: relative;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: border-color 0.2s, transform 0.12s;
+        }
+        .material-card:focus-within {
+            border-color: var(--accent-color);
+        }
+        .material-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+        }
+        .material-name-input {
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-color);
+            width: 100%;
+            outline: none;
+            padding: 2px 0;
+            border-bottom: 1px dashed transparent;
+        }
+        .material-name-input:focus {
+            border-bottom-color: var(--accent-color);
+        }
+        .material-name-input::placeholder {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        .material-card-del {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 2px 4px;
+            line-height: 1;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.6;
+            transition: opacity 0.15s, color 0.15s;
+        }
+        .material-card-del:hover {
+            opacity: 1;
+            color: var(--danger-color);
+        }
+        .material-qty-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .material-qty-input {
+            flex: 1;
+            min-width: 0;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 6px 4px;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-color);
+            text-align: center;
+            outline: none;
+        }
+        .material-qty-input:focus {
+            border-color: var(--accent-color);
+        }
+        .material-unit-input {
+            width: 48px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 6px 2px;
+            text-align: center;
+            outline: none;
+        }
+        .material-unit-input:focus {
+            border-color: var(--accent-color);
+            color: var(--text-color);
+        }
+        /* La tarjeta con el signo + (como la imagen del usuario) */
+        .material-card-add {
+            background: var(--input-bg);
+            border: 2px dashed var(--border-color);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 106px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            color: var(--text-muted);
+            box-sizing: border-box;
+        }
+        .material-card-add:hover,
+        .material-card-add:active {
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            background: rgba(0, 212, 255, 0.05);
+            transform: scale(0.98);
+        }
+        .material-card-add .add-plus-icon {
+            font-size: 34px;
+            font-weight: 300;
+            line-height: 1;
+            user-select: none;
+        }
         .req-emp-header {
             display: flex;
             align-items: center;
@@ -2235,7 +2372,7 @@
         </div>
     </div>
 
-    <!-- VISTA SOLICITUDES DE CAMPO -->
+    <!-- VISTA REPORTES Y SOLICITUDES DE CAMPO -->
     <div id="requests-view" class="hidden">
         <div class="view-selector">
             <div class="view-mode-pills">
@@ -2248,7 +2385,7 @@
 
         <div class="dashboard-panel" style="padding-top:0;">
             <button type="button" class="btn-full btn-primary" onclick="openNewRequestModal()" style="margin-bottom:12px;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px;">
-                <span class="ic" data-icon="add"></span> Nueva solicitud
+                <span class="ic" data-icon="add"></span> Nuevo reporte o solicitud
             </button>
 
             <div class="category-pills" id="req-category-pills">
@@ -2261,7 +2398,7 @@
 
             <div class="search-container">
                 <span class="search-icon"><span class="ic" data-icon="search"></span></span>
-                <input type="text" class="search-input" id="search-requests" placeholder="Buscar solicitud...">
+                <input type="text" class="search-input" id="search-requests" placeholder="Buscar reporte o solicitud...">
                 <button type="button" class="search-clear" aria-label="Limpiar búsqueda" onclick="clearSearch('search-requests', renderRequestsDashboard)"><span class="ic" data-icon="close"></span></button>
             </div>
         </div>
@@ -3069,7 +3206,7 @@
             <span class="ic" data-icon="attendance"></span><span>Asistencia</span>
         </button>
         <button class="nav-item" id="nav-requests" onclick="switchView('requests')">
-            <span class="ic" data-icon="requests"></span><span>Solicitudes</span>
+            <span class="ic" data-icon="requests"></span><span>Reportes y Solicitudes</span>
         </button>
         <div class="nav-center">
             <button class="nav-fab" id="nav-add" onclick="handleNavFab()" aria-label="Agregar">
@@ -3271,7 +3408,7 @@
         }
 
         const NAV_VIEWS = ['attendance', 'requests', 'employees', 'reports', 'more'];
-        const VIEW_TITLES = { attendance: 'Asistencia', requests: 'Solicitudes', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
+        const VIEW_TITLES = { attendance: 'Asistencia', requests: 'Reportes y Solicitudes', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
 
         function updateNavActive(view) {
             NAV_VIEWS.forEach(v => {
@@ -4937,8 +5074,8 @@
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon"><span class="ic" data-icon="inbox"></span></div>
-                        <div style="font-weight:600;margin-top:8px;">No hay solicitudes ${requestsTab === 'open' ? 'abiertas' : (requestsTab === 'completed' ? 'completadas' : 'cerradas')}</div>
-                        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Tocá "+ Nueva solicitud" para crear una.</div>
+                        <div style="font-weight:600;margin-top:8px;">No hay reportes ni solicitudes ${requestsTab === 'open' ? 'abiertos' : (requestsTab === 'completed' ? 'completados' : 'cerrados')}</div>
+                        <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">Tocá "+ Nuevo reporte o solicitud" para crear uno.</div>
                     </div>
                 `;
                 applyIcons(container);
@@ -5134,7 +5271,7 @@
 
         function openNewRequestModal() {
             editingRequestTemplateId = null;
-            document.getElementById('req-create-title').textContent = 'Nueva Solicitud';
+            document.getElementById('req-create-title').textContent = 'Nuevo Reporte o Solicitud';
             document.getElementById('btn-request-save-draft').style.display = '';
             document.getElementById('btn-request-submit').textContent = 'Crear y abrir';
             setCreateRequestTab('templates');
@@ -5488,7 +5625,133 @@
         }
 
         function renderGeneralAnswering(container, req) {
+            const isMaterialCount = req.templateId === 'tpl_conteo_material' ||
+                (req.category === 'materials' && (req.title || '').toLowerCase().includes('conteo')) ||
+                (Array.isArray(req.fields) && req.fields.some(f => (f.id || '').startsWith('fld_mat_')));
+
+            if (isMaterialCount) {
+                renderMaterialCountGrid(container, req);
+                return;
+            }
+
             container.innerHTML = (req.fields || []).map(field => `<div class="req-answer-card">${responseControlHtml(field, getRequestResponse(req, field.id), null)}${field.allowComment || field.type.endsWith('_comment') ? `<input type="text" class="search-input" value="${esc(getRequestResponse(req, field.id)?.comment || '')}" placeholder="Nota o comentario adicional" onblur="setGeneralCommentEncoded('${encodeURIComponent(field.id)}',this.value)">` : ''}</div>`).join('');
+        }
+
+        function renderMaterialCountGrid(container, req) {
+            const fields = req.fields || [];
+            let html = '<div class="material-cards-grid" id="material-cards-grid">';
+
+            fields.forEach(field => {
+                const res = getRequestResponse(req, field.id, null);
+                const qtyVal = res && res.value !== undefined && res.value !== null ? res.value : '';
+                const unitVal = field.unit || 'unid';
+                const fieldIdEsc = esc(field.id);
+                const fieldArg = encodeURIComponent(field.id);
+
+                html += `
+                    <div class="material-card" id="mat-card-${fieldIdEsc}">
+                        <div class="material-card-header">
+                            <input type="text" class="material-name-input" 
+                                value="${esc(field.label || '')}" 
+                                placeholder="Material..." 
+                                onblur="updateMaterialCardName('${fieldArg}', this.value)"
+                                onkeydown="if(event.key==='Enter')this.blur()">
+                            <button type="button" class="material-card-del" 
+                                onclick="deleteMaterialCard('${fieldArg}')" 
+                                title="Eliminar material" aria-label="Eliminar material">×</button>
+                        </div>
+                        <div class="material-qty-row">
+                            <input type="number" inputmode="decimal" class="material-qty-input" 
+                                value="${esc(qtyVal)}" 
+                                placeholder="0" 
+                                onblur="updateMaterialCardQty('${fieldArg}', this.value)"
+                                onkeydown="if(event.key==='Enter')this.blur()">
+                            <input type="text" class="material-unit-input" 
+                                value="${esc(unitVal)}" 
+                                placeholder="unid" 
+                                title="Unidad" 
+                                onblur="updateMaterialCardUnit('${fieldArg}', this.value)"
+                                onkeydown="if(event.key==='Enter')this.blur()">
+                        </div>
+                    </div>
+                `;
+            });
+
+            // La tarjeta con el signo + exactamente como la imagen del usuario
+            html += `
+                <div class="material-card-add" onclick="addMaterialCountCard()" role="button" tabindex="0" title="Añadir material" aria-label="Añadir material">
+                    <span class="add-plus-icon">+</span>
+                </div>
+            `;
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function addMaterialCountCard() {
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req || req.status === 'closed') return;
+            if (!Array.isArray(req.fields)) req.fields = [];
+
+            const newFieldId = 'fld_mat_' + Date.now();
+            req.fields.push({
+                id: newFieldId,
+                label: '',
+                type: 'number_unit',
+                unit: 'unid',
+                order: req.fields.length
+            });
+            saveData();
+            renderRequestAnsweringView();
+
+            setTimeout(() => {
+                const newCard = document.getElementById('mat-card-' + newFieldId);
+                if (newCard) {
+                    const input = newCard.querySelector('.material-name-input');
+                    if (input) input.focus();
+                }
+            }, 50);
+        }
+
+        function updateMaterialCardName(fieldArg, newName) {
+            const fieldId = decodeURIComponent(fieldArg);
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+            const field = (req.fields || []).find(f => f.id === fieldId);
+            if (field && field.label !== newName.trim()) {
+                field.label = newName.trim();
+                saveData();
+                updateRequestAnsweringProgress();
+            }
+        }
+
+        function updateMaterialCardQty(fieldArg, qtyValue) {
+            const fieldId = decodeURIComponent(fieldArg);
+            const num = qtyValue === '' ? '' : Number(qtyValue);
+            setGeneralResponseEncoded(encodeURIComponent(fieldId), '', 'num:' + encodeURIComponent(num), false);
+        }
+
+        function updateMaterialCardUnit(fieldArg, unitValue) {
+            const fieldId = decodeURIComponent(fieldArg);
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+            const field = (req.fields || []).find(f => f.id === fieldId);
+            if (field) {
+                field.unit = unitValue.trim() || 'unid';
+                saveData();
+            }
+        }
+
+        function deleteMaterialCard(fieldArg) {
+            const fieldId = decodeURIComponent(fieldArg);
+            const req = requests.find(r => r.id === activeRequestId);
+            if (!req) return;
+            req.fields = (req.fields || []).filter(f => f.id !== fieldId);
+            if (req.responses && req.responses[fieldId]) {
+                delete req.responses[fieldId];
+            }
+            saveData();
+            renderRequestAnsweringView();
         }
 
         function decodeResponseValue(encoded) {

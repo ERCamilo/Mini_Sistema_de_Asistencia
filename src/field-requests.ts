@@ -912,25 +912,18 @@ interface FieldRequestSummary {
         targetType: 'none',
         fields: [
           {
-            id: 'fld_cont_material',
-            label: 'Tipo de material',
-            type: 'text_short',
-            required: true,
+            id: 'fld_mat_cemento',
+            label: 'Cemento',
+            type: 'number_unit',
+            unit: 'sacos',
             order: 0
           },
           {
-            id: 'fld_cont_cantidad',
-            label: 'Cantidad existente',
+            id: 'fld_mat_arena',
+            label: 'Arena',
             type: 'number_unit',
-            unit: 'unid/sacos',
-            required: true,
+            unit: 'm3',
             order: 1
-          },
-          {
-            id: 'fld_cont_ubicacion',
-            label: 'Ubicación / Sector',
-            type: 'text_short',
-            order: 2
           }
         ]
       },

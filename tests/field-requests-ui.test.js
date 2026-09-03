@@ -27,7 +27,13 @@ test('index.html contains complete markup for Solicitudes module', () => {
   // Scripts
   assert.match(html, /src="\.\/field-requests\.js"/);
   assert.match(html, /NAV_VIEWS\s*=\s*\[[^\]]*'requests'[^\]]*\]/);
-  assert.match(html, /VIEW_TITLES\s*=\s*\{[^}]*requests:\s*'Solicitudes'[^}]*\}/);
+  assert.match(html, /VIEW_TITLES\s*=\s*\{[^}]*requests:\s*'Reportes y Solicitudes'[^}]*\}/);
+
+  // Material quick count compact cards & add card
+  assert.match(html, /\.material-cards-grid/);
+  assert.match(html, /\.material-card/);
+  assert.match(html, /\.material-card-add/);
+  assert.match(html, /addMaterialCountCard/);
 });
 
 test('IconSet provides all Solicitudes icons in both modern and emoji styles', () => {
