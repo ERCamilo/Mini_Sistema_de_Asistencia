@@ -9,6 +9,8 @@ interface EmployeeRecord {
   sueldo?: string;
   workContextId?: string;
   paused?: boolean;
+  saProjectId?: string;
+  saEmployeeId?: string;
   localOnly?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -24,6 +26,8 @@ interface EmployeeDraftInput {
   sueldo?: string;
   workContextId?: string;
   paused?: boolean;
+  saProjectId?: string;
+  saEmployeeId?: string;
   [extra: string]: unknown;
 }
 
@@ -72,6 +76,21 @@ interface BatchImportResult {
 
   function defaultNow(): string {
     return new Date().toISOString();
+  }
+
+  function isSaTaggedRecord(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    return Object.prototype.hasOwnProperty.call(record, 'saEmployeeId')
+      || Object.prototype.hasOwnProperty.call(record, 'saProjectId');
+  }
+
+  function sanitizeSaLink(value: unknown): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string' || !value.trim()) return undefined;
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > 128 || /[\s\x00-\x1f\x7f]/.test(trimmed)) return undefined;
+    return trimmed;
   }
 
   function createEmployeeRepository(options: EmployeeRepositoryOptions) {
@@ -155,25 +174,50 @@ interface BatchImportResult {
         workContextId: draft.workContextId ? String(draft.workContextId).trim() : undefined,
         paused: !!draft.paused
       };
+      // Canonical SA mapping survives single-record edits: the edit form does
+      // not capture SA identity, so carry it forward from storage. An explicit
+      // SA link on the draft wins; otherwise the stored link is preserved and
+      // never silently cleared by a local edit.
+      const storedForSave = users.find(u => u.id === targetId);
+      const draftSaProject = sanitizeSaLink((draft as Record<string, unknown>).saProjectId);
+      const draftSaEmployee = sanitizeSaLink((draft as Record<string, unknown>).saEmployeeId);
+      if (draftSaProject !== undefined) (normalizedDraft as Record<string, unknown>).saProjectId = draftSaProject;
+      else if (storedForSave?.saProjectId !== undefined) (normalizedDraft as Record<string, unknown>).saProjectId = storedForSave.saProjectId;
+      if (draftSaEmployee !== undefined) (normalizedDraft as Record<string, unknown>).saEmployeeId = draftSaEmployee;
+      else if (storedForSave?.saEmployeeId !== undefined) (normalizedDraft as Record<string, unknown>).saEmployeeId = storedForSave.saEmployeeId;
 
       if (rules && typeof rules.saveEmployeeDraft === 'function') {
         const result = rules.saveEmployeeDraft(users, normalizedDraft, targetId);
         if (result.status === 'conflict') {
           return { status: 'conflict', conflict: result.conflict };
         }
-        
+
         const existingRecord = users.find(u => u.id === targetId);
 
         // Enrich saved employee with metadata
         const updatedUsers = result.users.map((u: any) => {
           if (u.id === targetId) {
-            return {
+            const enriched: EmployeeRecord = {
               ...u,
               schemaVersion: CURRENT_SCHEMA_VERSION,
               localOnly: true,
               createdAt: existingRecord?.createdAt || u.createdAt || timestamp,
               updatedAt: timestamp
             };
+            // `saveEmployeeDraft` rebuilds the record from the draft, so
+            // re-attach the canonical SA link (draft-explicit wins, stored
+            // link otherwise). Local edits never orphan the SA mapping.
+            if ((normalizedDraft as Record<string, unknown>).saProjectId !== undefined) {
+              enriched.saProjectId = (normalizedDraft as Record<string, unknown>).saProjectId as string;
+            } else {
+              delete enriched.saProjectId;
+            }
+            if ((normalizedDraft as Record<string, unknown>).saEmployeeId !== undefined) {
+              enriched.saEmployeeId = (normalizedDraft as Record<string, unknown>).saEmployeeId as string;
+            } else {
+              delete enriched.saEmployeeId;
+            }
+            return enriched;
           }
           return u;
         });
@@ -258,9 +302,25 @@ interface BatchImportResult {
       return true;
     }
 
+    function getBySaIdentity(saProjectId: unknown, saEmployeeId: unknown): EmployeeRecord | null {
+      const project = sanitizeSaLink(saProjectId);
+      const employee = sanitizeSaLink(saEmployeeId);
+      if (project === undefined || employee === undefined) return null;
+      const users = loadUsers();
+      const found = users.find(u => u.saProjectId === project && u.saEmployeeId === employee);
+      return found ? { ...found } : null;
+    }
+
     function importBatch(incoming: unknown[], mode: 'merge' | 'replace' = 'merge'): BatchImportResult {
       if (!Array.isArray(incoming)) {
         throw new Error('La lista a importar debe ser un arreglo de empleados');
+      }
+      // Fail-closed: SA-tagged records must use the versioned SA route
+      // (`importSaRoster`) for merge imports. They are never silently matched
+      // by employee number. Replace-mode restores (undo/history snapshots
+      // carry the canonical SA link) remain allowed so rollback keeps working.
+      if (mode !== 'replace' && incoming.some(isSaTaggedRecord)) {
+        throw new Error('SA-tagged payload detected: use the SA roster import (sa-roster/v1) instead of the legacy list import');
       }
 
       const valid = incoming.filter((e: any) =>
@@ -287,7 +347,7 @@ interface BatchImportResult {
             ? true
             : undefined;
 
-          return {
+          const entry: EmployeeRecord = {
             id: emp.id || generateId(),
             name: String(emp.name).trim(),
             number: String(emp.number).trim(),
@@ -300,6 +360,13 @@ interface BatchImportResult {
             createdAt: emp.createdAt || timestamp,
             updatedAt: timestamp
           };
+          // Undo/history snapshots carry the canonical SA link; a replace
+          // restore must bring it back rather than drop it.
+          const saProject = sanitizeSaLink(emp.saProjectId);
+          const saEmployee = sanitizeSaLink(emp.saEmployeeId);
+          if (saProject !== undefined) entry.saProjectId = saProject;
+          if (saEmployee !== undefined) entry.saEmployeeId = saEmployee;
+          return entry;
         });
 
         persistUsers(nextUsers);
@@ -373,6 +440,39 @@ interface BatchImportResult {
       };
     }
 
+    function importSaRoster(
+      roster: unknown,
+      options: { generateId?: () => string; confirmedLinks?: Array<{ saProjectId: string; saEmployeeId: string; localId: string }> } = {}
+    ): BatchImportResult & { linkedCount: number; reconciliationCandidates: Array<{ saProjectId: string; saEmployeeId: string; number: string; name: string; candidates: Array<{ id: string; number: string; name: string }> }> } {
+      const saApi = (typeof globalThis !== 'undefined' && (globalThis as any).SaRosterImport) || null;
+      if (!saApi || typeof saApi.applySaRosterToUsers !== 'function') {
+        throw new Error('SA roster import module is not available');
+      }
+      const currentUsers = loadUsers();
+      const normalizeNum = rules?.normalizeEmployeeNumber || ((v: any) => {
+        if (v === null || v === undefined || String(v).trim() === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      });
+      // Merge-only: the SA route never takes the destructive replace path.
+      const applied = saApi.applySaRosterToUsers(currentUsers, roster, {
+        generateId: options.generateId || generateId,
+        now: nowFn,
+        normalizeEmployeeNumber: normalizeNum,
+        confirmedLinks: options.confirmedLinks || []
+      });
+      persistUsers(applied.users as EmployeeRecord[]);
+      return {
+        updatedCount: applied.updatedCount,
+        createdCount: applied.createdCount,
+        linkedCount: applied.linkedCount,
+        skippedCount: applied.skippedCount,
+        totalValid: applied.totalValid,
+        users: (applied.users as EmployeeRecord[]).map(u => ({ ...u })),
+        reconciliationCandidates: applied.reconciliationCandidates
+      };
+    }
+
     function exportSnapshot(): {
       schemaVersion: 1;
       exportedAt: string;
@@ -404,10 +504,12 @@ interface BatchImportResult {
       getAll,
       getById,
       getByNumber,
+      getBySaIdentity,
       save,
       setPaused,
       remove,
       importBatch,
+      importSaRoster,
       exportSnapshot,
       getTombstones,
       clearTombstones,

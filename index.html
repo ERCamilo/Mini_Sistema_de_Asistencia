@@ -3218,6 +3218,7 @@
     <script src="./local-db.js"></script>
     <script src="./mini-sa-envelope.js"></script>
     <script src="./roster-package.js"></script>
+    <script src="./sa-roster-import.js"></script>
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
     <script src="./field-requests-repository.js"></script>
@@ -4945,6 +4946,16 @@
             document.getElementById('user-form').onsubmit = (e) => {
                 e.preventDefault();
                 const draft = readEmployeeDraft();
+                // Preserve the canonical SA link across local edits: the form
+                // does not capture SA identity, so carry it forward from the
+                // stored record instead of silently dropping it.
+                if (draft.id) {
+                    const existing = users.find(u => u.id === draft.id);
+                    if (existing) {
+                        if (existing.saProjectId !== undefined && draft.saProjectId === undefined) draft.saProjectId = existing.saProjectId;
+                        if (existing.saEmployeeId !== undefined && draft.saEmployeeId === undefined) draft.saEmployeeId = existing.saEmployeeId;
+                    }
+                }
                 const result = saveEmployeeDraft(users, draft, Date.now().toString());
 
                 if (result.status === 'conflict') {
@@ -6614,6 +6625,61 @@
 
             try {
                 const parsed = JSON.parse(raw);
+                const saApi = window.SaRosterImport || null;
+                const classification = saApi ? saApi.classifyImportPayload(parsed) : { kind: 'legacy' };
+
+                if (classification.kind === 'sa') {
+                    // Versioned SA roster route (merge-only, fail-closed). A
+                    // malformed tagged payload rejects here and never falls
+                    // back to the legacy list import.
+                    const roster = saApi.normalizeSaRoster(parsed);
+                    const plan = saApi.buildSaImportPlan(users, roster, window.EmployeeNumberRules);
+                    const candCount = plan.reconciliationCandidates.length;
+                    let statusMsg = '&#x2705; Roster SA v1: ' + roster.employees.length + ' registro(s)';
+                    statusMsg += ' (' + plan.updates.length + ' actualizarán existentes, ' + plan.creates.length + ' nuevos';
+                    if (candCount > 0) statusMsg += ', ' + candCount + ' por conciliar — requieren confirmación explícita, no se vincularán automáticamente';
+                    statusMsg += ') · Reemplazo deshabilitado para SA (solo combinado)';
+                    if (candCount > 0) {
+                        statusMsg += '<br><span style="color:var(--warning-color);">';
+                        plan.reconciliationCandidates.slice(0, 5).forEach(c => {
+                            const owner = c.candidates[0];
+                            statusMsg += '&#x26A0;&#xFE0F; Nº ' + esc(c.number) + ' "' + esc(c.name) + '" ya es de ' + esc(owner ? owner.name : '?');
+                            statusMsg += ' — requiere confirmación para vincular (se mantiene el ID local).';
+                            if (c.candidates.length === 1 && owner) {
+                                statusMsg += ' <button type="button" data-sa-link="1" data-sa-local="' + esc(owner.id) + '" data-sa-project="' + esc(c.saProjectId) + '" data-sa-employee="' + esc(c.saEmployeeId) + '" style="margin-left:6px;font-size:12px;font-weight:700;cursor:pointer;">Vincular (mantener ID local)</button>';
+                            }
+                            statusMsg += '<br>';
+                        });
+                        if (candCount > 5) statusMsg += '…y ' + (candCount - 5) + ' más por conciliar.';
+                        statusMsg += '</span>';
+                    }
+                    ta.style.borderColor = 'var(--success-color)';
+                    msg.style.color = 'var(--success-color)';
+                    msg.innerHTML = statusMsg;
+                    if (btnMerge) {
+                        btnMerge.style.opacity = '1';
+                        btnMerge.style.cursor = 'pointer';
+                        btnMerge.setAttribute('data-ready', 'yes');
+                    }
+                    if (btnReplace) {
+                        btnReplace.style.opacity = '0.4';
+                        btnReplace.style.cursor = 'not-allowed';
+                        btnReplace.setAttribute('data-ready', 'no');
+                        btnReplace.title = 'El reemplazo está deshabilitado para roster SA';
+                    }
+                    msg.querySelectorAll('[data-sa-link]').forEach(btn => {
+                        btn.onclick = () => {
+                            window.confirmSaIdentityLink(
+                                btn.getAttribute('data-sa-local'),
+                                btn.getAttribute('data-sa-project'),
+                                btn.getAttribute('data-sa-employee')
+                            );
+                        };
+                    });
+                    return;
+                }
+                if (btnReplace) btnReplace.title = '';
+
                 const arr = Array.isArray(parsed)
                     ? parsed
                     : (Array.isArray(parsed.employees) ? parsed.employees : null);
@@ -6697,6 +6763,63 @@
             });
         };
 
+        window.confirmSaIdentityLink = (localId, saProjectId, saEmployeeId) => {
+            try {
+                const saApi = window.SaRosterImport || null;
+                if (!saApi) throw new Error('Módulo SA no disponible.');
+                const ta = document.getElementById('import-employees-textarea');
+                const parsed = JSON.parse((ta.value || '').trim());
+                const roster = saApi.normalizeSaRoster(parsed);
+                const record = roster.employees.find(r => r.saProjectId === saProjectId && r.saEmployeeId === saEmployeeId);
+                if (!record) throw new Error('Registro SA no encontrado en el texto actual.');
+                const existing = users.find(u => u.id === localId);
+                if (!existing) throw new Error('Empleado local no encontrado.');
+                const normalizeNum = window.EmployeeNumberRules?.normalizeEmployeeNumber || (v => parseInt(v, 10) || null);
+                if (normalizeNum(existing.number) !== normalizeNum(record.number)) {
+                    throw new Error('El número ya no coincide; revalidá el texto antes de vincular.');
+                }
+                const rawRecord = (parsed.employees || []).find(r => r && (r.saEmployeeId === saEmployeeId) && ((r.saProjectId || parsed.saProjectId) === saProjectId)) || {};
+                const snapshotBefore = { users: employeeRepository.getAll() };
+                const next = {
+                    ...existing,
+                    name: record.name,
+                    number: record.number,
+                    saProjectId: record.saProjectId,
+                    saEmployeeId: record.saEmployeeId
+                };
+                if (Object.prototype.hasOwnProperty.call(rawRecord, 'position')) next.position = record.position !== undefined ? record.position : '';
+                if (Object.prototype.hasOwnProperty.call(rawRecord, 'sueldo')) {
+                    if (record.sueldo) next.sueldo = record.sueldo;
+                    else delete next.sueldo;
+                }
+                if (Object.prototype.hasOwnProperty.call(rawRecord, 'paused')) {
+                    if (record.paused === true) next.paused = true;
+                    else delete next.paused;
+                }
+                const saveRes = employeeRepository.save(next);
+                if (saveRes.status === 'conflict') throw new Error(saveRes.conflict.message || 'Conflicto de número al vincular.');
+                users = employeeRepository.getAll();
+                try {
+                    importHistoryRepository.recordImport({
+                        source: 'sa',
+                        mode: 'merge',
+                        summary: { totalIncoming: 1, createdCount: 0, updatedCount: 1, skippedCount: 0, conflictsCount: 0 },
+                        snapshotBefore
+                    });
+                } catch (historyErr) {
+                    console.warn('No se pudo guardar el historial de importación:', historyErr);
+                }
+                saveData();
+                renderList();
+                renderEmployeesList();
+                updateUndoImportButton();
+                showToast('Vinculado SA manteniendo ID local ✅');
+                validateImportTextarea(ta);
+            } catch (err) {
+                showToast(err.message || 'No se pudo vincular ❌');
+            }
+        };
+
         window.doImportEmployeesFromText = (mode = 'merge') => {
             const btnMerge = document.getElementById('btn-do-import-merge');
             const btnReplace = document.getElementById('btn-do-import');
@@ -6708,6 +6831,50 @@
             const executeImport = () => {
                 try {
                     const parsed = JSON.parse(raw);
+                    const saApi = window.SaRosterImport || null;
+                    const classification = saApi ? saApi.classifyImportPayload(parsed) : { kind: 'legacy' };
+
+                    if (classification.kind === 'sa') {
+                        // SA-tagged route is merge-only: destructive replace is
+                        // never selected here, even if requested.
+                        if (mode === 'replace') {
+                            document.getElementById('import-validation-msg').innerHTML =
+                                '&#x274C; El reemplazo está deshabilitado para roster SA. Usá “Actualizar y agregar”.';
+                            return;
+                        }
+                        const roster = saApi.normalizeSaRoster(parsed);
+                        const snapshotBefore = { users: employeeRepository.getAll() };
+                        const result = employeeRepository.importSaRoster(roster, {});
+                        users = employeeRepository.getAll();
+                        try {
+                            importHistoryRepository.recordImport({
+                                source: 'sa',
+                                mode: 'merge',
+                                summary: {
+                                    totalIncoming: result.totalValid,
+                                    createdCount: result.createdCount,
+                                    updatedCount: result.updatedCount,
+                                    skippedCount: result.skippedCount,
+                                    conflictsCount: (result.reconciliationCandidates || []).length
+                                },
+                                snapshotBefore
+                            });
+                        } catch (historyErr) {
+                            console.warn('No se pudo guardar el historial de importación:', historyErr);
+                        }
+                        saveData();
+                        closeModal('modal-import-employees');
+                        renderList();
+                        renderEmployeesList();
+                        updateUndoImportButton();
+                        if ((result.reconciliationCandidates || []).length > 0) {
+                            showToast(`SA: ${result.updatedCount} actualizado(s), ${result.createdCount} agregado(s), ${result.reconciliationCandidates.length} por conciliar (requieren confirmación).`);
+                            return;
+                        }
+                        showToast(`SA: ${result.updatedCount} actualizado(s), ${result.createdCount} agregado(s).`);
+                        return;
+                    }
+
                     let incoming = Array.isArray(parsed)
                         ? parsed
                         : (Array.isArray(parsed.employees) ? parsed.employees : null);
@@ -6736,8 +6903,8 @@
                             mode: mode,
                             summary: {
                                 totalIncoming: incoming.length,
-                                createdCount: result.created,
-                                updatedCount: result.updated
+                                createdCount: result.createdCount,
+                                updatedCount: result.updatedCount
                             },
                             snapshotBefore
                         });
@@ -6754,7 +6921,7 @@
                     if (mode === 'replace') {
                         showToast(`Nómina reemplazada: ${users.length} empleado(s).`);
                     } else {
-                        showToast(`Importación: ${result.updated} actualizado(s), ${result.created} agregado(s).`);
+                        showToast(`Importación: ${result.updatedCount} actualizado(s), ${result.createdCount} agregado(s).`);
                     }
                 } catch (err) {
                     document.getElementById('import-validation-msg').innerHTML =

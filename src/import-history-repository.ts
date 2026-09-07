@@ -1,7 +1,7 @@
 // UMD wrapper kept intact: emits `module.exports` (CommonJS for node --test)
 // and `root.ImportHistoryRepository` (browser global consumed by index.html).
 
-type ImportSourceType = 'json' | 'photo_ocr' | 'roster_package' | 'backup_restore' | 'manual_draft';
+type ImportSourceType = 'json' | 'photo_ocr' | 'roster_package' | 'backup_restore' | 'manual_draft' | 'sa';
 type ImportModeType = 'merge' | 'replace';
 
 interface ImportSummaryData {

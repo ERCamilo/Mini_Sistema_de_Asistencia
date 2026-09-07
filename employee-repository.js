@@ -14,6 +14,23 @@
     function defaultNow() {
         return new Date().toISOString();
     }
+    function isSaTaggedRecord(value) {
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+            return false;
+        const record = value;
+        return Object.prototype.hasOwnProperty.call(record, 'saEmployeeId')
+            || Object.prototype.hasOwnProperty.call(record, 'saProjectId');
+    }
+    function sanitizeSaLink(value) {
+        if (value === undefined)
+            return undefined;
+        if (typeof value !== 'string' || !value.trim())
+            return undefined;
+        const trimmed = value.trim();
+        if (!trimmed || trimmed.length > 128 || /[\s\x00-\x1f\x7f]/.test(trimmed))
+            return undefined;
+        return trimmed;
+    }
     function createEmployeeRepository(options) {
         const storage = options.storage;
         const nowFn = options.now || defaultNow;
@@ -93,6 +110,21 @@
                 workContextId: draft.workContextId ? String(draft.workContextId).trim() : undefined,
                 paused: !!draft.paused
             };
+            // Canonical SA mapping survives single-record edits: the edit form does
+            // not capture SA identity, so carry it forward from storage. An explicit
+            // SA link on the draft wins; otherwise the stored link is preserved and
+            // never silently cleared by a local edit.
+            const storedForSave = users.find(u => u.id === targetId);
+            const draftSaProject = sanitizeSaLink(draft.saProjectId);
+            const draftSaEmployee = sanitizeSaLink(draft.saEmployeeId);
+            if (draftSaProject !== undefined)
+                normalizedDraft.saProjectId = draftSaProject;
+            else if ((storedForSave === null || storedForSave === void 0 ? void 0 : storedForSave.saProjectId) !== undefined)
+                normalizedDraft.saProjectId = storedForSave.saProjectId;
+            if (draftSaEmployee !== undefined)
+                normalizedDraft.saEmployeeId = draftSaEmployee;
+            else if ((storedForSave === null || storedForSave === void 0 ? void 0 : storedForSave.saEmployeeId) !== undefined)
+                normalizedDraft.saEmployeeId = storedForSave.saEmployeeId;
             if (rules && typeof rules.saveEmployeeDraft === 'function') {
                 const result = rules.saveEmployeeDraft(users, normalizedDraft, targetId);
                 if (result.status === 'conflict') {
@@ -102,13 +134,29 @@
                 // Enrich saved employee with metadata
                 const updatedUsers = result.users.map((u) => {
                     if (u.id === targetId) {
-                        return {
+                        const enriched = {
                             ...u,
                             schemaVersion: CURRENT_SCHEMA_VERSION,
                             localOnly: true,
                             createdAt: (existingRecord === null || existingRecord === void 0 ? void 0 : existingRecord.createdAt) || u.createdAt || timestamp,
                             updatedAt: timestamp
                         };
+                        // `saveEmployeeDraft` rebuilds the record from the draft, so
+                        // re-attach the canonical SA link (draft-explicit wins, stored
+                        // link otherwise). Local edits never orphan the SA mapping.
+                        if (normalizedDraft.saProjectId !== undefined) {
+                            enriched.saProjectId = normalizedDraft.saProjectId;
+                        }
+                        else {
+                            delete enriched.saProjectId;
+                        }
+                        if (normalizedDraft.saEmployeeId !== undefined) {
+                            enriched.saEmployeeId = normalizedDraft.saEmployeeId;
+                        }
+                        else {
+                            delete enriched.saEmployeeId;
+                        }
+                        return enriched;
                     }
                     return u;
                 });
@@ -183,9 +231,25 @@
             persistTombstones(nextTombstones);
             return true;
         }
+        function getBySaIdentity(saProjectId, saEmployeeId) {
+            const project = sanitizeSaLink(saProjectId);
+            const employee = sanitizeSaLink(saEmployeeId);
+            if (project === undefined || employee === undefined)
+                return null;
+            const users = loadUsers();
+            const found = users.find(u => u.saProjectId === project && u.saEmployeeId === employee);
+            return found ? { ...found } : null;
+        }
         function importBatch(incoming, mode = 'merge') {
             if (!Array.isArray(incoming)) {
                 throw new Error('La lista a importar debe ser un arreglo de empleados');
+            }
+            // Fail-closed: SA-tagged records must use the versioned SA route
+            // (`importSaRoster`) for merge imports. They are never silently matched
+            // by employee number. Replace-mode restores (undo/history snapshots
+            // carry the canonical SA link) remain allowed so rollback keeps working.
+            if (mode !== 'replace' && incoming.some(isSaTaggedRecord)) {
+                throw new Error('SA-tagged payload detected: use the SA roster import (sa-roster/v1) instead of the legacy list import');
             }
             const valid = incoming.filter((e) => e && e.name && e.number !== undefined && e.number !== null && String(e.number).trim() !== '');
             const skippedCount = incoming.length - valid.length;
@@ -206,7 +270,7 @@
                     const isPaused = (emp.paused === true || emp.paused === 'true' || emp.status === 'paused' || emp.status === 'inactive' || emp.active === false)
                         ? true
                         : undefined;
-                    return {
+                    const entry = {
                         id: emp.id || generateId(),
                         name: String(emp.name).trim(),
                         number: String(emp.number).trim(),
@@ -219,6 +283,15 @@
                         createdAt: emp.createdAt || timestamp,
                         updatedAt: timestamp
                     };
+                    // Undo/history snapshots carry the canonical SA link; a replace
+                    // restore must bring it back rather than drop it.
+                    const saProject = sanitizeSaLink(emp.saProjectId);
+                    const saEmployee = sanitizeSaLink(emp.saEmployeeId);
+                    if (saProject !== undefined)
+                        entry.saProjectId = saProject;
+                    if (saEmployee !== undefined)
+                        entry.saEmployeeId = saEmployee;
+                    return entry;
                 });
                 persistUsers(nextUsers);
                 return {
@@ -288,6 +361,36 @@
                 users: nextUsers
             };
         }
+        function importSaRoster(roster, options = {}) {
+            const saApi = (typeof globalThis !== 'undefined' && globalThis.SaRosterImport) || null;
+            if (!saApi || typeof saApi.applySaRosterToUsers !== 'function') {
+                throw new Error('SA roster import module is not available');
+            }
+            const currentUsers = loadUsers();
+            const normalizeNum = (rules === null || rules === void 0 ? void 0 : rules.normalizeEmployeeNumber) || ((v) => {
+                if (v === null || v === undefined || String(v).trim() === '')
+                    return null;
+                const n = Number(v);
+                return Number.isFinite(n) ? n : null;
+            });
+            // Merge-only: the SA route never takes the destructive replace path.
+            const applied = saApi.applySaRosterToUsers(currentUsers, roster, {
+                generateId: options.generateId || generateId,
+                now: nowFn,
+                normalizeEmployeeNumber: normalizeNum,
+                confirmedLinks: options.confirmedLinks || []
+            });
+            persistUsers(applied.users);
+            return {
+                updatedCount: applied.updatedCount,
+                createdCount: applied.createdCount,
+                linkedCount: applied.linkedCount,
+                skippedCount: applied.skippedCount,
+                totalValid: applied.totalValid,
+                users: applied.users.map(u => ({ ...u })),
+                reconciliationCandidates: applied.reconciliationCandidates
+            };
+        }
         function exportSnapshot() {
             return {
                 schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -310,10 +413,12 @@
             getAll,
             getById,
             getByNumber,
+            getBySaIdentity,
             save,
             setPaused,
             remove,
             importBatch,
+            importSaRoster,
             exportSnapshot,
             getTombstones,
             clearTombstones,
