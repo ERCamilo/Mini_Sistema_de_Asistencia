@@ -25,6 +25,7 @@ interface ImportHistoryEntry {
   summary: ImportSummaryData;
   snapshotBefore: ImportSnapshotBefore;
   status: 'applied' | 'rolled_back';
+  rollbackAvailable?: boolean;
   rolledBackAt?: string;
   schemaVersion: 1;
 }
@@ -59,6 +60,54 @@ interface ImportHistoryOptions {
     return 'imp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
   }
 
+  function hasOwn(value: object, key: string): boolean {
+    return Object.prototype.hasOwnProperty.call(value, key);
+  }
+
+  function hasAttendanceSnapshot(snapshot: ImportSnapshotBefore | undefined): boolean {
+    return !!snapshot && hasOwn(snapshot, 'attendance') && snapshot.attendance !== undefined && snapshot.attendance !== null;
+  }
+
+  function hasCompleteSnapshot(entry: ImportHistoryEntry): boolean {
+    const snapshot = entry.snapshotBefore;
+    if (!snapshot || !Array.isArray(snapshot.users)) return false;
+    return entry.mode !== 'replace' || hasAttendanceSnapshot(snapshot);
+  }
+
+  function isRollbackAvailable(entry: ImportHistoryEntry): boolean {
+    if (!hasCompleteSnapshot(entry)) return false;
+    if (entry.rollbackAvailable !== undefined) return entry.rollbackAvailable === true;
+
+    // Legacy entries have no explicit availability marker. An empty users
+    // snapshot without attendance is ambiguous because it may have been pruned.
+    const snapshot = entry.snapshotBefore;
+    return snapshot.users.length > 0 || hasAttendanceSnapshot(snapshot);
+  }
+
+  function markSnapshotUnavailable(entry: ImportHistoryEntry): ImportHistoryEntry {
+    return {
+      ...entry,
+      snapshotBefore: { users: [] },
+      rollbackAvailable: false
+    };
+  }
+
+  function stripAttendanceForQuota(entry: ImportHistoryEntry): ImportHistoryEntry {
+    const snapshot = entry.snapshotBefore || { users: [] };
+    const nextEntry: ImportHistoryEntry = {
+      ...entry,
+      snapshotBefore: { users: snapshot.users }
+    };
+
+    // Replace rollback is incomplete without its attendance snapshot. For
+    // other modes, only disable rollback when attendance was actually saved
+    // and then stripped.
+    if (entry.mode === 'replace' || hasAttendanceSnapshot(snapshot)) {
+      nextEntry.rollbackAvailable = false;
+    }
+    return nextEntry;
+  }
+
   function createImportHistoryRepository(options: ImportHistoryOptions) {
     const storage = options.storage;
     const maxEntries = options.maxEntries || DEFAULT_MAX_ENTRIES;
@@ -76,42 +125,43 @@ interface ImportHistoryOptions {
       }
     }
 
-    function persistEntries(entries: ImportHistoryEntry[]): void {
+    function persistEntries(entries: ImportHistoryEntry[]): ImportHistoryEntry[] {
       // Keep only up to maxEntries to preserve local storage budget
-      const trimmed = entries.slice(-maxEntries);
+      const trimmed = entries.slice(-maxEntries).map(entry => ({ ...entry }));
 
       // Conserve quota: only the most recent entry needs the full snapshotBefore.
       // Older entries retain all metadata (summary, source, timestamp, status) but drop heavy snapshots.
       for (let i = 0; i < trimmed.length - 1; i++) {
-        if (trimmed[i].snapshotBefore) {
-          trimmed[i].snapshotBefore = { users: [] };
-        }
+        trimmed[i] = markSnapshotUnavailable(trimmed[i]);
       }
 
+      let persistedEntries = trimmed;
       try {
         storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(trimmed));
       } catch {
-        // Quota exceeded: retry with aggressive pruning (keep only latest entry without attendance)
+        // Quota exceeded: retry with the same audit entries and strip only the
+        // latest attendance snapshot. This must not delete older audit entries.
         try {
-          const latestOnly = trimmed.slice(-1);
-          if (latestOnly.length > 0 && latestOnly[0].snapshotBefore) {
-            latestOnly[0].snapshotBefore.attendance = undefined;
-          }
-          storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(latestOnly));
+          const latestIndex = trimmed.length - 1;
+          const withoutAttendance = trimmed.map((entry, index) =>
+            index === latestIndex ? stripAttendanceForQuota(entry) : entry
+          );
+          storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(withoutAttendance));
+          persistedEntries = withoutAttendance;
         } catch {
-          // If still failing, strip snapshot completely to avoid crashing calling process
+          // If still failing, strip every snapshot but retain all audit metadata.
           try {
-            const metadataOnly = trimmed.slice(-1).map(e => ({
-              ...e,
-              snapshotBefore: { users: [] }
-            }));
+            const metadataOnly = persistedEntries.map(markSnapshotUnavailable);
+            persistedEntries = metadataOnly;
             storage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(metadataOnly));
           } catch {
             // Storage quota exhausted at device/browser level; ignore write cleanly
+            persistedEntries = persistedEntries.map(markSnapshotUnavailable);
           }
         }
       }
-      options.onHistoryChanged?.(trimmed);
+      options.onHistoryChanged?.(persistedEntries);
+      return persistedEntries;
     }
 
     function recordImport(input: {
@@ -121,6 +171,8 @@ interface ImportHistoryOptions {
       snapshotBefore: ImportSnapshotBefore;
     }): ImportHistoryEntry {
       const entries = loadEntries();
+      const hasUsersSnapshot = Array.isArray(input.snapshotBefore?.users);
+      const hasSavedAttendance = hasAttendanceSnapshot(input.snapshotBefore);
       const newEntry: ImportHistoryEntry = {
         id: idFn(),
         timestamp: nowFn(),
@@ -135,15 +187,17 @@ interface ImportHistoryOptions {
         },
         snapshotBefore: {
           users: Array.isArray(input.snapshotBefore?.users) ? JSON.parse(JSON.stringify(input.snapshotBefore.users)) : [],
-          attendance: input.snapshotBefore?.attendance ? JSON.parse(JSON.stringify(input.snapshotBefore.attendance)) : undefined
+          attendance: hasSavedAttendance ? JSON.parse(JSON.stringify(input.snapshotBefore.attendance)) : undefined
         },
         status: 'applied',
+        rollbackAvailable: hasUsersSnapshot && (input.mode !== 'replace' || hasSavedAttendance),
         schemaVersion: CURRENT_SCHEMA_VERSION
       };
 
       const updated = [...entries, newEntry];
-      persistEntries(updated);
-      return { ...newEntry };
+      const persistedEntries = persistEntries(updated);
+      const persistedEntry = persistedEntries.find(entry => entry.id === newEntry.id);
+      return persistedEntry ? { ...persistedEntry } : markSnapshotUnavailable(newEntry);
     }
 
     function getAll(): ImportHistoryEntry[] {
@@ -155,7 +209,7 @@ interface ImportHistoryOptions {
       if (!entries.length) return null;
       // Return latest applied entry
       for (let i = entries.length - 1; i >= 0; i--) {
-        if (entries[i].status === 'applied') {
+        if (entries[i].status === 'applied' && isRollbackAvailable(entries[i])) {
           return { ...entries[i] };
         }
       }
@@ -183,6 +237,12 @@ interface ImportHistoryOptions {
         return { success: false, message: 'Esta importación ya fue revertida' };
       }
 
+      // Validate the snapshot before any repository mutation. Legacy entries
+      // with an ambiguous empty snapshot fail closed here.
+      if (!isRollbackAvailable(target)) {
+        return { success: false, message: 'Esta importación no tiene un snapshot completo disponible para revertir' };
+      }
+
       // Restore employee repository if provided
       if (repos.employeeRepository && Array.isArray(target.snapshotBefore.users)) {
         if (typeof repos.employeeRepository.importBatch === 'function') {
@@ -200,6 +260,7 @@ interface ImportHistoryOptions {
       target.status = 'rolled_back';
       target.rolledBackAt = nowFn();
       target.snapshotBefore = { users: [] };
+      target.rollbackAvailable = false;
       persistEntries(entries);
 
       return {

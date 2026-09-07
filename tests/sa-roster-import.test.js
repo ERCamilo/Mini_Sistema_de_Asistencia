@@ -131,6 +131,31 @@ test('duplicate SA identities in one payload are rejected', () => {
   ])), /duplicate identity/);
 });
 
+test('SA tuple identities remain distinct when IDs contain the former delimiter', () => {
+  const { repo } = makeRepo([
+    { id: 'u1', name: 'First old', number: '1', saProjectId: 'a::b', saEmployeeId: 'c' }
+  ]);
+  const roster = SaRosterImport.normalizeSaRoster(saEnvelope([
+    { saProjectId: 'a::b', saEmployeeId: 'c', number: '1', name: 'First new' },
+    { saProjectId: 'a', saEmployeeId: 'b::c', number: '2', name: 'Second new' }
+  ]));
+
+  const plan = SaRosterImport.buildSaImportPlan(repo.getAll(), roster, EmployeeNumberRules);
+  assert.equal(plan.updates.length, 1);
+  assert.equal(plan.updates[0].localId, 'u1');
+  assert.equal(plan.creates.length, 1);
+  assert.equal(plan.creates[0].saProjectId, 'a');
+  assert.equal(plan.creates[0].saEmployeeId, 'b::c');
+
+  const result = repo.importSaRoster(roster);
+  assert.equal(result.updatedCount, 1);
+  assert.equal(result.createdCount, 1);
+  assert.equal(repo.getBySaIdentity('a::b', 'c').name, 'First new');
+  assert.equal(repo.getBySaIdentity('a', 'b::c').name, 'Second new');
+  assert.equal(repo.getById('u1').saProjectId, 'a::b');
+  assert.equal(repo.getById('u1').saEmployeeId, 'c');
+});
+
 test('ambiguous numbers (same normalized number, different identities) are rejected', () => {
   assert.throws(() => SaRosterImport.normalizeSaRoster(saEnvelope([
     { saEmployeeId: 'e1', number: '1', name: 'A' },

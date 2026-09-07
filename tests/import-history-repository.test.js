@@ -37,6 +37,7 @@ test('recordImport saves entry with snapshotBefore and metadata', () => {
   assert.equal(entry.source, 'json');
   assert.equal(entry.mode, 'merge');
   assert.equal(entry.status, 'applied');
+  assert.equal(entry.rollbackAvailable, true);
   assert.equal(entry.schemaVersion, 1);
   assert.equal(entry.summary.createdCount, 1);
   assert.equal(entry.snapshotBefore.users.length, 1);
@@ -96,6 +97,7 @@ test('rollback restores employee repository and attendance repository to previou
 
   assert.equal(rollbackRes.success, true);
   assert.equal(rollbackRes.entry.status, 'rolled_back');
+  assert.equal(rollbackRes.entry.rollbackAvailable, false);
 
   // Verify employee state was reverted
   const restoredUsers = empRepo.getAll();
@@ -125,6 +127,7 @@ test('rollbackLatest rolls back the most recent applied entry', () => {
     snapshotBefore: { users: [] }
   });
 
+  assert.equal(historyRepo.getLatest().rollbackAvailable, true);
   const res = historyRepo.rollbackLatest({ employeeRepository: empRepo });
   assert.equal(res.success, true);
   assert.equal(empRepo.getAll().length, 0);
@@ -132,6 +135,51 @@ test('rollbackLatest rolls back the most recent applied entry', () => {
   // Calling rollbackLatest again when no applied entry exists returns error
   const second = historyRepo.rollbackLatest({ employeeRepository: empRepo });
   assert.equal(second.success, false);
+});
+
+test('sequential imports rollback latest while an older pruned entry cannot mutate the roster', () => {
+  const storage = createMemoryStorage();
+  const empRepo = EmployeeRepository.createEmployeeRepository({ storage });
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({ storage });
+
+  empRepo.importBatch([{ id: 'u0', name: 'Initial', number: '0' }], 'replace');
+
+  const firstSnapshot = { users: empRepo.getAll() };
+  empRepo.importBatch([
+    { id: 'u0', name: 'Initial', number: '0' },
+    { id: 'u1', name: 'First', number: '1' }
+  ], 'merge');
+  const first = historyRepo.recordImport({
+    source: 'json',
+    mode: 'merge',
+    summary: { totalIncoming: 2, createdCount: 1, updatedCount: 1 },
+    snapshotBefore: firstSnapshot
+  });
+
+  const secondSnapshot = { users: empRepo.getAll() };
+  empRepo.importBatch([
+    { id: 'u0', name: 'Initial', number: '0' },
+    { id: 'u1', name: 'First', number: '1' },
+    { id: 'u2', name: 'Second', number: '2' }
+  ], 'merge');
+  const second = historyRepo.recordImport({
+    source: 'json',
+    mode: 'merge',
+    summary: { totalIncoming: 3, createdCount: 1, updatedCount: 2 },
+    snapshotBefore: secondSnapshot
+  });
+
+  assert.equal(historyRepo.getById(first.id).rollbackAvailable, false);
+  assert.equal(historyRepo.getLatest().id, second.id);
+
+  const latestRollback = historyRepo.rollbackLatest({ employeeRepository: empRepo });
+  assert.equal(latestRollback.success, true);
+  assert.deepEqual(empRepo.getAll().map(user => user.id), ['u0', 'u1']);
+  assert.equal(historyRepo.getLatest(), null);
+
+  const oldRollback = historyRepo.rollback(first.id, { employeeRepository: empRepo });
+  assert.equal(oldRollback.success, false);
+  assert.deepEqual(empRepo.getAll().map(user => user.id), ['u0', 'u1']);
 });
 
 test('history respects maxEntries limit', () => {
@@ -181,9 +229,11 @@ test('older entries prune snapshotBefore to save quota while latest retains it',
   assert.equal(all.length, 2);
   // Older entry snapshot has been pruned
   assert.equal(all[0].snapshotBefore.users.length, 0);
+  assert.equal(all[0].rollbackAvailable, false);
   // Latest entry retains its full snapshot for rollback
   assert.equal(all[1].snapshotBefore.users.length, 1);
   assert.equal(all[1].snapshotBefore.users[0].name, 'Carlos');
+  assert.equal(all[1].rollbackAvailable, true);
 });
 
 test('recovers gracefully from QuotaExceededError without throwing', () => {
@@ -207,8 +257,9 @@ test('recovers gracefully from QuotaExceededError without throwing', () => {
     storage: failingStorage
   });
 
+  let recorded;
   assert.doesNotThrow(() => {
-    historyRepo.recordImport({
+    recorded = historyRepo.recordImport({
       source: 'json',
       mode: 'replace',
       summary: { totalIncoming: 5, createdCount: 5, updatedCount: 0 },
@@ -220,4 +271,127 @@ test('recovers gracefully from QuotaExceededError without throwing', () => {
   });
 
   assert.equal(historyRepo.getAll().length, 1);
+  assert.equal(historyRepo.getAll()[0].rollbackAvailable, false);
+  assert.equal(historyRepo.getLatest(), null);
+  let mutationAttempts = 0;
+  const rollback = historyRepo.rollback(recorded.id, {
+    employeeRepository: { importBatch() { mutationAttempts += 1; } }
+  });
+  assert.equal(rollback.success, false);
+  assert.equal(mutationAttempts, 0);
+});
+
+test('recordImport returns the effective entry after quota strips replace attendance', () => {
+  const backing = createMemoryStorage();
+  let writeCount = 0;
+  const storage = {
+    getItem(key) { return backing.getItem(key); },
+    setItem(key, value) {
+      if (writeCount++ === 0) {
+        throw new Error('QuotaExceededError');
+      }
+      backing.setItem(key, value);
+    }
+  };
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({ storage });
+
+  const entry = historyRepo.recordImport({
+    source: 'json',
+    mode: 'replace',
+    summary: { totalIncoming: 2, createdCount: 2, updatedCount: 0 },
+    snapshotBefore: {
+      users: [{ id: 'u1', name: 'Ana' }],
+      attendance: { '2026-09-01': { u1: { status: 'present' } } }
+    }
+  });
+
+  const persisted = historyRepo.getById(entry.id);
+  assert.ok(persisted);
+  assert.deepEqual(entry.snapshotBefore, persisted.snapshotBefore);
+  assert.equal(entry.rollbackAvailable, persisted.rollbackAvailable);
+  assert.equal(entry.rollbackAvailable, false);
+  assert.deepEqual(entry.snapshotBefore.users, [{ id: 'u1', name: 'Ana' }]);
+  assert.equal(Object.prototype.hasOwnProperty.call(entry.snapshotBefore, 'attendance'), false);
+});
+
+test('recordImport fails closed when all history writes fail', () => {
+  const storage = {
+    getItem() { return null; },
+    setItem() { throw new Error('QuotaExceededError'); }
+  };
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({ storage });
+
+  const entry = historyRepo.recordImport({
+    source: 'json',
+    mode: 'merge',
+    summary: { totalIncoming: 1, createdCount: 1, updatedCount: 0 },
+    snapshotBefore: { users: [{ id: 'u1', name: 'Ana' }] }
+  });
+
+  assert.equal(entry.rollbackAvailable, false);
+  assert.deepEqual(entry.snapshotBefore, { users: [] });
+  assert.deepEqual(historyRepo.getAll(), []);
+});
+
+test('legacy ambiguous empty snapshot fails closed before repository mutation', () => {
+  const initialUsers = [{ id: 'u1', name: 'Ana', number: '1' }];
+  const storage = createMemoryStorage({
+    users: JSON.stringify(initialUsers),
+    import_history_v1: JSON.stringify([{
+      id: 'legacy-empty',
+      timestamp: '2026-09-01T00:00:00.000Z',
+      source: 'json',
+      mode: 'merge',
+      summary: { totalIncoming: 1, createdCount: 1, updatedCount: 0 },
+      snapshotBefore: { users: [] },
+      status: 'applied',
+      schemaVersion: 1
+    }])
+  });
+  const empRepo = EmployeeRepository.createEmployeeRepository({ storage });
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({ storage });
+  const before = empRepo.getAll();
+
+  assert.equal(historyRepo.getLatest(), null);
+  const rollback = historyRepo.rollback('legacy-empty', { employeeRepository: empRepo });
+  assert.equal(rollback.success, false);
+  assert.deepEqual(empRepo.getAll(), before);
+});
+
+test('quota-pruned metadata remains auditable but cannot mutate the roster', () => {
+  const backing = createMemoryStorage({
+    users: JSON.stringify([{ id: 'u1', name: 'Ana', number: '1' }])
+  });
+  const storage = {
+    getItem(key) { return backing.getItem(key); },
+    setItem(key, value) {
+      if (key === 'import_history_v1') {
+        const entries = JSON.parse(value);
+        if (entries.some(entry => entry.snapshotBefore?.users?.length > 0)) {
+          throw new Error('QuotaExceededError');
+        }
+      }
+      backing.setItem(key, value);
+    }
+  };
+  const empRepo = EmployeeRepository.createEmployeeRepository({ storage });
+  const historyRepo = ImportHistoryRepository.createImportHistoryRepository({ storage });
+
+  const entry = historyRepo.recordImport({
+    source: 'json',
+    mode: 'merge',
+    summary: { totalIncoming: 1, createdCount: 1, updatedCount: 0 },
+    snapshotBefore: { users: empRepo.getAll() }
+  });
+
+  const stored = historyRepo.getById(entry.id);
+  assert.equal(stored.source, 'json');
+  assert.equal(stored.rollbackAvailable, false);
+  assert.equal(stored.snapshotBefore.users.length, 0);
+  assert.equal(historyRepo.getLatest(), null);
+
+  const before = empRepo.getAll();
+  const rollback = historyRepo.rollback(entry.id, { employeeRepository: empRepo });
+  assert.equal(rollback.success, false);
+  assert.deepEqual(empRepo.getAll(), before);
 });

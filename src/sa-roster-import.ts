@@ -261,7 +261,7 @@ interface SaApplyResult {
     // (normalized) numbers are rejected before any persistence or planning.
     const seenIdentities = new Set<string>();
     for (const employee of employees) {
-      const key = `${employee.saProjectId}::${employee.saEmployeeId}`;
+      const key = tupleKey(employee.saProjectId, employee.saEmployeeId);
       if (seenIdentities.has(key)) {
         throw new Error(`SA roster duplicate identity "${employee.saEmployeeId}" in project "${employee.saProjectId}"`);
       }
@@ -291,7 +291,7 @@ interface SaApplyResult {
   }
 
   function tupleKey(saProjectId: string, saEmployeeId: string): string {
-    return `${saProjectId}::${saEmployeeId}`;
+    return JSON.stringify([saProjectId, saEmployeeId]);
   }
 
   function buildSaImportPlan(

@@ -2737,6 +2737,22 @@
 
             <!-- PESTAÑA 2: GESTIÓN DE DATOS -->
             <div id="more-tab-data-panel" class="hidden">
+                <!-- SECCIÓN: TRANSFERENCIAS P2P -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span class="ic" data-icon="share"></span> Transferencias directas
+                    </div>
+                    <div class="export-options">
+                        <button type="button" class="export-option" onclick="openP2PTransferModal()">
+                            <span style="font-size: 24px;">⇄</span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">SA ↔ Mini</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Vincular dispositivos y recibir roster directamente</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- SECCIÓN: DATOS Y RESPALDOS -->
                 <div class="settings-section">
                     <div class="settings-section-title">
@@ -3223,6 +3239,9 @@
     <script src="./mini-sa-envelope.js"></script>
     <script src="./roster-package.js"></script>
     <script src="./sa-roster-import.js"></script>
+    <script src="./p2p-core.js"></script>
+    <script src="./p2p-pairing.js"></script>
+    <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
     <script src="./field-requests-repository.js"></script>
