@@ -1,0 +1,6 @@
+#!/bin/sh
+# Regenerate the Mini build stamp before each commit.
+# Stages ONLY the generated files (build-info.js, sw.js).
+set -e
+node scripts/stamp-build.mjs
+git add build-info.js sw.js

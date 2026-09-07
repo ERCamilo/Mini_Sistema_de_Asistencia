@@ -1,9 +1,11 @@
 {
   "name": "asistencia-mini",
+  "version": "2.13.0",
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/stamp-build.mjs && tsc",
     "pretest": "tsc",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "test": "node --test"
   },
   "devDependencies": {
