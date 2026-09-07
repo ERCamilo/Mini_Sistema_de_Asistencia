@@ -115,11 +115,24 @@
       <div style="margin-top:16px">${primary('Conectar con SA','data-connect')}</div>
       <div data-pair-status style="font-size:12px;margin-top:12px"></div>`;
     body().querySelector('[data-back]').addEventListener('click', renderHome);
-    body().querySelector('[data-connect]').addEventListener('click', async () => {
+    const connectButton = body().querySelector('[data-connect]');
+    connectButton.addEventListener('click', async () => {
+      if (connectButton.disabled) return;
+      connectButton.disabled = true;
+      connectButton.setAttribute('aria-busy', 'true');
+      connectButton.textContent = 'Conectando…';
       try {
         const descriptor = await core.pairDescriptorFromManual(body().querySelector('[data-code]').value, body().querySelector('[data-key]').value);
         await startPairing(descriptor);
-      } catch (error) { body().querySelector('[data-pair-status]').textContent = error.message; }
+      } catch (error) {
+        const box = body()?.querySelector('[data-pair-status]');
+        if (box) box.textContent = error.message;
+        if (connectButton.isConnected) {
+          connectButton.disabled = false;
+          connectButton.removeAttribute('aria-busy');
+          connectButton.textContent = 'Conectar con SA';
+        }
+      }
     });
   }
 
@@ -143,7 +156,16 @@
     activeSession = await core.createRtcSession({
       signaling, initiator: false,
       expiresAt: descriptor.expiresAt,
-      onState: (status, error) => { const box=body()?.querySelector('[data-pair-status]'); if(box && error) box.textContent='Error: '+error.message; },
+      onState: (status, error) => {
+        const box=body()?.querySelector('[data-pair-status]');
+        if (!box) return;
+        if (error) {
+          box.textContent='Error: '+error.message;
+          const retry=body()?.querySelector('[data-connect]');
+          if (retry) { retry.disabled=false; retry.removeAttribute('aria-busy'); retry.textContent='Conectar con SA'; }
+        } else if (status === 'connected') box.textContent='Canal conectado. Verificando identidad…';
+        else if (status === 'connecting' || status === 'new') box.textContent='Negociando conexión…';
+      },
       onChannel: channel => {
         activeChannel = channel;
         pairing.attachPairing(channel, {

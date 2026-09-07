@@ -56,3 +56,25 @@ test('future transfer types remain disabled in Mini UI',()=>{
   assert.ok(ui.includes("disabledCard('💾 Backup'"));
   assert.ok(ui.includes("disabledCard('📄 Documentos / Archivos'"));
 });
+
+
+test('manual pairing is single-flight and exposes useful connection progress',()=>{
+  const ui=read('p2p-roster-ui.js');
+  const handler=ui.slice(ui.indexOf("const connectButton = body().querySelector('[data-connect]')"), ui.indexOf('async function startPairing'));
+  assert.ok(handler.includes('if (connectButton.disabled) return;'));
+  assert.ok(handler.indexOf('connectButton.disabled = true') < handler.indexOf('pairDescriptorFromManual'));
+  assert.ok(handler.includes("connectButton.setAttribute('aria-busy', 'true')"));
+  assert.ok(handler.includes("connectButton.textContent = 'Conectando…'"));
+  assert.ok(ui.includes("status === 'connected'"));
+  assert.ok(ui.includes('Canal conectado. Verificando identidad…'));
+  assert.ok(ui.includes('Negociando conexión…'));
+});
+
+test('shared core preserves a real failure reason instead of collapsing every teardown to done',()=>{
+  const core=read('p2p-core.js');
+  assert.ok(core.includes('MAX_CLOSE_REASON_BYTES = 123'));
+  assert.ok(core.includes('boundedCloseReason(reason)'));
+  assert.ok(core.includes('status.closeSession(reason)'));
+  assert.ok(core.includes("close(reason = 'done')"));
+  assert.ok(core.includes('signaling.close(boundedCloseReason(reason))'));
+});
