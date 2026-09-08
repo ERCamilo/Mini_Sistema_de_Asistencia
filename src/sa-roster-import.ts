@@ -330,6 +330,17 @@ interface SaApplyResult {
     const updates: SaImportPlan['updates'] = [];
     const creates: SaNormalizedRecord[] = [];
     const reconciliationCandidates: SaReconciliationCandidate[] = [];
+    const incomingByTuple = new Map<string, SaNormalizedRecord>();
+    for (const record of safeRoster.employees) {
+      incomingByTuple.set(tupleKey(record.saProjectId, record.saEmployeeId), record);
+    }
+    const ownerMovesAway = (owner: SaLocalEmployee, targetNorm: number): boolean => {
+      if (!isValidSaId(owner.saProjectId) || !isValidSaId(owner.saEmployeeId)) return false;
+      const moving = incomingByTuple.get(tupleKey(String(owner.saProjectId), String(owner.saEmployeeId)));
+      if (!moving) return false;
+      const movingNorm = normalizeNum(moving.number);
+      return movingNorm !== null && movingNorm !== targetNorm;
+    };
 
     for (const record of safeRoster.employees) {
       const exact = existingByTuple.get(tupleKey(record.saProjectId, record.saEmployeeId));
@@ -339,9 +350,15 @@ interface SaApplyResult {
         // fails closed instead of silently remapping either side.
         if (recordNorm !== null) {
           const colliders = (existingByNumber.get(recordNorm) || []).filter(u => u.id !== exact.id);
-          if (colliders.length > 0) {
+          // Exact SA identity is authoritative. A current-number occupant
+          // is not a blocker when it is another exact linked row in THIS roster
+          // and its final number moves away. normalizeSaRoster already guarantees
+          // the final normalized numbers are unique, so swaps/cycles are atomic.
+          const blockers = colliders.filter(collider => !ownerMovesAway(collider, recordNorm));
+          if (blockers.length > 0) {
+            const blocker = blockers[0];
             throw new Error(
-              `SA roster conflicting link: "${record.name}" (${record.number}) collides with "${colliders[0].name}"`
+              `SA roster conflicting link: "${record.name}" [${record.saEmployeeId}] (${record.number}) collides with "${blocker.name}"`
             );
           }
         }
@@ -349,14 +366,18 @@ interface SaApplyResult {
         continue;
       }
       const numberOwners = recordNorm === null ? [] : (existingByNumber.get(recordNorm) || []);
-      if (numberOwners.length > 0) {
-        // Number-only match: explicit candidate, never an automatic link.
+      const blockingOwners = recordNorm === null
+        ? numberOwners
+        : numberOwners.filter(owner => !ownerMovesAway(owner, recordNorm));
+      if (blockingOwners.length > 0) {
+        // Number-only match against an owner that is NOT vacating the number:
+        // explicit candidate, never an automatic link.
         reconciliationCandidates.push({
           saProjectId: record.saProjectId,
           saEmployeeId: record.saEmployeeId,
           number: record.number,
           name: record.name,
-          candidates: numberOwners.map(u => ({ id: u.id, number: String(u.number), name: String(u.name) }))
+          candidates: blockingOwners.map(u => ({ id: u.id, number: String(u.number), name: String(u.name) }))
         });
         continue;
       }

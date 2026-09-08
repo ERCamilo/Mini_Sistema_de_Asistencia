@@ -6708,7 +6708,8 @@
                         statusMsg += '<br><span style="color:var(--warning-color);">';
                         plan.reconciliationCandidates.slice(0, 5).forEach(c => {
                             const owner = c.candidates[0];
-                            statusMsg += '&#x26A0;&#xFE0F; Nº ' + esc(c.number) + ' "' + esc(c.name) + '" ya es de ' + esc(owner ? owner.name : '?');
+                            statusMsg += '&#x26A0;&#xFE0F; Nº ' + esc(c.number) + ' "' + esc(c.name) + '"';
+                            statusMsg += ' · SA ID <code>' + esc(c.saEmployeeId) + '</code> ya coincide por número con ' + esc(owner ? owner.name : '?');
                             statusMsg += ' — requiere confirmación para vincular (se mantiene el ID local).';
                             if (c.candidates.length === 1 && owner) {
                                 statusMsg += ' <button type="button" data-sa-link="1" data-sa-local="' + esc(owner.id) + '" data-sa-project="' + esc(c.saProjectId) + '" data-sa-employee="' + esc(c.saEmployeeId) + '" style="margin-left:6px;font-size:12px;font-weight:700;cursor:pointer;">Vincular (mantener ID local)</button>';

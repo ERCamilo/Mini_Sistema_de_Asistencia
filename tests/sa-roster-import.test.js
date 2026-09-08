@@ -53,6 +53,61 @@ test('SA exact match updates in place and keeps the local id (attendance key sta
   assert.equal(attendance['2026-09-06'][saved.id].hours, 8);
 });
 
+test('two exact SA-linked employees may atomically swap numbers without changing local ids', () => {
+  const { repo } = makeRepo([
+    { id: 'local-a', name: 'Empleado 1', number: '001', saProjectId: 'proj-1', saEmployeeId: 'sa-a' },
+    { id: 'local-b', name: 'Empleado 2', number: '002', saProjectId: 'proj-1', saEmployeeId: 'sa-b' }
+  ]);
+  const roster = SaRosterImport.normalizeSaRoster(saEnvelope([
+    { saEmployeeId: 'sa-a', number: '2', name: 'Empleado 1' },
+    { saEmployeeId: 'sa-b', number: '1', name: 'Empleado 2' }
+  ]));
+
+  const plan = SaRosterImport.buildSaImportPlan(repo.getAll(), roster, EmployeeNumberRules);
+  assert.equal(plan.updates.length, 2);
+  assert.equal(plan.reconciliationCandidates.length, 0);
+
+  const result = repo.importSaRoster(roster);
+  assert.equal(result.updatedCount, 2);
+  assert.equal(repo.getById('local-a').number, '2');
+  assert.equal(repo.getById('local-b').number, '1');
+  assert.equal(repo.getBySaIdentity('proj-1', 'sa-a').id, 'local-a');
+  assert.equal(repo.getBySaIdentity('proj-1', 'sa-b').id, 'local-b');
+});
+
+test('new SA employee may take a number vacated by another exact linked row in the same roster', () => {
+  const { repo } = makeRepo([
+    { id: 'local-a', name: 'Empleado 1', number: '001', saProjectId: 'proj-1', saEmployeeId: 'sa-a' }
+  ]);
+  const roster = SaRosterImport.normalizeSaRoster(saEnvelope([
+    { saEmployeeId: 'sa-a', number: '2', name: 'Empleado 1' },
+    { saEmployeeId: 'sa-new', number: '1', name: 'Empleado nuevo' }
+  ]));
+  const plan = SaRosterImport.buildSaImportPlan(repo.getAll(), roster, EmployeeNumberRules);
+  assert.equal(plan.updates.length, 1);
+  assert.equal(plan.creates.length, 1);
+  assert.equal(plan.reconciliationCandidates.length, 0);
+  const result = repo.importSaRoster(roster);
+  assert.equal(result.updatedCount, 1);
+  assert.equal(result.createdCount, 1);
+  assert.equal(repo.getById('local-a').number, '2');
+  assert.equal(repo.getBySaIdentity('proj-1', 'sa-new').number, '1');
+});
+
+test('exact SA update still fails closed when target number is owned by an unrelated local employee', () => {
+  const existing = [
+    { id: 'local-a', name: 'Empleado SA', number: '1', saProjectId: 'proj-1', saEmployeeId: 'sa-a' },
+    { id: 'legacy-b', name: 'Empleado local', number: '2' }
+  ];
+  const roster = SaRosterImport.normalizeSaRoster(saEnvelope([
+    { saEmployeeId: 'sa-a', number: '2', name: 'Empleado SA' }
+  ]));
+  assert.throws(
+    () => SaRosterImport.buildSaImportPlan(existing, roster, EmployeeNumberRules),
+    /conflicting link/
+  );
+});
+
 test('SA number-only match never auto-links: explicit reconciliation candidate instead', () => {
   const { repo } = makeRepo([{ id: 'u9', name: 'Luis', number: '5' }]);
   const roster = SaRosterImport.normalizeSaRoster(saEnvelope([
@@ -307,6 +362,12 @@ test('repository counts distinguish created vs updated', () => {
   assert.equal(res.createdCount, 1);
   assert.equal(res.totalValid, 2);
   assert.equal(res.users.length, 2);
+});
+
+test('Mini reconciliation UI exposes incoming SA employee id for true number conflicts', () => {
+  const html = readFileSync(path.resolve(__dirname, '../index.html'), 'utf8');
+  assert.match(html, /SA ID <code>' \+ esc\(c\.saEmployeeId\) \+ '<\/code>/);
+  assert.match(html, /requiere confirmación para vincular \(se mantiene el ID local\)/);
 });
 
 test('index.html SA route and legacy import use createdCount/updatedCount (count-mismatch fix)', () => {
