@@ -7,9 +7,41 @@ const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
 
 test('Mini loads P2P runtime in dependency order and precaches it',()=>{
   const html=read('index.html'), sw=read('sw.js');
-  const core=html.indexOf('./p2p-core.js'), pairing=html.indexOf('./p2p-pairing.js'), ui=html.indexOf('./p2p-roster-ui.js');
-  assert.ok(core>0&&core<pairing&&pairing<ui);
-  for(const asset of ['./p2p-core.js','./p2p-pairing.js','./p2p-roster-ui.js']) assert.ok(sw.includes(asset),asset+' precached');
+  const core=html.indexOf('./p2p-core.js'), pairing=html.indexOf('./p2p-pairing.js'), aliases=html.indexOf('./p2p-peer-alias-store.js'), ui=html.indexOf('./p2p-roster-ui.js');
+  assert.ok(core>0&&core<pairing&&pairing<aliases&&aliases<ui);
+  for(const asset of ['./p2p-core.js','./p2p-pairing.js','./p2p-peer-alias-store.js','./p2p-roster-ui.js']) assert.ok(sw.includes(asset),asset+' precached');
+});
+
+
+test('Mini peer aliases are local presentation metadata with rename/clear/unlink wiring',()=>{
+  const ui=read('p2p-roster-ui.js');
+  const aliases=read('p2p-peer-alias-store.js');
+  assert.ok(ui.includes('root.SaMiniP2PPeerAliases'));
+  assert.ok(ui.includes('data-rename-peer'));
+  assert.ok(ui.includes('data-peer-alias'));
+  assert.ok(ui.includes('data-save-alias'));
+  assert.ok(ui.includes('data-clear-alias'));
+  assert.ok(ui.includes('aliasStore.removeAlias(peerId)'));
+  assert.ok(ui.includes('peerName(peer)'));
+  assert.ok(ui.includes('Nombre original:'));
+  assert.ok(ui.includes('se guarda sólo en este Mini'));
+  assert.ok(aliases.includes("'mini_p2p_peer_aliases_v1'"));
+  assert.ok(aliases.includes('entries'));
+  assert.ok(!aliases.includes('linkToken'));
+  assert.ok(!aliases.includes('HMAC'));
+  assert.ok(!aliases.includes('Firebase'));
+});
+
+test('Mini linked peer identity UX shows recent activity, sorts it, and can rename self',()=>{
+  const ui=read('p2p-roster-ui.js');
+  assert.ok(ui.includes('sortPeersByRecentActivity'));
+  assert.ok(ui.includes('peer?.lastSeenAt || peer?.linkedAt'));
+  assert.ok(ui.includes('Última conexión:'));
+  assert.ok(ui.includes('data-rename-self'));
+  assert.ok(ui.includes('Nombre de este Mini'));
+  assert.ok(ui.includes('identityStore.renameSelf(nextName)'));
+  assert.ok(ui.includes('futuros emparejamientos'));
+  assert.ok(!ui.includes('En línea'));
 });
 
 test('Mini stages only validated sa-roster/v1 and never auto-imports from P2P',()=>{

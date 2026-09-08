@@ -2,16 +2,34 @@
   'use strict';
   const core = root.SaMiniP2P;
   const pairing = root.SaMiniP2PPairing;
-  if (!core || !pairing) throw new Error('P2P core/pairing must load before P2P roster UI.');
+  const aliases = root.SaMiniP2PPeerAliases;
+  if (!core || !pairing || !aliases) throw new Error('P2P core/pairing/alias store must load before P2P roster UI.');
 
   const MODAL_ID = 'mini-p2p-transfer-modal';
   const identityStore = core.makeIdentityStore('mini', 'Mini - Dispositivo');
+  const aliasStore = aliases.createPeerAliasStore({ storageKey: 'mini_p2p_peer_aliases_v1' });
   let activeSession = null;
   let activeChannel = null;
   let pendingRoster = null;
 
   function esc(value) {
     return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
+  }
+  function peerName(peer) { return aliasStore.resolveName(peer); }
+  function peerOriginalName(peer) {
+    const original = String(peer?.displayName || '').trim();
+    return original || (peer?.peerApp === 'sa' ? 'SA' : peer?.peerApp === 'mini' ? 'Mini' : 'Dispositivo');
+  }
+  function peerActivityMs(peer) {
+    const parsed = Date.parse(peer?.lastSeenAt || peer?.linkedAt || '');
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  function sortPeersByRecentActivity(peers) {
+    return [...(peers || [])].sort((a,b)=>peerActivityMs(b)-peerActivityMs(a)||String(a?.peerId||'').localeCompare(String(b?.peerId||'')));
+  }
+  function formatPeerDate(value) {
+    const date = new Date(value || '');
+    return Number.isFinite(date.getTime()) ? date.toLocaleString('es-DO') : 'Sin registro';
   }
   function modal() { return document.getElementById(MODAL_ID); }
   function body() { return modal()?.querySelector('[data-p2p-body]'); }
@@ -74,13 +92,21 @@
     cleanupSession();
     pendingRoster = null;
     const self = await identityStore.getSelf();
-    const peers = (await identityStore.listPeers()).filter(p => p.peerApp === 'sa');
-    const peerRows = peers.length ? peers.map(peer => `
+    const peers = sortPeersByRecentActivity((await identityStore.listPeers()).filter(p => p.peerApp === 'sa'));
+    const peerRows = peers.length ? peers.map(peer => {
+      const alias = aliasStore.getAlias(peer.peerId);
+      const original = peerOriginalName(peer);
+      const linked = formatPeerDate(peer.linkedAt);
+      const lastSeen = formatPeerDate(peer.lastSeenAt || peer.linkedAt);
+      const originalLine = alias ? `<div style="font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Original: ${esc(original)}</div>` : '';
+      return `
       <div style="display:flex;gap:8px;align-items:center;border:1px solid var(--border-color,rgba(148,163,184,.3));border-radius:12px;padding:12px">
-        <div style="flex:1;min-width:0"><strong>${esc(peer.displayName)}</strong><div style="font-size:11px;opacity:.6">Vinculado ${esc(new Date(peer.linkedAt).toLocaleString('es-DO'))}</div></div>
+        <div style="flex:1;min-width:0"><strong>${esc(peerName(peer))}</strong>${originalLine}<div style="font-size:11px;opacity:.6;line-height:1.35">Última conexión: ${esc(lastSeen)} · Vinculado: ${esc(linked)}</div></div>
+        <button type="button" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre" style="border:1px solid rgba(37,99,235,.32);border-radius:10px;padding:9px;background:transparent;color:var(--primary-color,#2563eb);cursor:pointer">✎</button>
         <button type="button" data-wait-peer="${esc(peer.peerId)}" style="border:0;border-radius:10px;padding:9px 11px;background:#16a34a;color:white;font-weight:700;cursor:pointer">Esperar roster</button>
         <button type="button" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular" style="border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:9px;background:transparent;color:#dc2626;cursor:pointer">×</button>
-      </div>`).join('') : '<div style="font-size:13px;opacity:.7;padding:8px 0">Aún no hay SA vinculados.</div>';
+      </div>`;
+    }).join('') : '<div style="font-size:13px;opacity:.7;padding:8px 0">Aún no hay SA vinculados.</div>';
 
     body().innerHTML = `
       <div style="display:grid;gap:10px">
@@ -89,17 +115,79 @@
         ${disabledCard('💾 Backup','Mini ↔ Mini')}
         ${disabledCard('📄 Documentos / Archivos','Reservado para una fase futura')}
       </div>
-      <div style="margin-top:18px;display:flex;justify-content:space-between;gap:10px"><strong>SA vinculados</strong><span style="font-size:11px;opacity:.6">${esc(self.displayName)}</span></div>
+      <div style="margin-top:18px;display:flex;justify-content:space-between;gap:10px"><strong>SA vinculados</strong><span style="font-size:11px;opacity:.72;display:flex;align-items:center;gap:5px">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini" style="border:0;background:transparent;color:var(--primary-color,#2563eb);cursor:pointer;padding:2px 4px;font-size:13px">✎</button></span></div>
       <div style="display:grid;gap:8px;margin-top:10px">${peerRows}</div>
       <div style="margin-top:16px">${primary('Vincular con SA usando código + clave','data-manual-pair')}</div>
       <p style="font-size:11px;opacity:.65;line-height:1.45;margin-top:12px">Recibir un roster no lo importa automáticamente. Primero se verifica SHA-256 y luego se abre la revisión normal de Mini.</p>`;
     body().querySelector('[data-manual-pair]').addEventListener('click', renderManualPair);
+    body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
+    body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedRoster(btn.dataset.waitPeer)));
     body().querySelectorAll('[data-unlink]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('¿Desvincular este SA?')) return;
-      await identityStore.removePeer(btn.dataset.unlink);
+      const peerId = btn.dataset.unlink;
+      await identityStore.removePeer(peerId);
+      aliasStore.removeAlias(peerId);
       renderHome();
     }));
+  }
+
+  async function renderSelfNameEditor() {
+    const self = await identityStore.getSelf();
+    body().innerHTML = `
+      <button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button>
+      <h3 style="margin:0 0 6px">Nombre de este Mini</h3>
+      <p style="font-size:13px;opacity:.7;margin:0 0 14px">Este es el nombre que este dispositivo presenta en futuros emparejamientos.</p>
+      <label for="mini-p2p-self-name" style="display:block;font-size:12px;margin-bottom:5px">Nombre del dispositivo</label>
+      <input id="mini-p2p-self-name" data-self-name maxlength="80" value="${esc(self.displayName)}" placeholder="Ej: Mini almacén" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--bg-primary,#fff);color:inherit">
+      <p style="font-size:11px;line-height:1.45;opacity:.65">Cambiarlo no modifica deviceId, claves ni vínculos existentes. Los aliases personalizados guardados en otros dispositivos tampoco cambian.</p>
+      <div style="margin-top:14px">${primary('Guardar nombre del Mini','data-save-self-name')}</div>`;
+    const input = body().querySelector('[data-self-name]');
+    input?.focus();
+    input?.select();
+    body().querySelector('[data-back]').addEventListener('click', renderHome);
+    body().querySelector('[data-save-self-name]').addEventListener('click', async () => {
+      const nextName = String(input.value || '').trim();
+      if (!nextName) {
+        toast('Escribe un nombre para este Mini.');
+        return;
+      }
+      await identityStore.renameSelf(nextName);
+      renderHome();
+    });
+  }
+
+  async function renderPeerAliasEditor(peerId) {
+    const peer = await identityStore.getPeer(peerId);
+    if (!peer || peer.peerApp !== 'sa') {
+      toast('SA vinculado no encontrado.');
+      return renderHome();
+    }
+    const currentAlias = aliasStore.getAlias(peer.peerId);
+    const original = peerOriginalName(peer);
+    body().innerHTML = `
+      <button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button>
+      <h3 style="margin:0 0 6px">Nombre de esta conexión</h3>
+      <p style="font-size:13px;opacity:.7;margin:0 0 14px">Nombre original: <strong>${esc(original)}</strong></p>
+      <label for="mini-p2p-peer-alias" style="display:block;font-size:12px;margin-bottom:5px">Nombre personalizado</label>
+      <input id="mini-p2p-peer-alias" data-peer-alias maxlength="64" value="${esc(currentAlias)}" placeholder="Ej: SA oficina" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--bg-primary,#fff);color:inherit">
+      <p style="font-size:11px;line-height:1.45;opacity:.65">Este nombre se guarda sólo en este Mini. No cambia el vínculo, la identidad del dispositivo ni sus claves de seguridad.</p>
+      <div style="display:grid;gap:8px;margin-top:14px">
+        ${primary('Guardar nombre','data-save-alias')}
+        <button type="button" data-clear-alias style="width:100%;border:1px solid var(--border-color,rgba(148,163,184,.4));border-radius:12px;padding:11px 14px;background:transparent;color:inherit;font-weight:700;cursor:pointer">Usar nombre original</button>
+      </div>`;
+    const input = body().querySelector('[data-peer-alias]');
+    input?.focus();
+    input?.select();
+    body().querySelector('[data-back]').addEventListener('click', renderHome);
+    body().querySelector('[data-save-alias]').addEventListener('click', () => {
+      aliasStore.setAlias(peer.peerId, input.value);
+      renderHome();
+    });
+    body().querySelector('[data-clear-alias]').addEventListener('click', () => {
+      aliasStore.removeAlias(peer.peerId);
+      renderHome();
+    });
   }
 
   function renderManualPair() {
@@ -191,7 +279,7 @@
   }
 
   function renderLinkedWaiting(peer) {
-    body().innerHTML = `<h3 style="margin-top:0">✓ SA vinculado</h3><p><strong>${esc(peer.displayName)}</strong> quedó reconocido por este Mini.</p><div data-receive-state style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando roster en esta conexión…</div><button type="button" data-finish style="width:100%;margin-top:10px;border:0;background:transparent;color:inherit;padding:10px;cursor:pointer">Terminar</button>`;
+    body().innerHTML = `<h3 style="margin-top:0">✓ SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p><div data-receive-state style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando roster en esta conexión…</div><button type="button" data-finish style="width:100%;margin-top:10px;border:0;background:transparent;color:inherit;padding:10px;cursor:pointer">Terminar</button>`;
     body().querySelector('[data-finish]').addEventListener('click', renderHome);
   }
 
@@ -207,7 +295,7 @@
     const self=await identityStore.getSelf();
     const peer=await identityStore.getPeer(peerId);
     if (!peer || peer.peerApp !== 'sa') throw new Error('SA vinculado no encontrado.');
-    body().innerHTML = `<button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button><h3 style="margin:0 0 8px">Esperar roster de ${esc(peer.displayName)}</h3><p style="font-size:13px;opacity:.7">Ahora en SA selecciona este Mini y pulsa “Enviar roster”.</p><div data-wait-status style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando conexión autenticada…</div>`;
+    body().innerHTML = `<button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button><h3 style="margin:0 0 8px">Esperar roster de ${esc(peerName(peer))}</h3><p style="font-size:13px;opacity:.7">Ahora en SA selecciona este Mini y pulsa “Enviar roster”.</p><div data-wait-status style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando conexión autenticada…</div>`;
     body().querySelector('[data-back]').addEventListener('click', renderHome);
     const route=await core.deriveTrustedRoute(peer.linkToken);
     const signaling=new core.SignalingClient({room:route.room,peerId:self.deviceId,proof:route.proof});
@@ -265,7 +353,7 @@
       });
       const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');
       if(!box)return;
-      box.innerHTML=`<strong style="color:#16a34a">✓ Roster recibido · SHA-256 verificado</strong><br><span style="font-size:12px">${pendingRoster.employeeCount} empleados de ${esc(peer.displayName)}. Aún no se ha importado nada.</span><div style="margin-top:10px">${primary('Revisar roster en Mini','data-review-roster')}</div>`;
+      box.innerHTML=`<strong style="color:#16a34a">✓ Roster recibido · SHA-256 verificado</strong><br><span style="font-size:12px">${pendingRoster.employeeCount} empleados de ${esc(peerName(peer))}. Aún no se ha importado nada.</span><div style="margin-top:10px">${primary('Revisar roster en Mini','data-review-roster')}</div>`;
       box.querySelector('[data-review-roster]').addEventListener('click',reviewPendingRoster);
     }catch(error){
       pendingRoster=null;
