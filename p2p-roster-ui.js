@@ -57,6 +57,7 @@
   }
 
   function closeTransferModal(options = {}) {
+    if (activeMorphCleanup) activeMorphCleanup();
     if (!options.keepSession) cleanupSession();
     modal()?.remove();
   }
@@ -67,11 +68,11 @@
     el.id = MODAL_ID;
     el.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
     el.innerHTML = `
-      <section role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title" style="width:min(650px,100%);max-height:92vh;overflow:auto;background:var(--bg-secondary,#fff);color:var(--text-primary,#111827);border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.3);">
-        <header style="display:flex;align-items:center;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border-color,rgba(148,163,184,.3));position:sticky;top:0;background:inherit;z-index:2">
+      <section role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title" style="width:min(650px,100%);max-height:92vh;overflow:auto;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.3);box-sizing:border-box;">
+        <header style="display:flex;align-items:center;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border-color);position:sticky;top:0;background:inherit;z-index:2">
           <span style="font-size:24px">⇄</span>
-          <div style="flex:1"><strong id="mini-p2p-title">Transferencias directas</strong><div style="font-size:12px;opacity:.65">Mini ↔ SA · WebRTC</div></div>
-          <button type="button" data-p2p-close aria-label="Cerrar" style="border:0;background:transparent;color:inherit;font-size:28px;cursor:pointer">×</button>
+          <div style="flex:1"><strong id="mini-p2p-title">Transferencias directas</strong><div style="font-size:12px;color:var(--text-muted)">Mini ↔ SA · WebRTC</div></div>
+          <button type="button" data-p2p-close aria-label="Cerrar" title="Cerrar" style="border:0;background:transparent;color:inherit;font-size:28px;cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">×</button>
         </header>
         <div data-p2p-body style="padding:18px 20px"></div>
       </section>`;
@@ -80,11 +81,122 @@
     document.body.appendChild(el);
   }
 
+  let activeMorphCleanup = null;
+
+  function isReducedMotion() {
+    try {
+      return Boolean(
+        typeof root.matchMedia === 'function' &&
+        root.matchMedia('(prefers-reduced-motion: reduce)')?.matches
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function morphShell(renderViewFn) {
+    shell();
+    const dialog = modal()?.querySelector('section[role="dialog"]') || modal()?.querySelector('section');
+    const bodyEl = body();
+
+    if (activeMorphCleanup) {
+      activeMorphCleanup();
+    }
+
+    const hasPreviousContent = Boolean(bodyEl && (bodyEl.childNodes?.length > 0 || (typeof bodyEl.innerHTML === 'string' && bodyEl.innerHTML.trim().length > 0)));
+
+    if (!hasPreviousContent || !dialog || !bodyEl || isReducedMotion() || typeof dialog.getBoundingClientRect !== 'function') {
+      if (typeof renderViewFn === 'function') renderViewFn();
+      return;
+    }
+
+    const startRect = dialog.getBoundingClientRect();
+    const startW = Math.round(startRect.width);
+    const startH = Math.round(startRect.height);
+
+    if (startW <= 0 || startH <= 0) {
+      if (typeof renderViewFn === 'function') renderViewFn();
+      return;
+    }
+
+    dialog.style.width = `${startW}px`;
+    dialog.style.height = `${startH}px`;
+    dialog.style.overflow = 'hidden';
+    dialog.style.transition = 'none';
+
+    if (typeof renderViewFn === 'function') renderViewFn();
+
+    bodyEl.style.transition = 'opacity 180ms ease-out';
+    bodyEl.style.opacity = '0.7';
+
+    dialog.style.width = '';
+    dialog.style.height = '';
+    const targetRect = dialog.getBoundingClientRect();
+    const targetW = Math.round(targetRect.width);
+    const targetH = Math.round(targetRect.height);
+
+    if (startW === targetW && startH === targetH) {
+      bodyEl.style.opacity = '1';
+      dialog.style.overflow = '';
+      dialog.style.transition = '';
+      bodyEl.style.transition = '';
+      return;
+    }
+
+    dialog.style.width = `${startW}px`;
+    dialog.style.height = `${startH}px`;
+    void dialog.offsetHeight;
+
+    const MORPH_DURATION_MS = 260;
+    const MORPH_EASING = 'cubic-bezier(.2,.8,.2,1)';
+    dialog.style.transition = `width ${MORPH_DURATION_MS}ms ${MORPH_EASING}, height ${MORPH_DURATION_MS}ms ${MORPH_EASING}`;
+    dialog.style.width = `${targetW}px`;
+    dialog.style.height = `${targetH}px`;
+
+    if (typeof root.requestAnimationFrame === 'function') {
+      root.requestAnimationFrame(() => {
+        bodyEl.style.opacity = '1';
+      });
+    } else {
+      bodyEl.style.opacity = '1';
+    }
+
+    let cleaned = false;
+    let timerId = null;
+    let onTransitionEnd = null;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      if (timerId !== null) clearTimeout(timerId);
+      if (onTransitionEnd && typeof dialog.removeEventListener === 'function') {
+        dialog.removeEventListener('transitionend', onTransitionEnd);
+      }
+      activeMorphCleanup = null;
+      dialog.style.width = '';
+      dialog.style.height = '';
+      dialog.style.transition = '';
+      dialog.style.overflow = '';
+      bodyEl.style.transition = '';
+      bodyEl.style.opacity = '';
+    };
+    activeMorphCleanup = cleanup;
+
+    timerId = setTimeout(cleanup, MORPH_DURATION_MS + 20);
+    onTransitionEnd = (e) => {
+      if (e && e.target === dialog && (e.propertyName === 'height' || e.propertyName === 'width')) {
+        cleanup();
+      }
+    };
+    if (typeof dialog.addEventListener === 'function') {
+      dialog.addEventListener('transitionend', onTransitionEnd);
+    }
+  }
+
   function primary(label, attrs = '') {
-    return `<button type="button" ${attrs} style="width:100%;padding:12px;border:0;border-radius:12px;background:var(--primary-color,#2563eb);color:#fff;font-weight:800;cursor:pointer">${label}</button>`;
+    return `<button type="button" class="btn-full btn-primary" ${attrs} style="margin-top:0;min-height:44px">${label}</button>`;
   }
   function disabledCard(title, detail) {
-    return `<button type="button" disabled aria-disabled="true" style="width:100%;text-align:left;border:1px solid var(--border-color,rgba(148,163,184,.3));border-radius:14px;padding:14px;opacity:.45;background:var(--bg-tertiary,rgba(148,163,184,.08));color:inherit;cursor:not-allowed"><strong>${title}</strong><div style="font-size:12px;margin-top:4px">${detail} · Próximamente</div></button>`;
+    return `<button type="button" disabled aria-disabled="true" style="width:100%;text-align:left;border:1px solid var(--border-color);border-radius:14px;padding:14px;opacity:.5;background:var(--input-bg);color:var(--text-muted);cursor:not-allowed;min-height:44px"><strong>${title}</strong><div style="font-size:12px;margin-top:4px">${detail} · Próximamente</div></button>`;
   }
 
   async function renderHome() {
@@ -98,38 +210,49 @@
       const original = peerOriginalName(peer);
       const linked = formatPeerDate(peer.linkedAt);
       const lastSeen = formatPeerDate(peer.lastSeenAt || peer.linkedAt);
-      const originalLine = alias ? `<div style="font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Original: ${esc(original)}</div>` : '';
+      const originalLine = alias ? `<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Original: ${esc(original)}</div>` : '';
       return `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--border-color,rgba(148,163,184,.3));border-radius:12px;padding:12px">
-        <div style="flex:1;min-width:180px"><strong>${esc(peerName(peer))}</strong>${originalLine}<div style="font-size:11px;opacity:.6;line-height:1.35">Última conexión: ${esc(lastSeen)} · Vinculado: ${esc(linked)}</div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--border-color);border-radius:12px;padding:12px;background:var(--input-bg)">
+        <div style="flex:1;min-width:180px"><strong>${esc(peerName(peer))}</strong>${originalLine}<div style="font-size:11px;color:var(--text-muted);line-height:1.35">Última conexión: ${esc(lastSeen)} · Vinculado: ${esc(linked)}</div></div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button type="button" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre" style="border:1px solid rgba(37,99,235,.32);border-radius:10px;padding:9px;background:transparent;color:var(--primary-color,#2563eb);cursor:pointer">✎</button>
-          <button type="button" data-wait-peer="${esc(peer.peerId)}" style="border:0;border-radius:10px;padding:9px 11px;background:#16a34a;color:white;font-weight:700;cursor:pointer">Esperar roster</button>
-          <button type="button" data-wait-attendance="${esc(peer.peerId)}" style="border:0;border-radius:10px;padding:9px 11px;background:var(--primary-color,#2563eb);color:white;font-weight:700;cursor:pointer">Esperar asistencia</button>
-          <button type="button" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular" style="border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:9px;background:transparent;color:#dc2626;cursor:pointer">×</button>
+          <button type="button" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre" style="border:1px solid var(--border-color);border-radius:10px;padding:9px;background:var(--card-bg);color:var(--accent-color);cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">✎</button>
+          <button type="button" data-wait-peer="${esc(peer.peerId)}" class="btn-primary" style="border:0;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer;min-height:44px;margin-top:0">Esperar roster</button>
+          <button type="button" data-wait-attendance="${esc(peer.peerId)}" class="btn-secondary" style="border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer;min-height:44px;margin-top:0;color:var(--accent-color)">Esperar asistencia</button>
+          <button type="button" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular" title="Desvincular" style="border:1px solid var(--border-color);border-radius:10px;padding:9px;background:var(--card-bg);color:var(--danger-color);cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">×</button>
         </div>
       </div>`;
-    }).join('') : '<div style="font-size:13px;opacity:.7;padding:8px 0">Aún no hay SA vinculados.</div>';
+    }).join('') : '<div style="font-size:13px;color:var(--text-muted);padding:8px 0">Aún no hay SA vinculados.</div>';
 
-    body().innerHTML = `
+    morphShell(() => { body().innerHTML = `
       <div style="display:grid;gap:10px">
-        <div style="border:1px solid rgba(37,99,235,.3);border-radius:14px;padding:14px;background:rgba(37,99,235,.08)"><strong>👥 Personal / Roster</strong><div style="font-size:12px;margin-top:4px">Disponible ahora · recibir desde SA</div></div>
-        <div style="border:1px solid rgba(37,99,235,.3);border-radius:14px;padding:14px;background:rgba(37,99,235,.08)"><strong>🕒 Asistencia</strong><div style="font-size:12px;margin-top:4px">Disponible ahora · responder solicitud de SA</div></div>
+        <div style="border:1px solid var(--border-color);border-radius:14px;padding:14px;background:var(--input-bg)"><strong>👥 Personal / Roster</strong><div style="font-size:12px;margin-top:4px;color:var(--text-muted)">Disponible ahora · recibir desde SA</div></div>
+        <div style="border:1px solid var(--border-color);border-radius:14px;padding:14px;background:var(--input-bg)"><strong>🕒 Asistencia</strong><div style="font-size:12px;margin-top:4px;color:var(--text-muted)">Disponible ahora · responder solicitud de SA</div></div>
         ${disabledCard('💾 Backup','Mini ↔ Mini')}
         ${disabledCard('📄 Documentos / Archivos','Reservado para una fase futura')}
       </div>
-      <div style="margin-top:18px;display:flex;justify-content:space-between;gap:10px"><strong>SA vinculados</strong><span style="font-size:11px;opacity:.72;display:flex;align-items:center;gap:5px">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini" style="border:0;background:transparent;color:var(--primary-color,#2563eb);cursor:pointer;padding:2px 4px;font-size:13px">✎</button></span></div>
+      <div style="margin-top:18px;display:flex;justify-content:space-between;gap:10px"><strong>SA vinculados</strong><span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini" style="border:0;background:transparent;color:var(--accent-color);cursor:pointer;padding:6px 8px;font-size:14px;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">✎</button></span></div>
       <div style="display:grid;gap:8px;margin-top:10px">${peerRows}</div>
       <div style="margin-top:16px">${primary('Vincular con SA usando código + clave','data-manual-pair')}</div>
-      <p style="font-size:11px;opacity:.65;line-height:1.45;margin-top:12px">Recibir un roster no lo importa automáticamente. Primero se verifica SHA-256 y luego se abre la revisión normal de Mini.</p>`;
+      <p style="font-size:11px;color:var(--text-muted);line-height:1.45;margin-top:12px">Recibir un roster no lo importa automáticamente. Primero se verifica SHA-256 y luego se abre la revisión normal de Mini.</p>`; });
     body().querySelector('[data-manual-pair]').addEventListener('click', renderManualPair);
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
     body().querySelectorAll('[data-wait-attendance]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')));
     body().querySelectorAll('[data-unlink]').forEach(btn => btn.addEventListener('click', async () => {
-      if (!confirm('¿Desvincular este SA?')) return;
       const peerId = btn.dataset.unlink;
+      const peer = await identityStore.getPeer(peerId);
+      const name = peer ? peerName(peer) : 'este SA';
+      if (typeof root.showConfirm !== 'function') {
+        toast('Confirmación no disponible en este entorno.');
+        return;
+      }
+      const confirmed = await root.showConfirm(`¿Desvincular a ${name}?`, {
+        title: 'Desvincular SA',
+        confirmText: 'Desvincular',
+        danger: true
+      });
+      if (!confirmed) return;
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
       renderHome();
@@ -138,14 +261,14 @@
 
   async function renderSelfNameEditor() {
     const self = await identityStore.getSelf();
-    body().innerHTML = `
-      <button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button>
+    morphShell(() => { body().innerHTML = `
+      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
       <h3 style="margin:0 0 6px">Nombre de este Mini</h3>
-      <p style="font-size:13px;opacity:.7;margin:0 0 14px">Este es el nombre que este dispositivo presenta en futuros emparejamientos.</p>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Este es el nombre que este dispositivo presenta en futuros emparejamientos.</p>
       <label for="mini-p2p-self-name" style="display:block;font-size:12px;margin-bottom:5px">Nombre del dispositivo</label>
-      <input id="mini-p2p-self-name" data-self-name maxlength="80" value="${esc(self.displayName)}" placeholder="Ej: Mini almacén" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--bg-primary,#fff);color:inherit">
-      <p style="font-size:11px;line-height:1.45;opacity:.65">Cambiarlo no modifica deviceId, claves ni vínculos existentes. Los aliases personalizados guardados en otros dispositivos tampoco cambian.</p>
-      <div style="margin-top:14px">${primary('Guardar nombre del Mini','data-save-self-name')}</div>`;
+      <input id="mini-p2p-self-name" data-self-name maxlength="80" value="${esc(self.displayName)}" placeholder="Ej: Mini almacén" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);min-height:44px">
+      <p style="font-size:11px;line-height:1.45;color:var(--text-muted);margin-top:8px">Cambiarlo no modifica deviceId, claves ni vínculos existentes. Los aliases personalizados guardados en otros dispositivos tampoco cambian.</p>
+      <div style="margin-top:14px">${primary('Guardar nombre del Mini','data-save-self-name')}</div>`; });
     const input = body().querySelector('[data-self-name]');
     input?.focus();
     input?.select();
@@ -169,17 +292,17 @@
     }
     const currentAlias = aliasStore.getAlias(peer.peerId);
     const original = peerOriginalName(peer);
-    body().innerHTML = `
-      <button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button>
+    morphShell(() => { body().innerHTML = `
+      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
       <h3 style="margin:0 0 6px">Nombre de esta conexión</h3>
-      <p style="font-size:13px;opacity:.7;margin:0 0 14px">Nombre original: <strong>${esc(original)}</strong></p>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Nombre original: <strong>${esc(original)}</strong></p>
       <label for="mini-p2p-peer-alias" style="display:block;font-size:12px;margin-bottom:5px">Nombre personalizado</label>
-      <input id="mini-p2p-peer-alias" data-peer-alias maxlength="64" value="${esc(currentAlias)}" placeholder="Ej: SA oficina" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--bg-primary,#fff);color:inherit">
-      <p style="font-size:11px;line-height:1.45;opacity:.65">Este nombre se guarda sólo en este Mini. No cambia el vínculo, la identidad del dispositivo ni sus claves de seguridad.</p>
+      <input id="mini-p2p-peer-alias" data-peer-alias maxlength="64" value="${esc(currentAlias)}" placeholder="Ej: SA oficina" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);min-height:44px">
+      <p style="font-size:11px;line-height:1.45;color:var(--text-muted);margin-top:8px">Este nombre se guarda sólo en este Mini. No cambia el vínculo, la identidad del dispositivo ni sus claves de seguridad.</p>
       <div style="display:grid;gap:8px;margin-top:14px">
         ${primary('Guardar nombre','data-save-alias')}
-        <button type="button" data-clear-alias style="width:100%;border:1px solid var(--border-color,rgba(148,163,184,.4));border-radius:12px;padding:11px 14px;background:transparent;color:inherit;font-weight:700;cursor:pointer">Usar nombre original</button>
-      </div>`;
+        <button type="button" data-clear-alias class="btn-full btn-secondary" style="margin-top:0;min-height:44px">Usar nombre original</button>
+      </div>`; });
     const input = body().querySelector('[data-peer-alias]');
     input?.focus();
     input?.select();
@@ -196,16 +319,16 @@
 
   function renderManualPair() {
     cleanupSession();
-    body().innerHTML = `
-      <button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button>
+    morphShell(() => { body().innerHTML = `
+      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
       <h3 style="margin:0 0 6px">Vincular con SA</h3>
-      <p style="font-size:13px;opacity:.7;margin-top:0">Escribe el código de 6 dígitos y la clave que muestra SA. Si escaneaste el QR, este paso se completa automáticamente.</p>
-      <label style="display:block;font-size:12px;margin:14px 0 5px">Código</label>
-      <input data-code inputmode="numeric" maxlength="7" placeholder="583 214" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--bg-primary,#fff);color:inherit;font-size:18px;letter-spacing:3px">
-      <label style="display:block;font-size:12px;margin:14px 0 5px">Clave</label>
-      <input data-key maxlength="11" placeholder="ABCDE-23456" autocapitalize="characters" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color,#cbd5e1);border-radius:10px;background:var(--bg-primary,#fff);color:inherit;font-size:17px;letter-spacing:2px;text-transform:uppercase">
+      <p style="font-size:13px;color:var(--text-muted);margin-top:0">Escribe el código de 6 dígitos y la clave que muestra SA. Si escaneaste el QR, este paso se completa automáticamente.</p>
+      <label for="mini-p2p-manual-code" style="display:block;font-size:12px;margin:14px 0 5px">Código</label>
+      <input id="mini-p2p-manual-code" data-code inputmode="numeric" maxlength="7" placeholder="583 214" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);font-size:18px;letter-spacing:3px;min-height:44px">
+      <label for="mini-p2p-manual-key" style="display:block;font-size:12px;margin:14px 0 5px">Clave</label>
+      <input id="mini-p2p-manual-key" data-key maxlength="11" placeholder="ABCDE-23456" autocapitalize="characters" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);font-size:17px;letter-spacing:2px;text-transform:uppercase;min-height:44px">
       <div style="margin-top:16px">${primary('Conectar con SA','data-connect')}</div>
-      <div data-pair-status style="font-size:12px;margin-top:12px"></div>`;
+      <div data-pair-status style="font-size:12px;margin-top:12px"></div>`; });
     body().querySelector('[data-back]').addEventListener('click', renderHome);
     const connectButton = body().querySelector('[data-connect]');
     connectButton.addEventListener('click', async () => {
@@ -233,7 +356,7 @@
     shell();
     if (descriptor.expiresAt !== undefined && Number(descriptor.expiresAt) <= Date.now()) throw new Error('La sesión de emparejamiento expiró.');
     if (!body().querySelector('[data-pair-status]')) {
-      body().innerHTML = `<h3 style="margin-top:0">Vincular con ${esc(descriptor.issuerName || 'SA')}</h3><p style="font-size:13px;opacity:.7">Conectando mediante el vínculo del QR…</p><div data-pair-status style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Buscando SA…</div><button type="button" data-cancel style="width:100%;margin-top:10px;border:0;background:transparent;color:inherit;padding:10px;cursor:pointer">Cancelar</button>`;
+      morphShell(() => { body().innerHTML = `<h3 style="margin-top:0">Vincular con ${esc(descriptor.issuerName || 'SA')}</h3><p style="font-size:13px;color:var(--text-muted)">Conectando mediante el vínculo del QR…</p><div data-pair-status style="padding:14px;border-radius:12px;background:var(--input-bg);border:1px solid var(--border-color);font-size:13px">Buscando SA…</div><button type="button" data-cancel class="btn-full btn-secondary" style="min-height:44px;margin-top:10px">Cancelar</button>`; });
       body().querySelector('[data-cancel]').addEventListener('click', renderHome);
     } else {
       body().querySelector('[data-pair-status]').textContent = 'Buscando SA…';
@@ -278,21 +401,47 @@
   function renderPairConfirmation(remote, sas, accept, reject) {
     const box=body()?.querySelector('[data-pair-status]');
     if (!box) return;
-    box.innerHTML = `<strong>${esc(remote.displayName)}</strong> quiere vincularse.<br><span style="font-size:12px">Confirma que ambos muestran:</span><div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:8px 0">${esc(sas)}</div><div style="display:flex;gap:8px"><button type="button" data-reject style="flex:1;padding:10px;border:1px solid #ef4444;border-radius:10px;background:transparent;color:#dc2626">Rechazar</button><button type="button" data-accept style="flex:1;padding:10px;border:0;border-radius:10px;background:#16a34a;color:#fff;font-weight:800">Confirmar vínculo</button></div>`;
+    box.innerHTML = `<strong>${esc(remote.displayName)}</strong> quiere vincularse.<br><span style="font-size:12px;color:var(--text-muted)">Confirma que ambos muestran:</span><div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:8px 0;color:var(--accent-color)">${esc(sas)}</div><div style="display:flex;gap:8px"><button type="button" data-reject class="btn-full btn-secondary" style="flex:1;min-height:44px;margin-top:0;color:var(--danger-color);border-color:var(--danger-color)">Rechazar</button><button type="button" data-accept class="btn-full btn-primary" style="flex:1;min-height:44px;margin-top:0">Confirmar vínculo</button></div>`;
     box.querySelector('[data-reject]').addEventListener('click', reject);
     box.querySelector('[data-accept]').addEventListener('click', async () => { box.textContent='Esperando confirmación de SA…'; await accept(); });
   }
 
   function renderLinkedWaiting(peer) {
-    body().innerHTML = `<h3 style="margin-top:0">✓ SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p><div data-receive-state style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando roster en esta conexión…</div><button type="button" data-finish style="width:100%;margin-top:10px;border:0;background:transparent;color:inherit;padding:10px;cursor:pointer">Terminar</button>`;
+    morphShell(() => { body().innerHTML = `<h3 style="margin-top:0">✓ SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p><div data-receive-state style="padding:14px;border-radius:12px;background:var(--input-bg);border:1px solid var(--border-color);font-size:13px">Esperando roster en esta conexión…</div><button type="button" data-finish class="btn-full btn-secondary" style="min-height:44px;margin-top:10px">Terminar</button>`; });
     body().querySelector('[data-finish]').addEventListener('click', renderHome);
   }
 
   function renderError(error) {
     const message=error?.message || String(error || 'Error P2P');
     const box=body()?.querySelector('[data-pair-status]') || body()?.querySelector('[data-receive-state]') || body()?.querySelector('[data-wait-status]');
-    if (box) box.innerHTML = `<strong style="color:#dc2626">Error:</strong> ${esc(message)}`;
+    if (box) box.innerHTML = `<strong style="color:var(--danger-color)">Error:</strong> ${esc(message)}`;
     else toast('Error P2P: '+message);
+  }
+
+  function renderWaitError(error, peerId, mode) {
+    const message = boundedUserSafeError(error);
+    const box = body()?.querySelector('[data-wait-status]');
+    if (!box) {
+      toast('Error de conexión: ' + message);
+      return;
+    }
+    const bottomCancel = body()?.querySelector('[data-cancel]');
+    if (bottomCancel) bottomCancel.style.display = 'none';
+    box.innerHTML = `
+      <div style="color:var(--danger-color);font-weight:700;margin-bottom:6px">Error de conexión</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${esc(message)}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" data-retry-wait class="btn-full btn-primary" style="flex:1;min-height:44px;margin-top:0">Reintentar</button>
+        <button type="button" data-cancel-wait class="btn-full btn-secondary" style="flex:1;min-height:44px;margin-top:0">Cancelar</button>
+      </div>`;
+    box.querySelector('[data-retry-wait]')?.addEventListener('click', () => {
+      cleanupSession();
+      waitTrustedTransfer(peerId, mode);
+    });
+    box.querySelector('[data-cancel-wait]')?.addEventListener('click', () => {
+      cleanupSession();
+      renderHome();
+    });
   }
 
   async function waitTrustedRoster(peerId) {
@@ -317,13 +466,37 @@
     const subtitle = isAttendance
       ? 'Ahora en SA selecciona este Mini y solicita la asistencia.'
       : 'Ahora en SA selecciona este Mini y pulsa “Enviar roster”.';
-    body().innerHTML = `<button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button><h3 style="margin:0 0 8px">${title}</h3><p style="font-size:13px;opacity:.7">${subtitle}</p><div data-wait-status style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando conexión autenticada…</div>`;
-    body().querySelector('[data-back]').addEventListener('click', renderHome);
+    const modeBadge = isAttendance
+      ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;background:var(--input-bg);border:1px solid var(--border-color);font-size:12px;font-weight:700;color:var(--accent-color);margin-bottom:12px"><span>🕒</span> Modo: Asistencia</div>`
+      : `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;background:var(--input-bg);border:1px solid var(--border-color);font-size:12px;font-weight:700;color:var(--accent-color);margin-bottom:12px"><span>👥</span> Modo: Personal / Roster</div>`;
+    const modeHelp = isAttendance
+      ? '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Este Mini responderá automáticamente a las solicitudes de asistencia enviadas por este SA.</p>'
+      : '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Recibirás la lista de personal para revisarla antes de guardar.</p>';
+
+    morphShell(() => { body().innerHTML = `<button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button><div style="margin-top:4px">${modeBadge}</div><h3 style="margin:0 0 8px">${title}</h3><p style="font-size:13px;opacity:.7;margin:0 0 6px">${subtitle}</p>${modeHelp}<div data-wait-status style="padding:14px;border-radius:12px;background:var(--input-bg);border:1px solid var(--border-color);font-size:13px;line-height:1.45">Esperando conexión autenticada…</div><button type="button" data-cancel class="btn-full btn-secondary" style="min-height:44px;margin-top:14px">Cancelar espera</button>`; });
+    const handleCancel = () => {
+      cleanupSession();
+      renderHome();
+    };
+    body().querySelector('[data-back]').addEventListener('click', handleCancel);
+    body().querySelector('[data-cancel]').addEventListener('click', handleCancel);
     const route=await core.deriveTrustedRoute(peer.linkToken);
     const signaling=new core.SignalingClient({room:route.room,peerId:self.deviceId,proof:route.proof});
     activeSession=await core.createRtcSession({
       signaling,initiator:false,
-      onState:(status,error)=>{const box=body()?.querySelector('[data-wait-status]');if(box&&error)box.textContent='Error: '+error.message;},
+      onState:(status,error)=>{
+        const box=body()?.querySelector('[data-wait-status]');
+        if(!box) return;
+        if(error) {
+          renderWaitError(error, peerId, mode);
+        } else if(status === 'connected') {
+          box.textContent='Canal conectado. Verificando identidad…';
+        } else if(status === 'connecting' || status === 'new') {
+          box.textContent='Conectando con SA…';
+        } else if(status === 'disconnected' || status === 'failed' || status === 'closed') {
+          renderWaitError(new Error('La conexión P2P se interrumpió.'), peerId, mode);
+        }
+      },
       onChannel:channel=>{
         activeChannel=channel;
         pairing.attachTrusted(channel,{
@@ -336,7 +509,7 @@
             armRosterReceiver(channel,peer);
             armAttendanceResponder(channel,peer,self);
           },
-          onError:renderError
+          onError:error=>renderWaitError(error, peerId, mode)
         });
       }
     });
@@ -391,7 +564,7 @@
       });
       const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');
       if(!box)return;
-      box.innerHTML=`<strong style="color:#16a34a">✓ Roster recibido · SHA-256 verificado</strong><br><span style="font-size:12px">${pendingRoster.employeeCount} empleados de ${esc(peerName(peer))}. Aún no se ha importado nada.</span><div style="margin-top:10px">${primary('Revisar roster en Mini','data-review-roster')}</div>`;
+      box.innerHTML=`<strong style="color:var(--success-color)">✓ Roster recibido · SHA-256 verificado</strong><br><span style="font-size:12px;color:var(--text-muted)">${pendingRoster.employeeCount} empleados de ${esc(peerName(peer))}. Aún no se ha importado nada.</span><div style="margin-top:10px">${primary('Revisar roster en Mini','data-review-roster')}</div>`;
       box.querySelector('[data-review-roster]').addEventListener('click',reviewPendingRoster);
     }catch(error){
       pendingRoster=null;
@@ -437,7 +610,7 @@
       return true;
     }catch(error){
       shell();
-      body().innerHTML=`<h3>Vínculo QR inválido</h3><p>${esc(error.message||error)}</p><div>${primary('Volver','data-home')}</div>`;
+      morphShell(() => { body().innerHTML = `<h3>Vínculo QR inválido</h3><p>${esc(error.message||error)}</p><div>${primary('Volver','data-home')}</div>`; });
       body().querySelector('[data-home]').addEventListener('click',renderHome);
       return true;
     }

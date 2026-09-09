@@ -150,6 +150,21 @@ Cuando una lista o consulta no tenga elementos, mostrar siempre un contenedor in
 
 ---
 
+
+## 5.7 Transiciones entre vistas/modales de distinto tamaño
+
+Cuando una acción cambia de una vista compacta a otra más grande o pequeña dentro del mismo flujo (por ejemplo: lista → espera de conexión → resultado), se debe percibir como **la transformación del mismo modal**, no como cerrar uno y abrir otro.
+
+- Mantener el mismo overlay y shell montados; sustituir sólo el contenido interior.
+- Medir tamaño inicial/final y animar ancho/alto aproximadamente **220–320 ms** con una curva suave tipo `cubic-bezier(.2,.8,.2,1)`.
+- Hacer un crossfade corto del contenido mientras el shell cambia de tamaño; nunca dejar un frame vacío.
+- En bottom sheet móvil, mantener el borde inferior anclado y permitir que el panel crezca/encoga hacia arriba.
+- No reiniciar overlay, scroll global ni foco durante el cambio.
+- Los controles que continúan entre estados conservan foco cuando sea posible.
+- Interacciones pequeñas dentro de la misma vista no deben reanimar todo el modal.
+- Con `prefers-reduced-motion: reduce`, saltar a la geometría final sin animación pero conservando el mismo shell para evitar flash/parpadeo.
+- Todos los colores y estados de la transición continúan usando los tokens existentes (`--card-bg`, `--input-bg`, `--border-color`, `--text-color`, `--text-muted`, `--accent-color`, etc.).
+
 ## 6. Checklist de Validación UI para Nuevos Cambios
 
 Antes de finalizar cualquier modificación en la interfaz, verificar:

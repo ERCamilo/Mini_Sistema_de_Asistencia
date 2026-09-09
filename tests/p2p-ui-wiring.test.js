@@ -308,3 +308,517 @@ test('shared core preserves a real failure reason instead of collapsing every te
   assert.ok(core.includes("close(reason = 'done')"));
   assert.ok(core.includes('signaling.close(boundedCloseReason(reason))'));
 });
+
+test('token compliance and absence of invented tokens or raw color literals in changed connection UI', () => {
+  const ui = read('p2p-roster-ui.js');
+  // 1. Invented tokens
+  assert.ok(!ui.includes('--whatsapp-color'), 'Invented --whatsapp-color must not be present');
+  // 2. Direct hex colors in styling
+  const hexMatches = ui.match(/#[0-9a-fA-F]{3,8}/g) || [];
+  const nonEntityHex = hexMatches.filter(h => h !== '#39');
+  assert.equal(nonEntityHex.length, 0, `No direct hex colors allowed in p2p-roster-ui.js: ${nonEntityHex.join(', ')}`);
+  // 3. Direct rgba literals introduced by UI components
+  assert.doesNotMatch(ui, /rgba\(37,\s*99,\s*235/, 'No blue rgba literals');
+  assert.doesNotMatch(ui, /rgba\(59,\s*130,\s*246/, 'No light blue rgba literals');
+  assert.doesNotMatch(ui, /rgba\(239,\s*68,\s*68/, 'No red rgba literals');
+  assert.doesNotMatch(ui, /rgba\(10,\s*14,\s*39/, 'No invented rgba literals');
+  // 4. Documented tokens are used
+  assert.ok(ui.includes('var(--card-bg)'), 'Must use --card-bg');
+  assert.ok(ui.includes('var(--input-bg)'), 'Must use --input-bg');
+  assert.ok(ui.includes('var(--border-color)'), 'Must use --border-color');
+  assert.ok(ui.includes('var(--text-color)'), 'Must use --text-color');
+  assert.ok(ui.includes('var(--text-muted)'), 'Must use --text-muted');
+  assert.ok(ui.includes('var(--accent-color)'), 'Must use --accent-color');
+  assert.ok(ui.includes('var(--success-color)'), 'Must use --success-color');
+  assert.ok(ui.includes('var(--danger-color)'), 'Must use --danger-color');
+  // 5. Standard button classes
+  assert.ok(ui.includes('btn-full btn-primary'), 'Must use btn-full btn-primary');
+  assert.ok(ui.includes('btn-full btn-secondary'), 'Must use btn-full btn-secondary');
+  assert.ok(ui.includes('class="btn-primary"'), 'Must use btn-primary');
+  assert.ok(ui.includes('class="btn-secondary"'), 'Must use btn-secondary');
+});
+
+test('unlink flow uses root.showConfirm and forbids native confirm with safe non-destructive fallback', async () => {
+  const vm = require('node:vm');
+  const uiCode = read('p2p-roster-ui.js');
+
+  // Static check: confirm() must not be called
+  assert.doesNotMatch(uiCode, /\bconfirm\s*\(/, 'Native confirm() must not be used in p2p-roster-ui.js');
+  assert.ok(uiCode.includes('root.showConfirm'), 'Must check root.showConfirm');
+
+  let removedPeerId = null;
+  let removedAliasPeerId = null;
+  let toastMsg = null;
+  let nativeConfirmCalled = false;
+  let showConfirmCalled = false;
+  let confirmResult = true;
+
+  const mockPeer = { peerId: 'peer-sa-1', peerApp: 'sa', linkToken: 'tok-1', displayName: 'SA Norte' };
+
+  function createEnv(withShowConfirm = true) {
+    let currentModal = null;
+    let clickHandlers = {};
+    const bodyEl = {
+      _html: '',
+      set innerHTML(v) { this._html = v; },
+      get innerHTML() { return this._html; },
+      querySelector(sel) {
+        return {
+          addEventListener: (ev, fn) => { clickHandlers[sel] = fn; }
+        };
+      },
+      querySelectorAll(sel) {
+        if (sel === '[data-unlink]') {
+          return [{
+            dataset: { unlink: 'peer-sa-1' },
+            addEventListener: (ev, fn) => { clickHandlers['[data-unlink]'] = fn; }
+          }];
+        }
+        return [];
+      }
+    };
+    const ctx = {
+      window: {},
+      addEventListener: () => {},
+      confirm: () => { nativeConfirmCalled = true; return true; },
+      showToast: (msg) => { toastMsg = msg; },
+      document: {
+        readyState: 'complete',
+        getElementById: (id) => (id === 'mini-p2p-transfer-modal' ? currentModal : null),
+        createElement: () => {
+          const el = {
+            id: '',
+            style: {},
+            _html: '',
+            set innerHTML(v) { this._html = v; },
+            get innerHTML() { return this._html; },
+            querySelector: (sel) => (sel === '[data-p2p-body]' ? bodyEl : { addEventListener() {} }),
+            querySelectorAll: () => [],
+            addEventListener: () => {},
+            remove: () => { currentModal = null; }
+          };
+          return el;
+        },
+        body: {
+          appendChild: (el) => { currentModal = el; }
+        },
+        addEventListener: () => {}
+      },
+      location: { hash: '', pathname: '/', search: '' },
+      history: { replaceState: () => {} },
+      setTimeout,
+      Date,
+      JSON,
+      String,
+      Array,
+      Math,
+      Number,
+      Error,
+      TypeError,
+      console
+    };
+    ctx.window = ctx;
+    if (withShowConfirm) {
+      ctx.showConfirm = async () => {
+        showConfirmCalled = true;
+        return confirmResult;
+      };
+    }
+    ctx.SaMiniP2P = {
+      makeIdentityStore: () => ({
+        getSelf: async () => ({ deviceId: 'mini-1', displayName: 'Mini 1' }),
+        listPeers: async () => [mockPeer],
+        getPeer: async (id) => (id === mockPeer.peerId ? mockPeer : null),
+        removePeer: async (id) => { removedPeerId = id; }
+      }),
+      deriveTrustedRoute: async () => ({ room: 'r', proof: 'p' }),
+      SignalingClient: function() {},
+      createRtcSession: async () => ({ close() {} }),
+      createTransferReceiver: () => () => {},
+      parseControl: () => null
+    };
+    ctx.SaMiniP2PPairing = { attachTrusted: () => {} };
+    ctx.SaMiniP2PPeerAliases = {
+      createPeerAliasStore: () => ({
+        resolveName: (p) => p.displayName,
+        getAlias: () => null,
+        setAlias: () => {},
+        removeAlias: (id) => { removedAliasPeerId = id; }
+      })
+    };
+    vm.createContext(ctx);
+    vm.runInContext(uiCode, ctx);
+    return { ctx, clickHandlers };
+  }
+
+  // Case 1: showConfirm resolves true -> peer unlinked
+  const env1 = createEnv(true);
+  confirmResult = true;
+  await env1.ctx.openP2PTransferModal();
+  await env1.clickHandlers['[data-unlink]']();
+  assert.equal(showConfirmCalled, true);
+  assert.equal(removedPeerId, 'peer-sa-1');
+  assert.equal(removedAliasPeerId, 'peer-sa-1');
+
+  // Case 2: showConfirm resolves false -> peer NOT unlinked
+  removedPeerId = null;
+  removedAliasPeerId = null;
+  showConfirmCalled = false;
+  const env2 = createEnv(true);
+  confirmResult = false;
+  await env2.ctx.openP2PTransferModal();
+  await env2.clickHandlers['[data-unlink]']();
+  assert.equal(showConfirmCalled, true);
+  assert.equal(removedPeerId, null, 'peer must not be removed on reject');
+  assert.equal(removedAliasPeerId, null, 'alias must not be removed on reject');
+
+  // Case 3: showConfirm is unavailable -> safe no-op + toast, NO native confirm()
+  removedPeerId = null;
+  removedAliasPeerId = null;
+  toastMsg = null;
+  nativeConfirmCalled = false;
+  const env3 = createEnv(false);
+  await env3.ctx.openP2PTransferModal();
+  await env3.clickHandlers['[data-unlink]']();
+  assert.equal(nativeConfirmCalled, false, 'native confirm must NEVER be called');
+  assert.equal(removedPeerId, null, 'peer must not be removed without confirm');
+  assert.ok(toastMsg, 'toast must be shown when showConfirm is unavailable');
+});
+
+test('no false-success attendance listener in armAttendanceResponder', async () => {
+  const ui = read('p2p-roster-ui.js');
+  assert.doesNotMatch(ui, /Respuesta enviada/, 'UI must not contain premature "Respuesta enviada" copy');
+  assert.doesNotMatch(ui, /atendida en segundo plano/, 'UI must not claim background serviced attendance without callback');
+
+  const vm = require('node:vm');
+  let channelListeners = [];
+  const mockChannel = {
+    readyState: 'open',
+    addEventListener: (type, fn) => { channelListeners.push({ type, fn }); },
+    send: () => {}
+  };
+  let responderContext = null;
+  let currentModal = null;
+  const mockBodyDiv = {
+    _html: '',
+    set innerHTML(v) { this._html = v; },
+    get innerHTML() { return this._html; },
+    querySelector: () => ({ set textContent(v) {}, addEventListener() {} }),
+    querySelectorAll: () => []
+  };
+  const ctx = {
+    window: {},
+    addEventListener: () => {},
+    document: {
+      readyState: 'complete',
+      getElementById: (id) => (id === 'mini-p2p-transfer-modal' ? currentModal : null),
+      createElement: () => {
+        const el = {
+          id: '',
+          style: {},
+          _html: '',
+          set innerHTML(v) { this._html = v; },
+          get innerHTML() { return this._html; },
+          querySelector: (sel) => (sel === '[data-p2p-body]' ? mockBodyDiv : { addEventListener() {} }),
+          querySelectorAll: () => [],
+          addEventListener: () => {},
+          remove: () => { currentModal = null; }
+        };
+        return el;
+      },
+      body: { appendChild: (el) => { currentModal = el; } },
+      addEventListener: () => {}
+    },
+    location: { hash: '', pathname: '/', search: '' },
+    history: { replaceState: () => {} },
+    setTimeout, Date, JSON, String, Array, Math, Number, Error, TypeError, console,
+    SaMiniP2P: {
+      makeIdentityStore: () => ({
+        getSelf: async () => ({ deviceId: 'm-test-dev' }),
+        listPeers: async () => [{ peerId: 'peer-test', peerApp: 'sa', linkToken: 'tok', displayName: 'SA' }],
+        getPeer: async () => ({ peerId: 'peer-test', peerApp: 'sa', linkToken: 'tok', displayName: 'SA' })
+      }),
+      deriveTrustedRoute: async () => ({ room: 'r', proof: 'p' }),
+      SignalingClient: function() {},
+      createRtcSession: async ({ onChannel }) => {
+        onChannel(mockChannel);
+        return { close() {} };
+      },
+      createTransferReceiver: () => () => {},
+      parseControl: () => null
+    },
+    SaMiniP2PPairing: {
+      attachTrusted: (ch, { onAuthenticated }) => { onAuthenticated(); }
+    },
+    SaMiniP2PPeerAliases: { createPeerAliasStore: () => ({ resolveName: p => p.displayName, getAlias: () => null }) },
+    AttendanceExport: {
+      attachAttendanceResponder: (ch, peer, opt) => { responderContext = opt; }
+    }
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(ui, ctx);
+
+  await ctx.waitTrustedTransfer('peer-test', 'attendance');
+  assert.equal(responderContext?.deviceId, 'm-test-dev');
+  const messageListeners = channelListeners.filter(l => l.type === 'message');
+  assert.equal(messageListeners.length, 1, 'only armRosterReceiver attaches message listener, armAttendanceResponder does not');
+  for (const l of messageListeners) {
+    l.fn({ data: JSON.stringify({ schema: 'attendance-request/v1', requestId: 'r1' }) });
+  }
+  assert.doesNotMatch(mockBodyDiv.innerHTML, /Respuesta enviada/);
+});
+
+test('cancel and back navigation cleans up session and resets view', async () => {
+  const vm = require('node:vm');
+  const uiCode = read('p2p-roster-ui.js');
+
+  let sessionClosed = false;
+  const clickHandlers = {};
+
+  const mockPeer = { peerId: 'sa-1', peerApp: 'sa', linkToken: 'tok-1', displayName: 'SA Test' };
+  let currentModal = null;
+  const mockBodyDiv = {
+    _html: '',
+    set innerHTML(v) { this._html = v; },
+    get innerHTML() { return this._html; },
+    querySelector(sel) {
+      return {
+        style: {},
+        addEventListener: (ev, fn) => { clickHandlers[sel] = fn; }
+      };
+    },
+    querySelectorAll: () => []
+  };
+
+  const ctx = {
+    window: {},
+    addEventListener: () => {},
+    document: {
+      readyState: 'complete',
+      getElementById: (id) => (id === 'mini-p2p-transfer-modal' ? currentModal : null),
+      createElement: () => {
+        const el = {
+          id: '',
+          style: {},
+          _html: '',
+          set innerHTML(v) { this._html = v; },
+          get innerHTML() { return this._html; },
+          querySelector: (sel) => (sel === '[data-p2p-body]' ? mockBodyDiv : { addEventListener() {} }),
+          querySelectorAll: () => [],
+          addEventListener: () => {},
+          remove: () => { currentModal = null; }
+        };
+        return el;
+      },
+      body: { appendChild: (el) => { currentModal = el; } },
+      addEventListener: () => {}
+    },
+    location: { hash: '', pathname: '/', search: '' },
+    history: { replaceState: () => {} },
+    setTimeout, Date, JSON, String, Array, Math, Number, Error, TypeError, console,
+    SaMiniP2P: {
+      makeIdentityStore: () => ({
+        getSelf: async () => ({ deviceId: 'm1', displayName: 'Mini 1' }),
+        listPeers: async () => [mockPeer],
+        getPeer: async () => mockPeer,
+        removePeer: async () => {}
+      }),
+      deriveTrustedRoute: async () => ({ room: 'r', proof: 'p' }),
+      SignalingClient: function() {},
+      createRtcSession: async () => ({
+        close() { sessionClosed = true; }
+      }),
+      createTransferReceiver: () => () => {},
+      parseControl: () => null
+    },
+    SaMiniP2PPairing: { attachTrusted: () => {} },
+    SaMiniP2PPeerAliases: { createPeerAliasStore: () => ({ resolveName: p => p.displayName, getAlias: () => null }) }
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(uiCode, ctx);
+
+  // 1. Wait transfer and click back
+  await ctx.waitTrustedTransfer('sa-1', 'roster');
+  assert.equal(sessionClosed, false);
+  assert.ok(clickHandlers['[data-back]'], 'back button handler must exist');
+  assert.ok(clickHandlers['[data-cancel]'], 'cancel button handler must exist');
+
+  // Trigger back
+  sessionClosed = false;
+  clickHandlers['[data-back]']();
+  assert.equal(sessionClosed, true, 'clicking back must cleanup active session');
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'clicking back must render home');
+
+  // 2. Wait transfer and click cancel
+  await ctx.waitTrustedTransfer('sa-1', 'attendance');
+  sessionClosed = false;
+  clickHandlers['[data-cancel]']();
+  assert.equal(sessionClosed, true, 'clicking cancel must cleanup active session');
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'clicking cancel must render home');
+});
+
+test('retry wiring in waitTrustedTransfer handles connection errors and restarts transfer', async () => {
+  const vm = require('node:vm');
+  const uiCode = read('p2p-roster-ui.js');
+
+  let sessionClosedCount = 0;
+  let sessionsCreated = 0;
+  let onStateCallback = null;
+  let onErrorCallback = null;
+  let waitStatusHtml = '';
+  let statusText = '';
+  let retryHandler = null;
+  let cancelWaitHandler = null;
+  let bottomCancelHidden = false;
+
+  const mockPeer = { peerId: 'sa-err', peerApp: 'sa', linkToken: 'tok-err', displayName: 'SA Error Test' };
+  let currentModal = null;
+  const mockWaitStatusEl = {
+    set textContent(v) { statusText = v; },
+    get textContent() { return statusText; },
+    set innerHTML(v) { waitStatusHtml = v; },
+    get innerHTML() { return waitStatusHtml; },
+    querySelector(sel) {
+      if (sel === '[data-retry-wait]') return { addEventListener: (ev, fn) => { retryHandler = fn; } };
+      if (sel === '[data-cancel-wait]') return { addEventListener: (ev, fn) => { cancelWaitHandler = fn; } };
+      return null;
+    }
+  };
+
+  const mockBodyDiv = {
+    _html: '',
+    set innerHTML(v) { this._html = v; },
+    get innerHTML() { return this._html; },
+    querySelector(sel) {
+      if (sel === '[data-wait-status]') return mockWaitStatusEl;
+      if (sel === '[data-cancel]') return {
+        style: { set display(v) { if (v === 'none') bottomCancelHidden = true; } },
+        addEventListener() {}
+      };
+      return { addEventListener() {} };
+    },
+    querySelectorAll: () => []
+  };
+
+  const ctx = {
+    window: {},
+    addEventListener: () => {},
+    document: {
+      readyState: 'complete',
+      getElementById: (id) => (id === 'mini-p2p-transfer-modal' ? currentModal : null),
+      createElement: () => {
+        const el = {
+          id: '',
+          style: {},
+          _html: '',
+          set innerHTML(v) { this._html = v; },
+          get innerHTML() { return this._html; },
+          querySelector: (sel) => (sel === '[data-p2p-body]' ? mockBodyDiv : { addEventListener() {} }),
+          querySelectorAll: () => [],
+          addEventListener: () => {},
+          remove: () => { currentModal = null; }
+        };
+        return el;
+      },
+      body: { appendChild: (el) => { currentModal = el; } },
+      addEventListener: () => {}
+    },
+    location: { hash: '', pathname: '/', search: '' },
+    history: { replaceState: () => {} },
+    setTimeout, Date, JSON, String, Array, Math, Number, Error, TypeError, TextEncoder, console,
+    SaMiniP2P: {
+      makeIdentityStore: () => ({
+        getSelf: async () => ({ deviceId: 'm1', displayName: 'Mini 1' }),
+        listPeers: async () => [mockPeer],
+        getPeer: async () => mockPeer,
+        removePeer: async () => {}
+      }),
+      deriveTrustedRoute: async () => ({ room: 'r', proof: 'p' }),
+      SignalingClient: function() {},
+      createRtcSession: async ({ onState, onChannel }) => {
+        sessionsCreated++;
+        onStateCallback = onState;
+        if (onChannel) onChannel({ addEventListener() {} });
+        return { close() { sessionClosedCount++; } };
+      },
+      createTransferReceiver: () => () => {},
+      parseControl: () => null
+    },
+    SaMiniP2PPairing: {
+      attachTrusted: (ch, { onError }) => { onErrorCallback = onError; }
+    },
+    SaMiniP2PPeerAliases: { createPeerAliasStore: () => ({ resolveName: p => p.displayName, getAlias: () => null }) }
+  };
+  ctx.window = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(uiCode, ctx);
+
+  // Start waiting
+  await ctx.waitTrustedTransfer('sa-err', 'attendance');
+  assert.equal(sessionsCreated, 1);
+
+  // 1. Simulate transport disconnect
+  onStateCallback('disconnected', null);
+  assert.ok(waitStatusHtml.includes('Error de conexión'), 'must show connection error');
+  assert.ok(waitStatusHtml.includes('La conexión P2P se interrumpió'), 'must show interruption message');
+  assert.equal(bottomCancelHidden, true, 'bottom cancel button must be hidden when error box appears');
+  assert.ok(retryHandler, 'retry handler must be wired');
+  assert.ok(cancelWaitHandler, 'cancel wait handler must be wired');
+
+  // 2. Click retry
+  const prevClosed = sessionClosedCount;
+  retryHandler();
+  assert.ok(sessionClosedCount > prevClosed, 'retry must clean up previous session');
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(sessionsCreated, 2, 'retry must start a new session');
+
+  // 3. Simulate auth error from pairing
+  onErrorCallback(new Error('Clave de autenticación no válida'));
+  assert.ok(waitStatusHtml.includes('Clave de autenticación no válida'), 'must show auth error');
+
+  // 4. Click cancel-wait
+  cancelWaitHandler();
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'cancel wait must return to home');
+});
+
+test('roster and attendance coexistence in UI actions, mode badges, and responder/receiver binding', async () => {
+  const ui = read('p2p-roster-ui.js');
+  // Check explicit mode representations
+  assert.ok(ui.includes('Modo: Asistencia'));
+  assert.ok(ui.includes('Modo: Personal / Roster'));
+  assert.ok(ui.includes('data-wait-peer'));
+  assert.ok(ui.includes('data-wait-attendance'));
+  assert.ok(ui.includes('root.waitTrustedTransfer'));
+  assert.ok(ui.includes('root.waitTrustedRoster'));
+  assert.ok(ui.includes('root.waitTrustedAttendance'));
+
+  // Both armRosterReceiver and armAttendanceResponder are attached in onAuthenticated
+  const onAuthStart = ui.indexOf('onAuthenticated:()=>{');
+  const onAuthEnd = ui.indexOf('onError:error=>renderWaitError');
+  assert.ok(onAuthStart > 0 && onAuthEnd > onAuthStart);
+  const onAuthSlice = ui.slice(onAuthStart, onAuthEnd);
+  assert.ok(onAuthSlice.includes('armRosterReceiver(channel,peer)'));
+  assert.ok(onAuthSlice.includes('armAttendanceResponder(channel,peer,self)'));
+});
+
+test('P2P view changes use same-shell morphing with reduced-motion fallback', () => {
+  const ui = read('p2p-roster-ui.js');
+  assert.ok(ui.includes('function morphShell(renderViewFn)'), 'must define a local shell morph helper');
+  assert.ok(ui.includes("matchMedia('(prefers-reduced-motion: reduce)')"), 'must honor reduced motion');
+  assert.ok(ui.includes('getBoundingClientRect()'), 'must measure before/after geometry');
+  assert.ok(ui.includes('MORPH_DURATION_MS = 260'), 'must use the documented morph duration range');
+  assert.ok(ui.includes('cubic-bezier(.2,.8,.2,1)'), 'must use the design-system easing');
+  const wrappedBodyViews = ui.match(/morphShell\(\(\) => \{ body\(\)\.innerHTML/g) || [];
+  assert.ok(wrappedBodyViews.length >= 7, `expected structural body views to morph; got ${wrappedBodyViews.length}`);
+  const morphStart = ui.indexOf('function morphShell(renderViewFn)');
+  const morphEnd = ui.indexOf('function primary(', morphStart);
+  const morphBody = ui.slice(morphStart, morphEnd);
+  assert.doesNotMatch(morphBody, /\.remove\(\)/, 'morph helper must not remove/recreate the overlay');
+  assert.ok(morphBody.includes("dialog.style.width = `${startW}px`"));
+  assert.ok(morphBody.includes("dialog.style.height = `${startH}px`"));
+});
