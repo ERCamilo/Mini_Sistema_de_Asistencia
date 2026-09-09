@@ -82,11 +82,209 @@ test('Mini uses discrete expiry only for first-pair signaling and keeps the rece
   assert.match(ui, /createTransferReceiver\(\{\s*channel,/);
 });
 
-test('future transfer types remain disabled in Mini UI',()=>{
+test('transfer types: attendance is visibly available while backup and documents remain disabled in Mini UI',()=>{
   const ui=read('p2p-roster-ui.js');
-  assert.ok(ui.includes("disabledCard('🕒 Asistencia'"));
-  assert.ok(ui.includes("disabledCard('💾 Backup'"));
-  assert.ok(ui.includes("disabledCard('📄 Documentos / Archivos'"));
+  assert.ok(!ui.includes("disabledCard('🕒 Asistencia'"), 'Asistencia must not be disabled');
+  assert.ok(ui.includes('🕒 Asistencia'), 'Asistencia must be visibly present');
+  assert.ok(ui.includes("disabledCard('💾 Backup'"), 'Backup must remain disabled');
+  assert.ok(ui.includes("disabledCard('📄 Documentos / Archivos'"), 'Documents must remain disabled');
+});
+
+test('Mini Transferencias UI provides explicit wait attendance button for each linked SA while preserving roster button',()=>{
+  const ui=read('p2p-roster-ui.js');
+  assert.ok(ui.includes('data-wait-attendance'), 'per-peer wait attendance button must exist');
+  assert.ok(ui.includes('data-wait-peer'), 'per-peer wait roster button must be preserved');
+  assert.ok(ui.includes('Esperar roster'));
+  assert.ok(ui.includes('Esperar asistencia'));
+  assert.ok(ui.includes("waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')"));
+  assert.ok(ui.includes("waitTrustedTransfer(btn.dataset.waitPeer, 'roster')"));
+});
+
+test('waitTrustedTransfer refactor supports attendance and roster modes with clear copy/status and backward compatibility',()=>{
+  const ui=read('p2p-roster-ui.js');
+  assert.ok(ui.includes('async function waitTrustedTransfer'));
+  assert.ok(ui.includes('async function waitTrustedRoster'));
+  assert.ok(ui.includes("waitTrustedTransfer(peerId, 'roster')"));
+  assert.ok(ui.includes('Esperar asistencia de'));
+  assert.ok(ui.includes('Esperar roster de'));
+  assert.ok(ui.includes('Ahora en SA selecciona este Mini y solicita la asistencia.'));
+  assert.ok(ui.includes('Ahora en SA selecciona este Mini y pulsa “Enviar roster”.'));
+  assert.ok(ui.includes('Esperando solicitud de asistencia…'));
+  assert.ok(ui.includes('Esperando roster…'));
+});
+
+test('trusted wait arms attendance responder with self.deviceId and keeps armRosterReceiver coexisting',()=>{
+  const ui=read('p2p-roster-ui.js');
+  assert.match(ui, /armRosterReceiver\(channel,\s*peer\);[\s\S]*armAttendanceResponder\(channel,\s*peer,\s*self\);/);
+  assert.match(ui, /function armAttendanceResponder\(channel,\s*peer,\s*self\)/);
+  assert.ok(ui.includes('deviceId = self?.deviceId'));
+  assert.ok(ui.includes('root.AttendanceExport.attachAttendanceResponder'));
+  assert.ok(ui.includes('deviceId'));
+});
+
+test('self.deviceId is threaded safely into armAttendanceResponder without async listener race',()=>{
+  const ui=read('p2p-roster-ui.js');
+  const waitFn = ui.slice(ui.indexOf('async function waitTrustedTransfer'), ui.indexOf('function armAttendanceResponder'));
+  assert.match(waitFn, /const\s+self\s*=\s*await\s+identityStore\.getSelf\(\);/);
+  assert.doesNotMatch(waitFn, /onAuthenticated:\s*async/);
+  assert.doesNotMatch(waitFn, /armAttendanceResponder\(.*await/);
+
+  const pairFn = ui.slice(ui.indexOf('async function startPairing'), ui.indexOf('function renderPairConfirmation'));
+  assert.match(pairFn, /const\s+self\s*=\s*await\s+identityStore\.getSelf\(\);/);
+  assert.doesNotMatch(pairFn, /onLinked:\s*async/);
+  assert.match(pairFn, /armAttendanceResponder\(channel,\s*peer,\s*self\)/);
+});
+
+test('trusted wait dynamic behavioral test: arms responder with distinct self.deviceId, keeps honest wait status, and preserves roster receiver', async () => {
+  const vm = require('node:vm');
+  const uiCode = read('p2p-roster-ui.js');
+
+  let capturedResponderContext = null;
+  let rosterReceiverAttached = false;
+  const channelMessageHandlers = [];
+
+  const mockChannel = {
+    readyState: 'open',
+    addEventListener(event, fn) {
+      if (event === 'message') channelMessageHandlers.push(fn);
+    },
+    send() {}
+  };
+
+  const mockPeer = { peerId: 'sa-device-test', peerApp: 'sa', linkToken: 'tok-abc', displayName: 'SA Oficina' };
+  const mockSelf = { deviceId: 'mini-device-uuid-99', displayName: 'Mini Central' };
+
+  let currentModal = null;
+  let statusText = '';
+  let statusHtml = '';
+  const mockWaitStatusEl = {
+    set textContent(v) { statusText = v; },
+    get textContent() { return statusText; },
+    set innerHTML(v) { statusHtml = v; },
+    get innerHTML() { return statusHtml; }
+  };
+
+  const mockBodyDiv = {
+    _html: '',
+    set innerHTML(v) { this._html = v; },
+    get innerHTML() { return this._html; },
+    querySelector(sel) {
+      if (sel === '[data-wait-status]' || sel === '[data-receive-state]') return mockWaitStatusEl;
+      return { addEventListener() {} };
+    },
+    querySelectorAll() { return []; }
+  };
+
+  const ctx = {
+    window: {},
+    addEventListener: () => {},
+    document: {
+      readyState: 'complete',
+      getElementById: (id) => (id === 'mini-p2p-transfer-modal' ? currentModal : null),
+      createElement: () => {
+        const el = {
+          id: '',
+          style: {},
+          _html: '',
+          set innerHTML(v) { this._html = v; },
+          get innerHTML() { return this._html; },
+          querySelector: (sel) => (sel === '[data-p2p-body]' ? mockBodyDiv : { addEventListener() {} }),
+          querySelectorAll: () => [],
+          addEventListener: () => {}
+        };
+        return el;
+      },
+      body: {
+        appendChild(el) { currentModal = el; }
+      },
+      addEventListener: () => {}
+    },
+    location: { hash: '', pathname: '/', search: '' },
+    history: { replaceState: () => {} },
+    setTimeout,
+    Date,
+    JSON,
+    String,
+    Array,
+    Math,
+    Number,
+    Error,
+    TypeError,
+    console
+  };
+  ctx.window = ctx;
+
+  ctx.SaMiniP2P = {
+    makeIdentityStore: () => ({
+      getSelf: async () => mockSelf,
+      listPeers: async () => [mockPeer],
+      getPeer: async (id) => (id === mockPeer.peerId ? mockPeer : null),
+      removePeer: async () => {}
+    }),
+    deriveTrustedRoute: async () => ({ room: 'room-1', proof: 'proof-1' }),
+    SignalingClient: function() {},
+    createRtcSession: async ({ onChannel }) => {
+      onChannel(mockChannel);
+      return { close() {} };
+    },
+    createTransferReceiver: () => {
+      rosterReceiverAttached = true;
+      return () => {};
+    },
+    parseControl: () => null
+  };
+
+  ctx.SaMiniP2PPairing = {
+    attachTrusted: (channel, { onAuthenticated }) => {
+      onAuthenticated();
+    }
+  };
+
+  ctx.SaMiniP2PPeerAliases = {
+    createPeerAliasStore: () => ({
+      resolveName: (p) => p.displayName || 'SA',
+      getAlias: () => null,
+      setAlias: () => {},
+      removeAlias: () => {}
+    })
+  };
+
+  ctx.AttendanceExport = {
+    attachAttendanceResponder: (channel, peer, opt) => {
+      capturedResponderContext = opt;
+      return () => {};
+    }
+  };
+
+  vm.createContext(ctx);
+  vm.runInContext(uiCode, ctx);
+
+  // 1. Test waitTrustedTransfer in attendance mode
+  await ctx.waitTrustedTransfer('sa-device-test', 'attendance');
+  assert.equal(capturedResponderContext?.deviceId, 'mini-device-uuid-99', 'must pass self.deviceId');
+  assert.equal(rosterReceiverAttached, true, 'armRosterReceiver must coexist with attendance responder');
+  assert.ok(mockBodyDiv.innerHTML.includes('Esperar asistencia de SA Oficina'), 'must show attendance header');
+  assert.ok(statusText.includes('Esperando solicitud de asistencia'), 'status text must reflect attendance');
+
+  // 2. Simulate incoming attendance-request/v1
+  for (const handler of channelMessageHandlers) {
+    handler({
+      data: JSON.stringify({
+        schema: 'attendance-request/v1',
+        requestId: 'req-1',
+        saProjectId: 'PRJ-1',
+        fromDate: '2026-09-01',
+        toDate: '2026-09-07'
+      })
+    });
+  }
+  assert.equal(statusHtml, '', 'UI must not claim attendance delivery success before SA validates the response');
+  assert.ok(statusText.includes('Esperando solicitud de asistencia'), 'wait status remains honest until SA confirms reception');
+
+  // 3. Test backward-compatible waitTrustedRoster
+  await ctx.waitTrustedRoster('sa-device-test');
+  assert.ok(mockBodyDiv.innerHTML.includes('Esperar roster de SA Oficina'), 'waitTrustedRoster must show roster header');
+  assert.ok(statusText.includes('Esperando roster'), 'status text must reflect roster wait');
 });
 
 

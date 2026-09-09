@@ -100,18 +100,21 @@
       const lastSeen = formatPeerDate(peer.lastSeenAt || peer.linkedAt);
       const originalLine = alias ? `<div style="font-size:11px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Original: ${esc(original)}</div>` : '';
       return `
-      <div style="display:flex;gap:8px;align-items:center;border:1px solid var(--border-color,rgba(148,163,184,.3));border-radius:12px;padding:12px">
-        <div style="flex:1;min-width:0"><strong>${esc(peerName(peer))}</strong>${originalLine}<div style="font-size:11px;opacity:.6;line-height:1.35">Última conexión: ${esc(lastSeen)} · Vinculado: ${esc(linked)}</div></div>
-        <button type="button" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre" style="border:1px solid rgba(37,99,235,.32);border-radius:10px;padding:9px;background:transparent;color:var(--primary-color,#2563eb);cursor:pointer">✎</button>
-        <button type="button" data-wait-peer="${esc(peer.peerId)}" style="border:0;border-radius:10px;padding:9px 11px;background:#16a34a;color:white;font-weight:700;cursor:pointer">Esperar roster</button>
-        <button type="button" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular" style="border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:9px;background:transparent;color:#dc2626;cursor:pointer">×</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--border-color,rgba(148,163,184,.3));border-radius:12px;padding:12px">
+        <div style="flex:1;min-width:180px"><strong>${esc(peerName(peer))}</strong>${originalLine}<div style="font-size:11px;opacity:.6;line-height:1.35">Última conexión: ${esc(lastSeen)} · Vinculado: ${esc(linked)}</div></div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button type="button" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre" style="border:1px solid rgba(37,99,235,.32);border-radius:10px;padding:9px;background:transparent;color:var(--primary-color,#2563eb);cursor:pointer">✎</button>
+          <button type="button" data-wait-peer="${esc(peer.peerId)}" style="border:0;border-radius:10px;padding:9px 11px;background:#16a34a;color:white;font-weight:700;cursor:pointer">Esperar roster</button>
+          <button type="button" data-wait-attendance="${esc(peer.peerId)}" style="border:0;border-radius:10px;padding:9px 11px;background:var(--primary-color,#2563eb);color:white;font-weight:700;cursor:pointer">Esperar asistencia</button>
+          <button type="button" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular" style="border:1px solid rgba(239,68,68,.4);border-radius:10px;padding:9px;background:transparent;color:#dc2626;cursor:pointer">×</button>
+        </div>
       </div>`;
     }).join('') : '<div style="font-size:13px;opacity:.7;padding:8px 0">Aún no hay SA vinculados.</div>';
 
     body().innerHTML = `
       <div style="display:grid;gap:10px">
         <div style="border:1px solid rgba(37,99,235,.3);border-radius:14px;padding:14px;background:rgba(37,99,235,.08)"><strong>👥 Personal / Roster</strong><div style="font-size:12px;margin-top:4px">Disponible ahora · recibir desde SA</div></div>
-        ${disabledCard('🕒 Asistencia','Mini → SA')}
+        <div style="border:1px solid rgba(37,99,235,.3);border-radius:14px;padding:14px;background:rgba(37,99,235,.08)"><strong>🕒 Asistencia</strong><div style="font-size:12px;margin-top:4px">Disponible ahora · responder solicitud de SA</div></div>
         ${disabledCard('💾 Backup','Mini ↔ Mini')}
         ${disabledCard('📄 Documentos / Archivos','Reservado para una fase futura')}
       </div>
@@ -122,7 +125,8 @@
     body().querySelector('[data-manual-pair]').addEventListener('click', renderManualPair);
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
-    body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedRoster(btn.dataset.waitPeer)));
+    body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
+    body().querySelectorAll('[data-wait-attendance]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')));
     body().querySelectorAll('[data-unlink]').forEach(btn => btn.addEventListener('click', async () => {
       if (!confirm('¿Desvincular este SA?')) return;
       const peerId = btn.dataset.unlink;
@@ -261,7 +265,7 @@
           onCandidate: ({ remote, sas, accept, reject }) => renderPairConfirmation(remote, sas, accept, reject),
           onLinked: peer => {
             armRosterReceiver(channel, peer);
-            armAttendanceResponder(channel, peer);
+            armAttendanceResponder(channel, peer, self);
             renderLinkedWaiting(peer);
           },
           onRejected: () => renderError('SA rechazó el vínculo.'),
@@ -292,11 +296,28 @@
   }
 
   async function waitTrustedRoster(peerId) {
+    return waitTrustedTransfer(peerId, 'roster');
+  }
+
+  async function waitTrustedAttendance(peerId) {
+    return waitTrustedTransfer(peerId, 'attendance');
+  }
+
+  async function waitTrustedTransfer(peerId, mode = 'roster') {
     cleanupSession();
+    shell();
+    pendingRoster = null;
     const self=await identityStore.getSelf();
     const peer=await identityStore.getPeer(peerId);
     if (!peer || peer.peerApp !== 'sa') throw new Error('SA vinculado no encontrado.');
-    body().innerHTML = `<button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button><h3 style="margin:0 0 8px">Esperar roster de ${esc(peerName(peer))}</h3><p style="font-size:13px;opacity:.7">Ahora en SA selecciona este Mini y pulsa “Enviar roster”.</p><div data-wait-status style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando conexión autenticada…</div>`;
+    const isAttendance = mode === 'attendance';
+    const title = isAttendance
+      ? `Esperar asistencia de ${esc(peerName(peer))}`
+      : `Esperar roster de ${esc(peerName(peer))}`;
+    const subtitle = isAttendance
+      ? 'Ahora en SA selecciona este Mini y solicita la asistencia.'
+      : 'Ahora en SA selecciona este Mini y pulsa “Enviar roster”.';
+    body().innerHTML = `<button type="button" data-back style="border:0;background:transparent;color:inherit;cursor:pointer;padding:0 0 12px">← Volver</button><h3 style="margin:0 0 8px">${title}</h3><p style="font-size:13px;opacity:.7">${subtitle}</p><div data-wait-status style="padding:12px;border-radius:12px;background:rgba(59,130,246,.08);font-size:13px">Esperando conexión autenticada…</div>`;
     body().querySelector('[data-back]').addEventListener('click', renderHome);
     const route=await core.deriveTrustedRoute(peer.linkToken);
     const signaling=new core.SignalingClient({room:route.room,peerId:self.deviceId,proof:route.proof});
@@ -308,9 +329,12 @@
         pairing.attachTrusted(channel,{
           self,peer,store:identityStore,
           onAuthenticated:()=>{
-            const box=body()?.querySelector('[data-wait-status]'); if(box) box.textContent='✓ SA autenticado. Esperando roster…';
+            const box=body()?.querySelector('[data-wait-status]');
+            if(box) box.textContent = isAttendance
+              ? '✓ SA autenticado. Esperando solicitud de asistencia…'
+              : '✓ SA autenticado. Esperando roster…';
             armRosterReceiver(channel,peer);
-            armAttendanceResponder(channel,peer);
+            armAttendanceResponder(channel,peer,self);
           },
           onError:renderError
         });
@@ -318,13 +342,15 @@
     });
   }
 
-  function armAttendanceResponder(channel, peer) {
+  function armAttendanceResponder(channel, peer, self) {
     if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return;
+    const deviceId = self?.deviceId || undefined;
     root.AttendanceExport.attachAttendanceResponder(channel, peer, {
       get repository() { return root.attendanceRepository; },
       get employeeRepository() { return root.employeeRepository; },
       get attendanceData() { return root.attendanceData; },
-      get employees() { return root.users; }
+      get employees() { return root.users; },
+      deviceId
     });
   }
 
@@ -420,6 +446,9 @@
   async function openP2PTransferModal(){await renderHome();}
   root.openP2PTransferModal=openP2PTransferModal;
   root.closeP2PTransferModal=()=>closeTransferModal();
+  root.waitTrustedTransfer=waitTrustedTransfer;
+  root.waitTrustedRoster=waitTrustedRoster;
+  root.waitTrustedAttendance=waitTrustedAttendance;
 
   const boot=()=>consumePairHash().catch(()=>{});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
