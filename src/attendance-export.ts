@@ -93,6 +93,7 @@ interface AttExportHandlerContext {
   now?: () => string;
   generateUuid?: () => string;
   includeUnlinked?: boolean;
+  onResponseSent?: (response: AttExportResponseEnvelope) => void;
 }
 
 (function exposeAttendanceExport(root: any, factory: () => unknown) {
@@ -756,6 +757,7 @@ interface AttExportHandlerContext {
           ...context
         });
         sendAttendanceResponse(channel, response, context.isChannelAuthenticated);
+        try { context.onResponseSent?.(response); } catch (_) {}
       } catch (error: any) {
         try {
           let reqId = '';

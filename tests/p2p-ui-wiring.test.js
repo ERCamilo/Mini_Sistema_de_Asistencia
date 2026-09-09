@@ -116,8 +116,8 @@ test('waitTrustedTransfer refactor supports attendance and roster modes with cle
 test('trusted wait isolates attendance and roster handlers by selected mode',()=>{
   const ui=read('p2p-roster-ui.js');
   const waitFn=ui.slice(ui.indexOf('async function waitTrustedTransfer'), ui.indexOf('function sendAttendanceReady'));
-  assert.match(waitFn, /if \(isAttendance\)[\s\S]*armAttendanceResponder\(channel,\s*peer,\s*self\)[\s\S]*else[\s\S]*armRosterReceiver\(channel,\s*peer\)/);
-  assert.match(ui, /function armAttendanceResponder\(channel,\s*peer,\s*self\)/);
+  assert.match(waitFn, /if \(isAttendance\)[\s\S]*armAttendanceResponder\(channel,\s*peer,\s*self,\s*\{[\s\S]*onResponseSent[\s\S]*else[\s\S]*armRosterReceiver\(channel,\s*peer\)/);
+  assert.match(ui, /function armAttendanceResponder\(channel,\s*peer,\s*self,\s*callbacks\s*=\s*\{\}\)/);
   assert.ok(ui.includes('deviceId = self?.deviceId'));
   assert.ok(ui.includes('root.AttendanceExport.attachAttendanceResponder'));
   assert.ok(ui.includes("attendance-ready/v1"));
@@ -821,7 +821,8 @@ test('roster and attendance coexistence in UI actions, mode badges, and responde
   assert.ok(onAuthStart > 0 && onAuthEnd > onAuthStart);
   const onAuthSlice = ui.slice(onAuthStart, onAuthEnd);
   assert.ok(onAuthSlice.includes('armRosterReceiver(channel,peer)'));
-  assert.ok(onAuthSlice.includes('armAttendanceResponder(channel,peer,self)'));
+  assert.ok(onAuthSlice.includes('armAttendanceResponder(channel,peer,self,{'));
+  assert.ok(onAuthSlice.includes('onResponseSent'));
 });
 
 test('P2P view changes use same-shell morphing with reduced-motion fallback', () => {
@@ -839,4 +840,13 @@ test('P2P view changes use same-shell morphing with reduced-motion fallback', ()
   assert.doesNotMatch(morphBody, /\.remove\(\)/, 'morph helper must not remove/recreate the overlay');
   assert.ok(morphBody.includes("dialog.style.width = `${startW}px`"));
   assert.ok(morphBody.includes("dialog.style.height = `${startH}px`"));
+});
+
+
+test('attendance response completion makes later RTC close truthful instead of reporting interruption', () => {
+  const ui = read('p2p-roster-ui.js');
+  assert.match(ui, /onResponseSent/);
+  assert.match(ui, /attendanceResponseSent/);
+  assert.match(ui, /Respuesta de asistencia enviada/);
+  assert.match(ui, /conexi[oó]n finalizada/i);
 });

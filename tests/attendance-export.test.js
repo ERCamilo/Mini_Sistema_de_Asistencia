@@ -508,6 +508,7 @@ test('P2P channel responder: responds to attendance-request/v1 and ignores non-a
 
   const fakeChannel = new FakeChannel({ authenticated: true });
   const saPeer = { peerId: 'sa-device-1', peerApp: 'sa' };
+  let responseSentCallbacks = 0;
 
   const detach = AttendanceExport.attachAttendanceResponder(fakeChannel, saPeer, {
     isChannelAuthenticated: () => true,
@@ -516,12 +517,14 @@ test('P2P channel responder: responds to attendance-request/v1 and ignores non-a
     employeeRepository: empRepo,
     scope: SCOPE,
     deviceId: DEVICE_ID,
-    rosterVersion: ROSTER_VERSION
+    rosterVersion: ROSTER_VERSION,
+    onResponseSent: () => { responseSentCallbacks += 1; }
   });
 
   // 1. Send unrelated message (e.g. roster or other control)
   fakeChannel.receive(JSON.stringify({ protocol: 'sa-mini-p2p-transfer/v1', type: 'start' }));
   assert.equal(fakeChannel.sentFrames.length, 0, 'must ignore non-attendance message');
+  assert.equal(responseSentCallbacks, 0, 'must not signal completion for unrelated traffic');
 
   // 2. Send valid attendance-request/v1
   const validRequest = {
@@ -541,6 +544,7 @@ test('P2P channel responder: responds to attendance-request/v1 and ignores non-a
   assert.equal(sent.ok, true);
   assert.equal(sent.submissions.length, 1);
   assert.equal(sent.submissions[0].workDate, '2026-09-06');
+  assert.equal(responseSentCallbacks, 1, 'completion callback fires only after response is sent');
 
   // Detach listener
   detach();

@@ -584,6 +584,7 @@
     const peer=await identityStore.getPeer(peerId);
     if (!peer || peer.peerApp !== 'sa') throw new Error('SA vinculado no encontrado.');
     const isAttendance = mode === 'attendance';
+    let attendanceResponseSent = false;
     const title = isAttendance
       ? `Esperar asistencia de ${esc(peerName(peer))}`
       : `Esperar roster de ${esc(peerName(peer))}`;
@@ -611,7 +612,9 @@
       onState:(status,error)=>{
         const box=body()?.querySelector('[data-wait-status]');
         if(!box) return;
-        if(error) {
+        if (isAttendance && attendanceResponseSent && (status === 'closed' || status === 'disconnected')) {
+          box.textContent='✓ Respuesta de asistencia enviada. Conexión finalizada.';
+        } else if(error) {
           renderWaitError(error, peerId, mode);
         } else if(status === 'connected') {
           box.textContent='Canal conectado. Verificando identidad…';
@@ -629,7 +632,13 @@
             const box=body()?.querySelector('[data-wait-status]');
             try {
               if (isAttendance) {
-                activeAttendanceResponderDetach = armAttendanceResponder(channel,peer,self);
+                activeAttendanceResponderDetach = armAttendanceResponder(channel,peer,self,{
+                  onResponseSent: () => {
+                    attendanceResponseSent = true;
+                    const liveBox=body()?.querySelector('[data-wait-status]');
+                    if(liveBox) liveBox.textContent='✓ Respuesta de asistencia enviada. SA la validará antes de incorporarla.';
+                  }
+                });
                 if (typeof activeAttendanceResponderDetach !== 'function') {
                   throw new Error('El módulo de asistencia no está disponible en este Mini.');
                 }
@@ -660,7 +669,7 @@
     channel.send(JSON.stringify({ schema: ATTENDANCE_READY_SCHEMA }));
   }
 
-  function armAttendanceResponder(channel, peer, self) {
+  function armAttendanceResponder(channel, peer, self, callbacks = {}) {
     if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return null;
     const deviceId = self?.deviceId || undefined;
     return root.AttendanceExport.attachAttendanceResponder(channel, peer, {
@@ -668,7 +677,8 @@
       get employeeRepository() { return root.employeeRepository; },
       get attendanceData() { return root.attendanceData; },
       get employees() { return root.users; },
-      deviceId
+      deviceId,
+      onResponseSent: callbacks.onResponseSent
     });
   }
 

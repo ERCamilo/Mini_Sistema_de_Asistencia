@@ -592,6 +592,7 @@
             return () => { };
         }
         const handler = (event) => {
+            var _a;
             try {
                 if (typeof (event === null || event === void 0 ? void 0 : event.data) !== 'string')
                     return;
@@ -610,6 +611,10 @@
                     ...context
                 });
                 sendAttendanceResponse(channel, response, context.isChannelAuthenticated);
+                try {
+                    (_a = context.onResponseSent) === null || _a === void 0 ? void 0 : _a.call(context, response);
+                }
+                catch (_) { }
             }
             catch (error) {
                 try {
