@@ -217,6 +217,58 @@
             transform: scale(0.95);
         }
 
+        .header-p2p-link {
+            margin-left: auto;
+            min-height: 44px;
+            padding: 0 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--card-bg);
+            color: var(--accent-color);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color .2s ease, border-color .2s ease, transform .15s ease;
+            flex-shrink: 0;
+        }
+
+        .header-p2p-link:hover {
+            background: var(--input-bg);
+            border-color: var(--accent-color);
+        }
+
+        .header-p2p-link:active {
+            transform: scale(.97);
+        }
+
+        .header-p2p-link .ico {
+            width: 18px;
+            height: 18px;
+        }
+
+        @media (max-width: 360px) {
+            .header-p2p-link {
+                width: 44px;
+                padding: 0;
+            }
+            .header-p2p-link-label {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+        }
+
         /* --- Selector de Vista --- */
         .view-selector {
             padding: 16px 16px 8px 16px;
@@ -2279,6 +2331,10 @@
 
     <div class="top-nav">
         <div class="app-title" id="section-title">Asistencia</div>
+        <button type="button" class="header-p2p-link" id="btn-attendance-link" onclick="openP2PPairingScanner()" aria-label="Vincular Mini con SA" title="Vincular con SA">
+            <span class="ic" data-icon="link" data-icon-vector></span>
+            <span class="header-p2p-link-label">Vincular</span>
+        </button>
     </div>
 
     <!-- VISTA PRINCIPAL -->
@@ -2744,7 +2800,7 @@
                     </div>
                     <div class="export-options">
                         <button type="button" class="export-option" onclick="openP2PTransferModal()">
-                            <span style="font-size: 24px;">⇄</span>
+                            <span style="font-size: 24px;" aria-hidden="true"><span class="ic" data-icon="link" data-icon-vector></span></span>
                             <div>
                                 <div style="font-weight: 600; color: var(--accent-color);">SA ↔ Mini</div>
                                 <div style="font-size: 12px; color: var(--text-muted);">Vincular dispositivos y recibir roster directamente</div>
@@ -3345,7 +3401,10 @@
         // Hydrate every [data-icon] placeholder under `root` with the current style.
         function applyIcons(root) {
             (root || document).querySelectorAll('[data-icon]').forEach(el => {
-                el.innerHTML = window.IconSet.iconMarkup(el.getAttribute('data-icon'), currentIconStyle);
+                const iconName = el.getAttribute('data-icon');
+                el.innerHTML = el.hasAttribute('data-icon-vector')
+                    ? window.IconSet.iconSvg(iconName)
+                    : window.IconSet.iconMarkup(iconName, currentIconStyle);
             });
         }
 
@@ -5073,6 +5132,8 @@
                 if (el) el.classList.toggle('hidden', v !== view);
             });
             document.getElementById('section-title').textContent = VIEW_TITLES[view] || '';
+            const attendanceLink = document.getElementById('btn-attendance-link');
+            if (attendanceLink) attendanceLink.classList.toggle('hidden', view !== 'attendance');
             currentView = view;
             if (view === 'attendance') updateDashboard();
             else if (view === 'requests') renderRequestsDashboard();

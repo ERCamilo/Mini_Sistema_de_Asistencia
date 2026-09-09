@@ -59,7 +59,7 @@ test('resolveIcon describes the chosen rendering', () => {
 });
 
 test('core navigation and domain icons are all registered', () => {
-  ['attendance', 'employees', 'reports', 'more', 'add', 'hardHat', 'briefcase', 'building'].forEach(name => {
+  ['attendance', 'employees', 'reports', 'more', 'add', 'hardHat', 'briefcase', 'building', 'link'].forEach(name => {
     assert.equal(IconSet.hasIcon(name), true, 'missing icon: ' + name);
   });
 });

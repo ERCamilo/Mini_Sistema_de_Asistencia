@@ -69,11 +69,14 @@ Todos los iconos de la aplicación se gestionan a través del módulo centraliza
    ```
 2. **Renderizado Dinámico**: Al crear o actualizar HTML mediante JavaScript, invocar siempre `applyIcons(container)` para inyectar el SVG o Emoji correspondiente según el tema activo.
 3. **Color Adaptativo**: Los iconos Lucide usan `stroke="currentColor"`, por lo que heredan automáticamente el color del texto del contenedor.
+4. **Sin emoticones como iconografía de interfaz**: En nuevos botones, accesos directos, navegación, acciones de gestión y estados no se deben escribir emojis o símbolos Unicode decorativos directamente (`🔗`, `⇄`, `📤`, etc.). Se debe usar `IconSet`/Lucide o un SVG vectorial equivalente. Los emojis pueden existir como contenido escrito por el usuario o compatibilidad visual heredada, pero no deben ser el recurso iconográfico de una acción crítica nueva.
+5. **Acciones vectoriales obligatorias**: Los accesos críticos que deban conservar iconografía SVG aunque el usuario tenga seleccionado un estilo heredado se marcan con `data-icon-vector`. `applyIcons()` debe renderizarlos mediante `IconSet.iconSvg()` y nunca sustituirlos por emoji.
+6. **Icono + texto**: Los accesos principales como `Vincular` deben combinar un SVG reconocible con una etiqueta textual. En pantallas extremadamente estrechas puede ocultarse visualmente el texto si se conserva `aria-label`, `title` y un objetivo táctil mínimo de `44x44px`.
 
 ### Catálogo de Iconos Clave:
 - **Navegación**: `attendance`, `requests`, `employees`, `reports`, `more`, `add`.
 - **Dominio y Contexto**: `hardHat` (Obra / Construcción), `users` (Cuadrilla / Equipo), `briefcase` (Cargos).
-- **Acciones y Herramientas**: `edit`, `trash`, `copy`, `share`, `backup`, `restore`, `refresh`, `pause`, `play`, `search`, `clock`.
+- **Acciones y Herramientas**: `edit`, `trash`, `copy`, `share`, `link`, `backup`, `restore`, `refresh`, `pause`, `play`, `search`, `clock`.
 - **Estados**: `check`, `close`, `success`, `warning`, `conflict`, `inbox`, `star`, `starFilled`.
 
 ---

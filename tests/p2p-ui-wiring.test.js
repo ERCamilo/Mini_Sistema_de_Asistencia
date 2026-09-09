@@ -850,3 +850,17 @@ test('attendance response completion makes later RTC close truthful instead of r
   assert.match(ui, /Respuesta de asistencia enviada/);
   assert.match(ui, /conexi[oó]n finalizada/i);
 });
+
+
+test('attendance header exposes direct vector-only pairing access and data management uses the same icon language',()=>{
+  const html=read('index.html'), ui=read('p2p-roster-ui.js'), design=read('UI_DESIGN.md');
+  assert.match(html, /id="btn-attendance-link"[\s\S]*onclick="openP2PPairingScanner\(\)"[\s\S]*data-icon="link"[\s\S]*data-icon-vector/);
+  assert.match(html, /GESTIÓN DE DATOS[\s\S]*openP2PTransferModal\(\)[\s\S]*data-icon="link"[\s\S]*data-icon-vector/);
+  assert.doesNotMatch(html, /openP2PTransferModal\(\)[\s\S]{0,160}<span[^>]*>⇄<\/span>/);
+  assert.match(html, /el\.hasAttribute\('data-icon-vector'\)[\s\S]*IconSet\.iconSvg/);
+  assert.match(html, /attendanceLink\.classList\.toggle\('hidden', view !== 'attendance'\)/);
+  assert.match(ui, /root\.openP2PPairingScanner=openP2PPairingScanner/);
+  assert.match(ui, /async function openP2PPairingScanner\(\)\{await renderQrScanner\(\);\}/);
+  assert.ok(design.includes('Sin emoticones como iconografía de interfaz'));
+  assert.ok(design.includes('data-icon-vector'));
+});

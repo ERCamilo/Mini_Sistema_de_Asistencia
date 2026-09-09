@@ -772,7 +772,9 @@
   }
 
   async function openP2PTransferModal(){await renderHome();}
+  async function openP2PPairingScanner(){await renderQrScanner();}
   root.openP2PTransferModal=openP2PTransferModal;
+  root.openP2PPairingScanner=openP2PPairingScanner;
   root.closeP2PTransferModal=()=>closeTransferModal();
   root.waitTrustedTransfer=waitTrustedTransfer;
   root.waitTrustedRoster=waitTrustedRoster;
