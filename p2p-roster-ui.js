@@ -261,6 +261,7 @@
           onCandidate: ({ remote, sas, accept, reject }) => renderPairConfirmation(remote, sas, accept, reject),
           onLinked: peer => {
             armRosterReceiver(channel, peer);
+            armAttendanceResponder(channel, peer);
             renderLinkedWaiting(peer);
           },
           onRejected: () => renderError('SA rechazó el vínculo.'),
@@ -309,10 +310,21 @@
           onAuthenticated:()=>{
             const box=body()?.querySelector('[data-wait-status]'); if(box) box.textContent='✓ SA autenticado. Esperando roster…';
             armRosterReceiver(channel,peer);
+            armAttendanceResponder(channel,peer);
           },
           onError:renderError
         });
       }
+    });
+  }
+
+  function armAttendanceResponder(channel, peer) {
+    if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return;
+    root.AttendanceExport.attachAttendanceResponder(channel, peer, {
+      get repository() { return root.attendanceRepository; },
+      get employeeRepository() { return root.employeeRepository; },
+      get attendanceData() { return root.attendanceData; },
+      get employees() { return root.users; }
     });
   }
 

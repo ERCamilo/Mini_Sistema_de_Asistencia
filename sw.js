@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.13.0-20260908-021126-275';
+const CACHE_VERSION = 'asistencia-v2.13.0-20260909-023626-533';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -12,6 +12,7 @@ const PRECACHE_ASSETS = [
   './attendance-report.js',
   './attendance-repository.js',
   './attendance-coordinator.js',
+  './attendance-export.js',
   './import-history-repository.js',
   './work-context.js',
   './bulk-actions.js',

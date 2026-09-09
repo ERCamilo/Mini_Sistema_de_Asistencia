@@ -3249,6 +3249,7 @@
     <script src="./employee-repository.js"></script>
     <script src="./attendance-repository.js"></script>
     <script src="./attendance-coordinator.js"></script>
+    <script src="./attendance-export.js"></script>
     <script src="./import-history-repository.js"></script>
     <script src="./work-context.js"></script>
     <script src="./bulk-actions.js"></script>
@@ -3327,6 +3328,16 @@
         window.workContextManager = workContextManager;
         window.employeeRepository = employeeRepository;
         window.attendanceRepository = attendanceRepository;
+        window.exportCanonicalAttendanceSubmission = function (workDate, saProjectId, options = {}) {
+            if (!window.AttendanceExport) throw new Error('AttendanceExport module is not available');
+            return window.AttendanceExport.generateAttendanceSubmission({
+                workDate: workDate || selectedDate,
+                saProjectId,
+                repository: attendanceRepository,
+                employeeRepository: employeeRepository,
+                ...options
+            });
+        };
 
         // --- SISTEMA DE ICONOS (emoji <-> Lucide) ---
         let currentIconStyle = window.IconSet.normalizeIconStyle(localStorage.getItem('iconStyle'));
