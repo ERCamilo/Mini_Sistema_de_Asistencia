@@ -109,17 +109,18 @@ test('waitTrustedTransfer refactor supports attendance and roster modes with cle
   assert.ok(ui.includes('Esperar roster de'));
   assert.ok(ui.includes('Ahora en SA selecciona este Mini y solicita la asistencia.'));
   assert.ok(ui.includes('Ahora en SA selecciona este Mini y pulsa “Enviar roster”.'));
-  assert.ok(ui.includes('Esperando solicitud de asistencia…'));
+  assert.ok(ui.includes('Listo para recibir la solicitud de asistencia…'));
   assert.ok(ui.includes('Esperando roster…'));
 });
 
-test('trusted wait arms attendance responder with self.deviceId and keeps armRosterReceiver coexisting',()=>{
+test('trusted wait isolates attendance and roster handlers by selected mode',()=>{
   const ui=read('p2p-roster-ui.js');
-  assert.match(ui, /armRosterReceiver\(channel,\s*peer\);[\s\S]*armAttendanceResponder\(channel,\s*peer,\s*self\);/);
+  const waitFn=ui.slice(ui.indexOf('async function waitTrustedTransfer'), ui.indexOf('function sendAttendanceReady'));
+  assert.match(waitFn, /if \(isAttendance\)[\s\S]*armAttendanceResponder\(channel,\s*peer,\s*self\)[\s\S]*else[\s\S]*armRosterReceiver\(channel,\s*peer\)/);
   assert.match(ui, /function armAttendanceResponder\(channel,\s*peer,\s*self\)/);
   assert.ok(ui.includes('deviceId = self?.deviceId'));
   assert.ok(ui.includes('root.AttendanceExport.attachAttendanceResponder'));
-  assert.ok(ui.includes('deviceId'));
+  assert.ok(ui.includes("attendance-ready/v1"));
 });
 
 test('self.deviceId is threaded safely into armAttendanceResponder without async listener race',()=>{
@@ -135,7 +136,7 @@ test('self.deviceId is threaded safely into armAttendanceResponder without async
   assert.match(pairFn, /armAttendanceResponder\(channel,\s*peer,\s*self\)/);
 });
 
-test('trusted wait dynamic behavioral test: arms responder with distinct self.deviceId, keeps honest wait status, and preserves roster receiver', async () => {
+test('trusted wait dynamic behavioral test: attendance sends ready only after responder is armed and roster stays isolated', async () => {
   const vm = require('node:vm');
   const uiCode = read('p2p-roster-ui.js');
 
@@ -145,10 +146,11 @@ test('trusted wait dynamic behavioral test: arms responder with distinct self.de
 
   const mockChannel = {
     readyState: 'open',
+    sent: [],
     addEventListener(event, fn) {
       if (event === 'message') channelMessageHandlers.push(fn);
     },
-    send() {}
+    send(data) { this.sent.push(data); }
   };
 
   const mockPeer = { peerId: 'sa-device-test', peerApp: 'sa', linkToken: 'tok-abc', displayName: 'SA Oficina' };
@@ -227,6 +229,7 @@ test('trusted wait dynamic behavioral test: arms responder with distinct self.de
       onChannel(mockChannel);
       return { close() {} };
     },
+    isChannelAuthenticated: () => true,
     createTransferReceiver: () => {
       rosterReceiverAttached = true;
       return () => {};
@@ -262,9 +265,10 @@ test('trusted wait dynamic behavioral test: arms responder with distinct self.de
   // 1. Test waitTrustedTransfer in attendance mode
   await ctx.waitTrustedTransfer('sa-device-test', 'attendance');
   assert.equal(capturedResponderContext?.deviceId, 'mini-device-uuid-99', 'must pass self.deviceId');
-  assert.equal(rosterReceiverAttached, true, 'armRosterReceiver must coexist with attendance responder');
+  assert.equal(rosterReceiverAttached, false, 'attendance mode must not arm the roster receiver');
+  assert.deepEqual(JSON.parse(mockChannel.sent.at(-1)), { schema: 'attendance-ready/v1' }, 'Mini must announce readiness after responder is armed');
   assert.ok(mockBodyDiv.innerHTML.includes('Esperar asistencia de SA Oficina'), 'must show attendance header');
-  assert.ok(statusText.includes('Esperando solicitud de asistencia'), 'status text must reflect attendance');
+  assert.ok(statusText.includes('Listo para recibir la solicitud de asistencia'), 'status text must reflect attendance readiness');
 
   // 2. Simulate incoming attendance-request/v1
   for (const handler of channelMessageHandlers) {
@@ -279,14 +283,28 @@ test('trusted wait dynamic behavioral test: arms responder with distinct self.de
     });
   }
   assert.equal(statusHtml, '', 'UI must not claim attendance delivery success before SA validates the response');
-  assert.ok(statusText.includes('Esperando solicitud de asistencia'), 'wait status remains honest until SA confirms reception');
+  assert.ok(statusText.includes('Listo para recibir la solicitud de asistencia'), 'wait status remains honest until SA confirms reception');
 
   // 3. Test backward-compatible waitTrustedRoster
   await ctx.waitTrustedRoster('sa-device-test');
   assert.ok(mockBodyDiv.innerHTML.includes('Esperar roster de SA Oficina'), 'waitTrustedRoster must show roster header');
   assert.ok(statusText.includes('Esperando roster'), 'status text must reflect roster wait');
+  assert.equal(rosterReceiverAttached, true, 'roster mode must arm the roster receiver');
 });
 
+
+test('Mini offers camera QR pairing with manual fallback and guaranteed camera cleanup',()=>{
+  const ui=read('p2p-roster-ui.js');
+  assert.ok(ui.includes('data-scan-pair'), 'home must expose QR scan action');
+  assert.ok(ui.includes('Escanear QR de SA'));
+  assert.ok(ui.includes('navigator?.mediaDevices') || ui.includes('root.navigator?.mediaDevices'));
+  assert.ok(ui.includes('BarcodeDetector'));
+  assert.ok(ui.includes("facingMode: { ideal: 'environment' }"));
+  assert.ok(ui.includes('core.parsePairHash'));
+  assert.ok(ui.includes('core.decodePairDescriptor'));
+  assert.ok(ui.includes('activeQrStream.getTracks().forEach(track => track.stop())'), 'camera tracks must be stopped');
+  assert.ok(ui.includes('data-manual-fallback'), 'manual code/key fallback must remain available');
+});
 
 test('manual pairing is single-flight and exposes useful connection progress',()=>{
   const ui=read('p2p-roster-ui.js');
@@ -552,7 +570,7 @@ test('no false-success attendance listener in armAttendanceResponder', async () 
     },
     SaMiniP2PPeerAliases: { createPeerAliasStore: () => ({ resolveName: p => p.displayName, getAlias: () => null }) },
     AttendanceExport: {
-      attachAttendanceResponder: (ch, peer, opt) => { responderContext = opt; }
+      attachAttendanceResponder: (ch, peer, opt) => { responderContext = opt; return () => {}; }
     }
   };
   ctx.window = ctx;
@@ -562,7 +580,7 @@ test('no false-success attendance listener in armAttendanceResponder', async () 
   await ctx.waitTrustedTransfer('peer-test', 'attendance');
   assert.equal(responderContext?.deviceId, 'm-test-dev');
   const messageListeners = channelListeners.filter(l => l.type === 'message');
-  assert.equal(messageListeners.length, 1, 'only armRosterReceiver attaches message listener, armAttendanceResponder does not');
+  assert.equal(messageListeners.length, 0, 'attendance mode must not attach the roster receiver listener');
   for (const l of messageListeners) {
     l.fn({ data: JSON.stringify({ schema: 'attendance-request/v1', requestId: 'r1' }) });
   }

@@ -11,6 +11,11 @@
   let activeSession = null;
   let activeChannel = null;
   let pendingRoster = null;
+  let activeAttendanceResponderDetach = null;
+  let activeQrStream = null;
+  let activeQrScanTimer = null;
+  let activeQrScanGeneration = 0;
+  const ATTENDANCE_READY_SCHEMA = 'attendance-ready/v1';
 
   function esc(value) {
     return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -50,7 +55,29 @@
     return bounded || fallback;
   }
 
+  function cleanupQrScanner() {
+    activeQrScanGeneration += 1;
+    if (activeQrScanTimer !== null) {
+      try { root.clearTimeout(activeQrScanTimer); } catch (_) {}
+      activeQrScanTimer = null;
+    }
+    if (activeQrStream) {
+      try { activeQrStream.getTracks().forEach(track => track.stop()); } catch (_) {}
+      activeQrStream = null;
+    }
+    const video = body()?.querySelector?.('[data-qr-video]');
+    if (video) {
+      try { video.pause?.(); } catch (_) {}
+      try { video.srcObject = null; } catch (_) {}
+    }
+  }
+
   function cleanupSession() {
+    cleanupQrScanner();
+    if (activeAttendanceResponderDetach) {
+      try { activeAttendanceResponderDetach(); } catch (_) {}
+      activeAttendanceResponderDetach = null;
+    }
     try { activeSession?.close?.(); } catch (_) {}
     activeSession = null;
     activeChannel = null;
@@ -232,8 +259,12 @@
       </div>
       <div style="margin-top:18px;display:flex;justify-content:space-between;gap:10px"><strong>SA vinculados</strong><span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini" style="border:0;background:transparent;color:var(--accent-color);cursor:pointer;padding:6px 8px;font-size:14px;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">✎</button></span></div>
       <div style="display:grid;gap:8px;margin-top:10px">${peerRows}</div>
-      <div style="margin-top:16px">${primary('Vincular con SA usando código + clave','data-manual-pair')}</div>
-      <p style="font-size:11px;color:var(--text-muted);line-height:1.45;margin-top:12px">Recibir un roster no lo importa automáticamente. Primero se verifica SHA-256 y luego se abre la revisión normal de Mini.</p>`; });
+      <div style="margin-top:16px;display:grid;gap:8px">
+        ${primary('Escanear QR de SA','data-scan-pair')}
+        <button type="button" data-manual-pair class="btn-full btn-secondary" style="min-height:44px;margin-top:0">Usar código + clave</button>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);line-height:1.45;margin-top:12px">El QR evita escribir código y clave. La entrada manual sigue disponible como respaldo. Recibir un roster no lo importa automáticamente.</p>`; });
+    body().querySelector('[data-scan-pair]').addEventListener('click', renderQrScanner);
     body().querySelector('[data-manual-pair]').addEventListener('click', renderManualPair);
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
@@ -315,6 +346,99 @@
       aliasStore.removeAlias(peer.peerId);
       renderHome();
     });
+  }
+
+  async function descriptorFromScannedQr(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) throw new Error('El QR no contiene datos de vinculación.');
+    let encoded = null;
+    try {
+      const parsedUrl = new URL(raw, root.location?.href || 'https://mini.invalid/');
+      encoded = core.parsePairHash(parsedUrl.hash);
+    } catch (_) {}
+    if (!encoded && raw.startsWith('#')) encoded = core.parsePairHash(raw);
+    if (!encoded && /^[A-Za-z0-9_-]+$/.test(raw)) encoded = raw;
+    if (!encoded) throw new Error('Este QR no es un vínculo válido de SA.');
+    return core.decodePairDescriptor(encoded);
+  }
+
+  async function renderQrScanner() {
+    cleanupSession();
+    shell();
+    morphShell(() => { body().innerHTML = `
+      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
+      <h3 style="margin:0 0 6px">Escanear QR de SA</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Apunta la cámara al QR que aparece en SA. Mini leerá el código y la clave automáticamente.</p>
+      <div style="position:relative;border:1px solid var(--border-color);border-radius:14px;overflow:hidden;background:var(--input-bg);aspect-ratio:1/1;max-height:56vh">
+        <video data-qr-video playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
+        <div style="position:absolute;inset:14%;border:2px solid var(--accent-color);border-radius:18px;pointer-events:none"></div>
+      </div>
+      <div data-qr-status role="status" aria-live="polite" style="font-size:12px;color:var(--text-muted);margin-top:10px">Preparando cámara…</div>
+      <button type="button" data-manual-fallback class="btn-full btn-secondary" style="min-height:44px;margin-top:12px">Usar código + clave</button>`; });
+
+    const back = () => { cleanupQrScanner(); renderHome(); };
+    body().querySelector('[data-back]')?.addEventListener('click', back);
+    body().querySelector('[data-manual-fallback]')?.addEventListener('click', () => { cleanupQrScanner(); renderManualPair(); });
+    const status = body().querySelector('[data-qr-status]');
+    const video = body().querySelector('[data-qr-video]');
+    const mediaDevices = root.navigator?.mediaDevices;
+    const Detector = root.BarcodeDetector;
+    if (!mediaDevices?.getUserMedia || typeof Detector !== 'function') {
+      if (status) status.textContent = 'Este navegador no permite escanear QR directamente. Puedes usar código + clave.';
+      return;
+    }
+
+    const generation = ++activeQrScanGeneration;
+    try {
+      if (typeof Detector.getSupportedFormats === 'function') {
+        const formats = await Detector.getSupportedFormats();
+        if (Array.isArray(formats) && !formats.includes('qr_code')) {
+          throw new Error('Este navegador no admite lectura de códigos QR con la cámara.');
+        }
+      }
+      const detector = new Detector({ formats: ['qr_code'] });
+      const stream = await mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      if (generation !== activeQrScanGeneration || !body()?.contains?.(video)) {
+        try { stream.getTracks().forEach(track => track.stop()); } catch (_) {}
+        return;
+      }
+      activeQrStream = stream;
+      video.srcObject = stream;
+      await video.play?.();
+      if (status) status.textContent = 'Cámara activa. Buscando QR de SA…';
+
+      const scan = async () => {
+        if (generation !== activeQrScanGeneration || !activeQrStream) return;
+        try {
+          const results = await detector.detect(video);
+          const rawValue = results?.find(item => typeof item?.rawValue === 'string' && item.rawValue.trim())?.rawValue;
+          if (rawValue) {
+            if (status) status.textContent = 'QR detectado. Verificando vínculo…';
+            const descriptor = await descriptorFromScannedQr(rawValue);
+            cleanupQrScanner();
+            await startPairing(descriptor);
+            return;
+          }
+        } catch (error) {
+          if (generation !== activeQrScanGeneration) return;
+          if (error?.message && /QR|vínculo|emparejamiento|expir/i.test(error.message)) {
+            if (status) status.textContent = error.message;
+          }
+        }
+        if (generation === activeQrScanGeneration) {
+          activeQrScanTimer = root.setTimeout(scan, 180);
+        }
+      };
+      scan();
+    } catch (error) {
+      cleanupQrScanner();
+      if (status) status.textContent = error?.name === 'NotAllowedError'
+        ? 'No se concedió acceso a la cámara. Puedes permitirlo e intentar de nuevo o usar código + clave.'
+        : (error?.message || 'No se pudo iniciar la cámara. Usa código + clave.');
+    }
   }
 
   function renderManualPair() {
@@ -503,11 +627,22 @@
           self,peer,store:identityStore,
           onAuthenticated:()=>{
             const box=body()?.querySelector('[data-wait-status]');
-            if(box) box.textContent = isAttendance
-              ? '✓ SA autenticado. Esperando solicitud de asistencia…'
-              : '✓ SA autenticado. Esperando roster…';
-            armRosterReceiver(channel,peer);
-            armAttendanceResponder(channel,peer,self);
+            try {
+              if (isAttendance) {
+                activeAttendanceResponderDetach = armAttendanceResponder(channel,peer,self);
+                if (typeof activeAttendanceResponderDetach !== 'function') {
+                  throw new Error('El módulo de asistencia no está disponible en este Mini.');
+                }
+                // The responder listener is armed before Mini announces readiness.
+                sendAttendanceReady(channel);
+                if(box) box.textContent = '✓ SA autenticado. Listo para recibir la solicitud de asistencia…';
+              } else {
+                armRosterReceiver(channel,peer);
+                if(box) box.textContent = '✓ SA autenticado. Esperando roster…';
+              }
+            } catch (error) {
+              renderWaitError(error, peerId, mode);
+            }
           },
           onError:error=>renderWaitError(error, peerId, mode)
         });
@@ -515,10 +650,20 @@
     });
   }
 
+  function sendAttendanceReady(channel) {
+    if (!channel || channel.readyState !== 'open') {
+      throw new Error('Canal P2P no disponible para preparar asistencia.');
+    }
+    if (typeof core.isChannelAuthenticated === 'function' && core.isChannelAuthenticated(channel) !== true) {
+      throw new Error('Canal P2P no autenticado para preparar asistencia.');
+    }
+    channel.send(JSON.stringify({ schema: ATTENDANCE_READY_SCHEMA }));
+  }
+
   function armAttendanceResponder(channel, peer, self) {
-    if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return;
+    if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return null;
     const deviceId = self?.deviceId || undefined;
-    root.AttendanceExport.attachAttendanceResponder(channel, peer, {
+    return root.AttendanceExport.attachAttendanceResponder(channel, peer, {
       get repository() { return root.attendanceRepository; },
       get employeeRepository() { return root.employeeRepository; },
       get attendanceData() { return root.attendanceData; },
