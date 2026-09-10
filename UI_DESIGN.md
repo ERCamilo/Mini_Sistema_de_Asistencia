@@ -81,6 +81,17 @@ Todos los iconos de la aplicación se gestionan a través del módulo centraliza
 
 ---
 
+### 4.1 Estados, Chips y Resoluciones
+
+- Las etiquetas semánticas nuevas no usan el patrón `fondo transparente + borde de color + texto del mismo color`. Usan **relleno sólido semántico** y texto/icono de alto contraste.
+- `success/listo` usa el color de éxito; `warning/conflicto` usa advertencia; `error/bloqueo` usa peligro; `nuevo/informativo` usa el acento de la app.
+- No depender sólo del color: conflicto, error o advertencia conservan texto o iconografía comprensible.
+- En filas repetitivas, el estado `Resuelto` se representa preferentemente con un **SVG checkmark** accesible, no con una píldora textual `Resuelto`.
+- Estados ya incorporados/procesados pueden atenuar la tarjeta completa sin hacer ilegible su contenido.
+- La misma semántica debe conservar color, icono y redacción en todas las pantallas.
+
+---
+
 ## 5. Patrones de Componentes Estándar
 
 ### 5.1 Botones de Acción
@@ -167,6 +178,20 @@ Cuando una acción cambia de una vista compacta a otra más grande o pequeña de
 - Interacciones pequeñas dentro de la misma vista no deben reanimar todo el modal.
 - Con `prefers-reduced-motion: reduce`, saltar a la geometría final sin animación pero conservando el mismo shell para evitar flash/parpadeo.
 - Todos los colores y estados de la transición continúan usando los tokens existentes (`--card-bg`, `--input-bg`, `--border-color`, `--text-color`, `--text-muted`, `--accent-color`, etc.).
+
+### 5.8 Vinculación y Transferencias SA ↔ Mini
+
+- La portada de Transferencias no usa tarjetas grandes por habilidad. Mostrar una **franja compacta de capacidades** en una fila o grid corto (`Personal`, `Asistencia`, `Backup`, `Archivos`) y reservar la mayor parte del modal para dispositivos y acciones reales.
+- En escritorio la franja intenta mantenerse en 4 columnas; en móvil puede pasar a 2 columnas sin reducir objetivos táctiles por debajo de `44x44px`.
+- Capacidades futuras/deshabilitadas permanecen en la misma franja, atenuadas y sin competir con las funciones disponibles.
+- Los SA vinculados se muestran como filas/tarjetas compactas: icono vectorial, alias/nombre, última conexión y acciones. Evitar una tarjeta alta por acción.
+- Las acciones principales conservan texto (`Roster`, `Asistencia`, `Escanear QR de SA`); editar, cerrar, volver y desvincular usan SVG de `IconSet`.
+- El flujo completo `inicio → QR/código → confirmación → espera → resultado/error` conserva el mismo overlay/shell y utiliza la transición morfológica de 5.7.
+- El contenido interior conserva un gutter consistente de `16–20px` (`12–14px` en pantallas estrechas). Ningún control debe quedar pegado al borde del modal.
+- No usar `style=` inline para construir nuevas superficies P2P; los estilos pertenecen a la hoja específica y usan exclusivamente los tokens documentados de Mini.
+- No usar emojis o símbolos Unicode como iconografía de acciones/estados P2P. Se usan SVG vectoriales incluso si existe un modo visual heredado basado en emoji.
+- Desvincular siempre usa `showConfirm()`; nunca `confirm()` nativo.
+
 
 ## 6. Checklist de Validación UI para Nuevos Cambios
 

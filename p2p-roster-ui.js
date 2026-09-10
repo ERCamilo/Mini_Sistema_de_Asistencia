@@ -41,6 +41,29 @@
   function toast(message) { if (typeof root.showToast === 'function') root.showToast(message); }
   const MAX_REJECTION_REASON_BYTES = 256;
 
+  function vectorIcon(name, size = 18) {
+    let svg = '';
+    try { svg = root.IconSet?.iconSvg?.(name) || ''; } catch (_) {}
+    if (!svg) {
+      svg = '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/></svg>';
+    }
+    return `<span class="mini-p2p-icon" data-icon-vector="${esc(name)}" aria-hidden="true">${svg.replace('<svg ', `<svg width="${size}" height="${size}" `)}</span>`;
+  }
+
+  function uiButton(label, attrs = '', kind = 'primary', iconName = '') {
+    const icon = iconName ? vectorIcon(iconName, 16) : '';
+    return `<button type="button" class="mini-p2p-button mini-p2p-button-${kind}" ${attrs}>${icon}<span>${esc(label)}</span></button>`;
+  }
+
+  function backButton(label = 'Volver') {
+    return `<button type="button" class="mini-p2p-back" data-back>${vectorIcon('chevronLeft', 17)}<span>${esc(label)}</span></button>`;
+  }
+
+  function statusMessage(iconName, text, detail = '') {
+    const detailMarkup = detail ? `<small>${esc(detail)}</small>` : '';
+    return `<span class="mini-p2p-inline-status">${vectorIcon(iconName, 16)}<span><strong>${esc(text)}</strong>${detailMarkup}</span></span>`;
+  }
+
   function boundedUserSafeError(error) {
     const fallback = 'No se pudo validar el roster recibido.';
     const raw = error instanceof Error ? error.message : '';
@@ -93,15 +116,15 @@
     if (modal()) return;
     const el = document.createElement('div');
     el.id = MODAL_ID;
-    el.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px;';
+    el.className = 'mini-p2p-overlay';
     el.innerHTML = `
-      <section role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title" style="width:min(650px,100%);max-height:92vh;overflow:auto;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:20px;box-shadow:0 24px 70px rgba(0,0,0,.3);box-sizing:border-box;">
-        <header style="display:flex;align-items:center;gap:12px;padding:18px 20px;border-bottom:1px solid var(--border-color);position:sticky;top:0;background:inherit;z-index:2">
-          <span style="font-size:24px">⇄</span>
-          <div style="flex:1"><strong id="mini-p2p-title">Transferencias directas</strong><div style="font-size:12px;color:var(--text-muted)">Mini ↔ SA · WebRTC</div></div>
-          <button type="button" data-p2p-close aria-label="Cerrar" title="Cerrar" style="border:0;background:transparent;color:inherit;font-size:28px;cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">×</button>
+      <section class="mini-p2p-shell" role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title">
+        <header class="mini-p2p-topbar">
+          <span class="mini-p2p-topbar-icon">${vectorIcon('link', 20)}</span>
+          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Transferencias directas</strong><div class="mini-p2p-subtitle">Mini ↔ SA · conexión directa</div></div>
+          <button type="button" class="mini-p2p-icon-btn" data-p2p-close aria-label="Cerrar" title="Cerrar">${vectorIcon('close', 17)}</button>
         </header>
-        <div data-p2p-body style="padding:18px 20px"></div>
+        <div class="mini-p2p-body" data-p2p-body></div>
       </section>`;
     el.querySelector('[data-p2p-close]').addEventListener('click', () => closeTransferModal());
     el.addEventListener('click', e => { if (e.target === el) closeTransferModal(); });
@@ -219,11 +242,16 @@
     }
   }
 
-  function primary(label, attrs = '') {
-    return `<button type="button" class="btn-full btn-primary" ${attrs} style="margin-top:0;min-height:44px">${label}</button>`;
+  function primary(label, attrs = '', iconName = '') {
+    return uiButton(label, attrs, 'primary', iconName);
   }
-  function disabledCard(title, detail) {
-    return `<button type="button" disabled aria-disabled="true" style="width:100%;text-align:left;border:1px solid var(--border-color);border-radius:14px;padding:14px;opacity:.5;background:var(--input-bg);color:var(--text-muted);cursor:not-allowed;min-height:44px"><strong>${title}</strong><div style="font-size:12px;margin-top:4px">${detail} · Próximamente</div></button>`;
+
+  function secondary(label, attrs = '', iconName = '') {
+    return uiButton(label, attrs, 'secondary', iconName);
+  }
+
+  function capability(iconName, title, detail, stateClass = '') {
+    return `<div class="mini-p2p-capability ${stateClass}"><span class="mini-p2p-capability-icon">${vectorIcon(iconName, 16)}</span><span class="mini-p2p-capability-copy"><strong>${esc(title)}</strong><small>${esc(detail)}</small></span></div>`;
   }
 
   async function renderHome() {
@@ -235,35 +263,43 @@
     const peerRows = peers.length ? peers.map(peer => {
       const alias = aliasStore.getAlias(peer.peerId);
       const original = peerOriginalName(peer);
-      const linked = formatPeerDate(peer.linkedAt);
       const lastSeen = formatPeerDate(peer.lastSeenAt || peer.linkedAt);
-      const originalLine = alias ? `<div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Original: ${esc(original)}</div>` : '';
+      const originalLine = alias ? ` · Original: ${esc(original)}` : '';
       return `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid var(--border-color);border-radius:12px;padding:12px;background:var(--input-bg)">
-        <div style="flex:1;min-width:180px"><strong>${esc(peerName(peer))}</strong>${originalLine}<div style="font-size:11px;color:var(--text-muted);line-height:1.35">Última conexión: ${esc(lastSeen)} · Vinculado: ${esc(linked)}</div></div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <button type="button" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre" style="border:1px solid var(--border-color);border-radius:10px;padding:9px;background:var(--card-bg);color:var(--accent-color);cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">✎</button>
-          <button type="button" data-wait-peer="${esc(peer.peerId)}" class="btn-primary" style="border:0;border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer;min-height:44px;margin-top:0">Esperar roster</button>
-          <button type="button" data-wait-attendance="${esc(peer.peerId)}" class="btn-secondary" style="border-radius:10px;padding:9px 12px;font-weight:700;cursor:pointer;min-height:44px;margin-top:0;color:var(--accent-color)">Esperar asistencia</button>
-          <button type="button" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular" title="Desvincular" style="border:1px solid var(--border-color);border-radius:10px;padding:9px;background:var(--card-bg);color:var(--danger-color);cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">×</button>
-        </div>
-      </div>`;
-    }).join('') : '<div style="font-size:13px;color:var(--text-muted);padding:8px 0">Aún no hay SA vinculados.</div>';
+        <div class="mini-p2p-peer-row">
+          <span class="mini-p2p-peer-avatar">${vectorIcon('hardHat', 17)}</span>
+          <div class="mini-p2p-peer-copy"><strong>${esc(peerName(peer))}</strong><div class="mini-p2p-peer-meta">Última conexión: ${esc(lastSeen)}${originalLine}</div></div>
+          <div class="mini-p2p-device-actions">
+            <button type="button" class="mini-p2p-icon-btn" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre">${vectorIcon('edit', 16)}</button>
+            ${uiButton('Roster', `data-wait-peer="${esc(peer.peerId)}" aria-label="Esperar roster de ${esc(peerName(peer))}"`, 'primary', 'users')}
+            ${uiButton('Asistencia', `data-wait-attendance="${esc(peer.peerId)}" aria-label="Esperar asistencia de ${esc(peerName(peer))}"`, 'secondary', 'attendance')}
+            <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
+          </div>
+        </div>`;
+    }).join('') : '<div class="mini-p2p-empty">Aún no hay SA vinculados. Escanea el QR de SA para agregar el primero.</div>';
 
     morphShell(() => { body().innerHTML = `
-      <div style="display:grid;gap:10px">
-        <div style="border:1px solid var(--border-color);border-radius:14px;padding:14px;background:var(--input-bg)"><strong>👥 Personal / Roster</strong><div style="font-size:12px;margin-top:4px;color:var(--text-muted)">Disponible ahora · recibir desde SA</div></div>
-        <div style="border:1px solid var(--border-color);border-radius:14px;padding:14px;background:var(--input-bg)"><strong>🕒 Asistencia</strong><div style="font-size:12px;margin-top:4px;color:var(--text-muted)">Disponible ahora · responder solicitud de SA</div></div>
-        ${disabledCard('💾 Backup','Mini ↔ Mini')}
-        ${disabledCard('📄 Documentos / Archivos','Reservado para una fase futura')}
+      <section class="mini-p2p-capabilities-wrap" aria-labelledby="mini-p2p-capabilities-title">
+        <h3 id="mini-p2p-capabilities-title" class="mini-p2p-section-label">Capacidades</h3>
+        <div class="mini-p2p-capabilities">
+          ${capability('users', 'Personal', 'Recibir de SA', 'is-ready')}
+          ${capability('attendance', 'Asistencia', 'Responder a SA', 'is-ready')}
+          ${capability('backup', 'Backup', 'Próximamente', 'is-disabled')}
+          ${capability('restore', 'Archivos', 'Próximamente', 'is-disabled')}
+        </div>
+      </section>
+      <section class="mini-p2p-devices" aria-labelledby="mini-p2p-devices-title">
+        <div class="mini-p2p-devices-head">
+          <div><h3 id="mini-p2p-devices-title">SA vinculados</h3><div class="mini-p2p-subtitle">${peers.length} dispositivo${peers.length === 1 ? '' : 's'} guardado${peers.length === 1 ? '' : 's'} en este Mini</div></div>
+          <div class="mini-p2p-self">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" class="mini-p2p-icon-btn" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini">${vectorIcon('edit', 15)}</button></div>
+        </div>
+        <div class="mini-p2p-peer-list">${peerRows}</div>
+      </section>
+      <div class="mini-p2p-actions">
+        ${uiButton('Escanear QR de SA', 'data-scan-pair', 'primary', 'camera')}
+        ${uiButton('Usar código + clave', 'data-manual-pair', 'secondary', 'hash')}
       </div>
-      <div style="margin-top:18px;display:flex;justify-content:space-between;gap:10px"><strong>SA vinculados</strong><span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini" style="border:0;background:transparent;color:var(--accent-color);cursor:pointer;padding:6px 8px;font-size:14px;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center">✎</button></span></div>
-      <div style="display:grid;gap:8px;margin-top:10px">${peerRows}</div>
-      <div style="margin-top:16px;display:grid;gap:8px">
-        ${primary('Escanear QR de SA','data-scan-pair')}
-        <button type="button" data-manual-pair class="btn-full btn-secondary" style="min-height:44px;margin-top:0">Usar código + clave</button>
-      </div>
-      <p style="font-size:11px;color:var(--text-muted);line-height:1.45;margin-top:12px">El QR evita escribir código y clave. La entrada manual sigue disponible como respaldo. Recibir un roster no lo importa automáticamente.</p>`; });
+      <p class="mini-p2p-footnote">El QR evita escribir código y clave. Vincular sólo crea una relación segura; recibir datos nunca los incorpora automáticamente.</p>`; });
     body().querySelector('[data-scan-pair]').addEventListener('click', renderQrScanner);
     body().querySelector('[data-manual-pair]').addEventListener('click', renderManualPair);
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
@@ -274,15 +310,8 @@
       const peerId = btn.dataset.unlink;
       const peer = await identityStore.getPeer(peerId);
       const name = peer ? peerName(peer) : 'este SA';
-      if (typeof root.showConfirm !== 'function') {
-        toast('Confirmación no disponible en este entorno.');
-        return;
-      }
-      const confirmed = await root.showConfirm(`¿Desvincular a ${name}?`, {
-        title: 'Desvincular SA',
-        confirmText: 'Desvincular',
-        danger: true
-      });
+      if (typeof root.showConfirm !== 'function') { toast('Confirmación no disponible en este entorno.'); return; }
+      const confirmed = await root.showConfirm(`¿Desvincular a ${name}?`, { title: 'Desvincular SA', confirmText: 'Desvincular', danger: true });
       if (!confirmed) return;
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
@@ -293,13 +322,13 @@
   async function renderSelfNameEditor() {
     const self = await identityStore.getSelf();
     morphShell(() => { body().innerHTML = `
-      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
-      <h3 style="margin:0 0 6px">Nombre de este Mini</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Este es el nombre que este dispositivo presenta en futuros emparejamientos.</p>
-      <label for="mini-p2p-self-name" style="display:block;font-size:12px;margin-bottom:5px">Nombre del dispositivo</label>
-      <input id="mini-p2p-self-name" data-self-name maxlength="80" value="${esc(self.displayName)}" placeholder="Ej: Mini almacén" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);min-height:44px">
-      <p style="font-size:11px;line-height:1.45;color:var(--text-muted);margin-top:8px">Cambiarlo no modifica deviceId, claves ni vínculos existentes. Los aliases personalizados guardados en otros dispositivos tampoco cambian.</p>
-      <div style="margin-top:14px">${primary('Guardar nombre del Mini','data-save-self-name')}</div>`; });
+      <div class="mini-p2p-step">
+        ${backButton()}
+        <div><h3>Nombre de este Mini</h3><p>Es el nombre que este dispositivo presenta en futuros emparejamientos.</p></div>
+        <div class="mini-p2p-field"><label for="mini-p2p-self-name">Nombre del dispositivo</label><input id="mini-p2p-self-name" data-self-name maxlength="80" value="${esc(self.displayName)}" placeholder="Ej: Mini almacén"></div>
+        <p class="mini-p2p-footnote">Cambiarlo no modifica deviceId, claves ni vínculos existentes. Los aliases personalizados guardados en otros dispositivos tampoco cambian.</p>
+        <div class="mini-p2p-actions">${primary('Guardar nombre del Mini','data-save-self-name')}</div>
+      </div>`; });
     const input = body().querySelector('[data-self-name]');
     input?.focus();
     input?.select();
@@ -324,15 +353,12 @@
     const currentAlias = aliasStore.getAlias(peer.peerId);
     const original = peerOriginalName(peer);
     morphShell(() => { body().innerHTML = `
-      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
-      <h3 style="margin:0 0 6px">Nombre de esta conexión</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Nombre original: <strong>${esc(original)}</strong></p>
-      <label for="mini-p2p-peer-alias" style="display:block;font-size:12px;margin-bottom:5px">Nombre personalizado</label>
-      <input id="mini-p2p-peer-alias" data-peer-alias maxlength="64" value="${esc(currentAlias)}" placeholder="Ej: SA oficina" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);min-height:44px">
-      <p style="font-size:11px;line-height:1.45;color:var(--text-muted);margin-top:8px">Este nombre se guarda sólo en este Mini. No cambia el vínculo, la identidad del dispositivo ni sus claves de seguridad.</p>
-      <div style="display:grid;gap:8px;margin-top:14px">
-        ${primary('Guardar nombre','data-save-alias')}
-        <button type="button" data-clear-alias class="btn-full btn-secondary" style="margin-top:0;min-height:44px">Usar nombre original</button>
+      <div class="mini-p2p-step">
+        ${backButton()}
+        <div><h3>Nombre de esta conexión</h3><p>Nombre original: <strong>${esc(original)}</strong></p></div>
+        <div class="mini-p2p-field"><label for="mini-p2p-peer-alias">Nombre personalizado</label><input id="mini-p2p-peer-alias" data-peer-alias maxlength="64" value="${esc(currentAlias)}" placeholder="Ej: SA oficina"></div>
+        <p class="mini-p2p-footnote">Este nombre se guarda sólo en este Mini. No cambia el vínculo, la identidad del dispositivo ni sus claves de seguridad.</p>
+        <div class="mini-p2p-actions">${primary('Guardar nombre','data-save-alias')}${secondary('Usar nombre original','data-clear-alias')}</div>
       </div>`; });
     const input = body().querySelector('[data-peer-alias]');
     input?.focus();
@@ -366,15 +392,13 @@
     cleanupSession();
     shell();
     morphShell(() => { body().innerHTML = `
-      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
-      <h3 style="margin:0 0 6px">Escanear QR de SA</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Apunta la cámara al QR que aparece en SA. Mini leerá el código y la clave automáticamente.</p>
-      <div style="position:relative;border:1px solid var(--border-color);border-radius:14px;overflow:hidden;background:var(--input-bg);aspect-ratio:1/1;max-height:56vh">
-        <video data-qr-video playsinline muted style="width:100%;height:100%;object-fit:cover;display:block"></video>
-        <div style="position:absolute;inset:14%;border:2px solid var(--accent-color);border-radius:18px;pointer-events:none"></div>
-      </div>
-      <div data-qr-status role="status" aria-live="polite" style="font-size:12px;color:var(--text-muted);margin-top:10px">Preparando cámara…</div>
-      <button type="button" data-manual-fallback class="btn-full btn-secondary" style="min-height:44px;margin-top:12px">Usar código + clave</button>`; });
+      <div class="mini-p2p-step">
+        ${backButton()}
+        <div><h3>Escanear QR de SA</h3><p>Apunta la cámara al QR que aparece en SA. Mini leerá el código y la clave automáticamente.</p></div>
+        <div class="mini-p2p-scanner"><video data-qr-video playsinline muted></video><div class="mini-p2p-scanner-frame" aria-hidden="true"></div></div>
+        <div class="mini-p2p-status" data-qr-status role="status" aria-live="polite">Preparando cámara…</div>
+        <div class="mini-p2p-actions">${secondary('Usar código + clave','data-manual-fallback','hash')}</div>
+      </div>`; });
 
     const back = () => { cleanupQrScanner(); renderHome(); };
     body().querySelector('[data-back]')?.addEventListener('click', back);
@@ -444,15 +468,14 @@
   function renderManualPair() {
     cleanupSession();
     morphShell(() => { body().innerHTML = `
-      <button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button>
-      <h3 style="margin:0 0 6px">Vincular con SA</h3>
-      <p style="font-size:13px;color:var(--text-muted);margin-top:0">Escribe el código de 6 dígitos y la clave que muestra SA. Si escaneaste el QR, este paso se completa automáticamente.</p>
-      <label for="mini-p2p-manual-code" style="display:block;font-size:12px;margin:14px 0 5px">Código</label>
-      <input id="mini-p2p-manual-code" data-code inputmode="numeric" maxlength="7" placeholder="583 214" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);font-size:18px;letter-spacing:3px;min-height:44px">
-      <label for="mini-p2p-manual-key" style="display:block;font-size:12px;margin:14px 0 5px">Clave</label>
-      <input id="mini-p2p-manual-key" data-key maxlength="11" placeholder="ABCDE-23456" autocapitalize="characters" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--input-bg);color:var(--text-color);font-size:17px;letter-spacing:2px;text-transform:uppercase;min-height:44px">
-      <div style="margin-top:16px">${primary('Conectar con SA','data-connect')}</div>
-      <div data-pair-status style="font-size:12px;margin-top:12px"></div>`; });
+      <div class="mini-p2p-step">
+        ${backButton()}
+        <div><h3>Vincular con SA</h3><p>Escribe el código de 6 dígitos y la clave que muestra SA. Si escaneaste el QR, este paso se completa automáticamente.</p></div>
+        <div class="mini-p2p-field"><label for="mini-p2p-manual-code">Código</label><input id="mini-p2p-manual-code" class="mini-p2p-code" data-code inputmode="numeric" maxlength="7" placeholder="583 214"></div>
+        <div class="mini-p2p-field"><label for="mini-p2p-manual-key">Clave</label><input id="mini-p2p-manual-key" class="mini-p2p-code" data-key maxlength="11" placeholder="ABCDE-23456" autocapitalize="characters"></div>
+        <div class="mini-p2p-actions">${primary('Conectar con SA','data-connect','link')}</div>
+        <div class="mini-p2p-status" data-pair-status hidden></div>
+      </div>`; });
     body().querySelector('[data-back]').addEventListener('click', renderHome);
     const connectButton = body().querySelector('[data-connect]');
     connectButton.addEventListener('click', async () => {
@@ -465,7 +488,7 @@
         await startPairing(descriptor);
       } catch (error) {
         const box = body()?.querySelector('[data-pair-status]');
-        if (box) box.textContent = error.message;
+        if (box) { box.hidden = false; box.classList?.add?.('is-error'); box.textContent = error.message; }
         if (connectButton.isConnected) {
           connectButton.disabled = false;
           connectButton.removeAttribute('aria-busy');
@@ -480,7 +503,7 @@
     shell();
     if (descriptor.expiresAt !== undefined && Number(descriptor.expiresAt) <= Date.now()) throw new Error('La sesión de emparejamiento expiró.');
     if (!body().querySelector('[data-pair-status]')) {
-      morphShell(() => { body().innerHTML = `<h3 style="margin-top:0">Vincular con ${esc(descriptor.issuerName || 'SA')}</h3><p style="font-size:13px;color:var(--text-muted)">Conectando mediante el vínculo del QR…</p><div data-pair-status style="padding:14px;border-radius:12px;background:var(--input-bg);border:1px solid var(--border-color);font-size:13px">Buscando SA…</div><button type="button" data-cancel class="btn-full btn-secondary" style="min-height:44px;margin-top:10px">Cancelar</button>`; });
+      morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div><h3>Vincular con ${esc(descriptor.issuerName || 'SA')}</h3><p>Conectando mediante el vínculo seguro.</p></div><div class="mini-p2p-status" data-pair-status>Buscando SA…</div><div class="mini-p2p-actions">${secondary('Cancelar','data-cancel')}</div></div>`; });
       body().querySelector('[data-cancel]').addEventListener('click', renderHome);
     } else {
       body().querySelector('[data-pair-status]').textContent = 'Buscando SA…';
@@ -525,20 +548,20 @@
   function renderPairConfirmation(remote, sas, accept, reject) {
     const box=body()?.querySelector('[data-pair-status]');
     if (!box) return;
-    box.innerHTML = `<strong>${esc(remote.displayName)}</strong> quiere vincularse.<br><span style="font-size:12px;color:var(--text-muted)">Confirma que ambos muestran:</span><div style="font-size:28px;font-weight:800;letter-spacing:4px;margin:8px 0;color:var(--accent-color)">${esc(sas)}</div><div style="display:flex;gap:8px"><button type="button" data-reject class="btn-full btn-secondary" style="flex:1;min-height:44px;margin-top:0;color:var(--danger-color);border-color:var(--danger-color)">Rechazar</button><button type="button" data-accept class="btn-full btn-primary" style="flex:1;min-height:44px;margin-top:0">Confirmar vínculo</button></div>`;
+    box.innerHTML = `<div class="mini-p2p-step"><div><strong>${esc(remote.displayName)}</strong> quiere vincularse.</div><span>Confirma que ambos dispositivos muestran el mismo código:</span><strong class="mini-p2p-sas">${esc(sas)}</strong><div class="mini-p2p-actions">${uiButton('Rechazar','data-reject','secondary')}${uiButton('Confirmar vínculo','data-accept','primary','link')}</div></div>`;
     box.querySelector('[data-reject]').addEventListener('click', reject);
     box.querySelector('[data-accept]').addEventListener('click', async () => { box.textContent='Esperando confirmación de SA…'; await accept(); });
   }
 
   function renderLinkedWaiting(peer) {
-    morphShell(() => { body().innerHTML = `<h3 style="margin-top:0">✓ SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p><div data-receive-state style="padding:14px;border-radius:12px;background:var(--input-bg);border:1px solid var(--border-color);font-size:13px">Esperando roster en esta conexión…</div><button type="button" data-finish class="btn-full btn-secondary" style="min-height:44px;margin-top:10px">Terminar</button>`; });
+    morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',18)}</span><div class="mini-p2p-result-copy"><h3>SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p></div></div><div class="mini-p2p-status" data-receive-state>Esperando roster en esta conexión…</div><div class="mini-p2p-actions">${secondary('Terminar','data-finish')}</div></div>`; });
     body().querySelector('[data-finish]').addEventListener('click', renderHome);
   }
 
   function renderError(error) {
     const message=error?.message || String(error || 'Error P2P');
     const box=body()?.querySelector('[data-pair-status]') || body()?.querySelector('[data-receive-state]') || body()?.querySelector('[data-wait-status]');
-    if (box) box.innerHTML = `<strong style="color:var(--danger-color)">Error:</strong> ${esc(message)}`;
+    if (box) { box.classList?.add?.('is-error'); box.innerHTML = `<strong>Error:</strong> ${esc(message)}`; }
     else toast('Error P2P: '+message);
   }
 
@@ -550,14 +573,9 @@
       return;
     }
     const bottomCancel = body()?.querySelector('[data-cancel]');
-    if (bottomCancel) bottomCancel.style.display = 'none';
-    box.innerHTML = `
-      <div style="color:var(--danger-color);font-weight:700;margin-bottom:6px">Error de conexión</div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${esc(message)}</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button type="button" data-retry-wait class="btn-full btn-primary" style="flex:1;min-height:44px;margin-top:0">Reintentar</button>
-        <button type="button" data-cancel-wait class="btn-full btn-secondary" style="flex:1;min-height:44px;margin-top:0">Cancelar</button>
-      </div>`;
+    if (bottomCancel?.style) bottomCancel.style.display = 'none';
+    box.classList?.add?.('is-error');
+    box.innerHTML = `<div class="mini-p2p-step"><strong>Error de conexión</strong><span>${esc(message)}</span><div class="mini-p2p-actions">${uiButton('Reintentar','data-retry-wait','primary','refresh')}${uiButton('Cancelar','data-cancel-wait','secondary')}</div></div>`;
     box.querySelector('[data-retry-wait]')?.addEventListener('click', () => {
       cleanupSession();
       waitTrustedTransfer(peerId, mode);
@@ -591,14 +609,12 @@
     const subtitle = isAttendance
       ? 'Ahora en SA selecciona este Mini y solicita la asistencia.'
       : 'Ahora en SA selecciona este Mini y pulsa “Enviar roster”.';
-    const modeBadge = isAttendance
-      ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;background:var(--input-bg);border:1px solid var(--border-color);font-size:12px;font-weight:700;color:var(--accent-color);margin-bottom:12px"><span>🕒</span> Modo: Asistencia</div>`
-      : `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:8px;background:var(--input-bg);border:1px solid var(--border-color);font-size:12px;font-weight:700;color:var(--accent-color);margin-bottom:12px"><span>👥</span> Modo: Personal / Roster</div>`;
+    const modeBadge = `<div class="mini-p2p-mode-chip">${vectorIcon(isAttendance ? 'attendance' : 'users', 15)}<span>${isAttendance ? 'Asistencia' : 'Personal / Roster'}</span></div>`;
     const modeHelp = isAttendance
-      ? '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Este Mini responderá automáticamente a las solicitudes de asistencia enviadas por este SA.</p>'
-      : '<p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Recibirás la lista de personal para revisarla antes de guardar.</p>';
+      ? '<p class="mini-p2p-footnote">Este Mini responderá automáticamente a las solicitudes de asistencia enviadas por este SA.</p>'
+      : '<p class="mini-p2p-footnote">Recibirás la lista de personal para revisarla antes de guardar.</p>';
 
-    morphShell(() => { body().innerHTML = `<button type="button" data-back aria-label="Volver" style="border:0;background:transparent;color:inherit;cursor:pointer;padding:8px 0;display:inline-flex;align-items:center;gap:6px;font-size:14px;min-height:44px">← Volver</button><div style="margin-top:4px">${modeBadge}</div><h3 style="margin:0 0 8px">${title}</h3><p style="font-size:13px;opacity:.7;margin:0 0 6px">${subtitle}</p>${modeHelp}<div data-wait-status style="padding:14px;border-radius:12px;background:var(--input-bg);border:1px solid var(--border-color);font-size:13px;line-height:1.45">Esperando conexión autenticada…</div><button type="button" data-cancel class="btn-full btn-secondary" style="min-height:44px;margin-top:14px">Cancelar espera</button>`; });
+    morphShell(() => { body().innerHTML = `<div class="mini-p2p-step">${backButton()}${modeBadge}<div><h3>${title}</h3><p>${subtitle}</p></div>${modeHelp}<div class="mini-p2p-status" data-wait-status>Esperando conexión autenticada…</div><div class="mini-p2p-actions">${secondary('Cancelar espera','data-cancel')}</div></div>`; });
     const handleCancel = () => {
       cleanupSession();
       renderHome();
@@ -613,7 +629,7 @@
         const box=body()?.querySelector('[data-wait-status]');
         if(!box) return;
         if (isAttendance && attendanceResponseSent && (status === 'closed' || status === 'disconnected')) {
-          box.textContent='✓ Respuesta de asistencia enviada. Conexión finalizada.';
+          box.classList?.add?.('is-success'); box.innerHTML=statusMessage('check','Respuesta de asistencia enviada','Conexión finalizada.');
         } else if(error) {
           renderWaitError(error, peerId, mode);
         } else if(status === 'connected') {
@@ -636,7 +652,7 @@
                   onResponseSent: () => {
                     attendanceResponseSent = true;
                     const liveBox=body()?.querySelector('[data-wait-status]');
-                    if(liveBox) liveBox.textContent='✓ Respuesta de asistencia enviada. SA la validará antes de incorporarla.';
+                    if(liveBox) { liveBox.classList?.add?.('is-success'); liveBox.innerHTML=statusMessage('check','Respuesta de asistencia enviada','SA la validará antes de incorporarla.'); }
                   }
                 });
                 if (typeof activeAttendanceResponderDetach !== 'function') {
@@ -644,10 +660,10 @@
                 }
                 // The responder listener is armed before Mini announces readiness.
                 sendAttendanceReady(channel);
-                if(box) box.textContent = '✓ SA autenticado. Listo para recibir la solicitud de asistencia…';
+                if(box) { box.classList?.remove?.('is-error'); box.innerHTML=statusMessage('check','SA autenticado','Listo para recibir la solicitud de asistencia…'); }
               } else {
                 armRosterReceiver(channel,peer);
-                if(box) box.textContent = '✓ SA autenticado. Esperando roster…';
+                if(box) { box.classList?.remove?.('is-error'); box.innerHTML=statusMessage('check','SA autenticado','Esperando roster…'); }
               }
             } catch (error) {
               renderWaitError(error, peerId, mode);
@@ -719,7 +735,8 @@
       });
       const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');
       if(!box)return;
-      box.innerHTML=`<strong style="color:var(--success-color)">✓ Roster recibido · SHA-256 verificado</strong><br><span style="font-size:12px;color:var(--text-muted)">${pendingRoster.employeeCount} empleados de ${esc(peerName(peer))}. Aún no se ha importado nada.</span><div style="margin-top:10px">${primary('Revisar roster en Mini','data-review-roster')}</div>`;
+      box.classList?.add?.('is-success');
+      box.innerHTML=`${statusMessage('check','Roster recibido · SHA-256 verificado',`${pendingRoster.employeeCount} empleados de ${peerName(peer)}. Aún no se ha importado nada.`)}<div class="mini-p2p-actions">${primary('Revisar roster en Mini','data-review-roster','users')}</div>`;
       box.querySelector('[data-review-roster]').addEventListener('click',reviewPendingRoster);
     }catch(error){
       pendingRoster=null;
@@ -765,7 +782,7 @@
       return true;
     }catch(error){
       shell();
-      morphShell(() => { body().innerHTML = `<h3>Vínculo QR inválido</h3><p>${esc(error.message||error)}</p><div>${primary('Volver','data-home')}</div>`; });
+      morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div><h3>Vínculo QR inválido</h3><p>${esc(error.message||error)}</p></div><div class="mini-p2p-actions">${secondary('Volver','data-home','chevronLeft')}</div></div>`; });
       body().querySelector('[data-home]').addEventListener('click',renderHome);
       return true;
     }

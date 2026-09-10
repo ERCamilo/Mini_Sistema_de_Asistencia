@@ -12,6 +12,22 @@ test('Mini loads P2P runtime in dependency order and precaches it',()=>{
   for(const asset of ['./p2p-core.js','./p2p-pairing.js','./p2p-peer-alias-store.js','./p2p-roster-ui.js']) assert.ok(sw.includes(asset),asset+' precached');
 });
 
+test('Mini P2P linking UI follows the compact UI_DESIGN contract',()=>{
+  const html=read('index.html'), sw=read('sw.js'), ui=read('p2p-roster-ui.js'), css=read('p2p-transfer.css');
+  assert.ok(html.includes('./p2p-transfer.css'), 'P2P stylesheet linked');
+  assert.ok(sw.includes("'./p2p-transfer.css'"), 'P2P stylesheet precached');
+  assert.ok(ui.includes('root.IconSet?.iconSvg?.(name)'), 'critical P2P icons use vector IconSet');
+  assert.ok(ui.includes('mini-p2p-capabilities'));
+  assert.ok(ui.includes('mini-p2p-peer-row'));
+  assert.ok(ui.includes('mini-p2p-device-actions'));
+  assert.equal((ui.match(/style=/g) || []).length, 0, 'P2P flow should not reintroduce inline style attributes');
+  assert.doesNotMatch(ui, /👥|🕒|💾|📄|⇄|✎|←|✓|❌|⚠️/, 'P2P actions/statuses must not use emoji or unicode symbols as icons');
+  assert.match(css, /\.mini-p2p-capabilities\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.mini-p2p-icon-btn\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px;/);
+  assert.match(css, /\.mini-p2p-button\s*\{[^}]*min-height:\s*44px;/);
+  assert.match(css, /\.mini-p2p-back\s*\{[^}]*min-height:\s*44px;/);
+});
+
 
 test('Mini peer aliases are local presentation metadata with rename/clear/unlink wiring',()=>{
   const ui=read('p2p-roster-ui.js');
@@ -82,20 +98,22 @@ test('Mini uses discrete expiry only for first-pair signaling and keeps the rece
   assert.match(ui, /createTransferReceiver\(\{\s*channel,/);
 });
 
-test('transfer types: attendance is visibly available while backup and documents remain disabled in Mini UI',()=>{
+test('transfer types: active and future capabilities share one compact capability strip',()=>{
   const ui=read('p2p-roster-ui.js');
-  assert.ok(!ui.includes("disabledCard('🕒 Asistencia'"), 'Asistencia must not be disabled');
-  assert.ok(ui.includes('🕒 Asistencia'), 'Asistencia must be visibly present');
-  assert.ok(ui.includes("disabledCard('💾 Backup'"), 'Backup must remain disabled');
-  assert.ok(ui.includes("disabledCard('📄 Documentos / Archivos'"), 'Documents must remain disabled');
+  assert.ok(ui.includes('mini-p2p-capabilities'));
+  for (const label of ['Personal','Asistencia','Backup','Archivos']) assert.ok(ui.includes(label), label + ' visible');
+  assert.match(ui, /capability\('users', 'Personal',[\s\S]*'is-ready'\)/);
+  assert.match(ui, /capability\('attendance', 'Asistencia',[\s\S]*'is-ready'\)/);
+  assert.match(ui, /capability\('backup', 'Backup',[\s\S]*'is-disabled'\)/);
+  assert.match(ui, /capability\('restore', 'Archivos',[\s\S]*'is-disabled'\)/);
 });
 
 test('Mini Transferencias UI provides explicit wait attendance button for each linked SA while preserving roster button',()=>{
   const ui=read('p2p-roster-ui.js');
   assert.ok(ui.includes('data-wait-attendance'), 'per-peer wait attendance button must exist');
   assert.ok(ui.includes('data-wait-peer'), 'per-peer wait roster button must be preserved');
-  assert.ok(ui.includes('Esperar roster'));
-  assert.ok(ui.includes('Esperar asistencia'));
+  assert.ok(ui.includes('aria-label=\"Esperar roster de'));
+  assert.ok(ui.includes('aria-label=\"Esperar asistencia de'));
   assert.ok(ui.includes("waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')"));
   assert.ok(ui.includes("waitTrustedTransfer(btn.dataset.waitPeer, 'roster')"));
 });
@@ -268,7 +286,7 @@ test('trusted wait dynamic behavioral test: attendance sends ready only after re
   assert.equal(rosterReceiverAttached, false, 'attendance mode must not arm the roster receiver');
   assert.deepEqual(JSON.parse(mockChannel.sent.at(-1)), { schema: 'attendance-ready/v1' }, 'Mini must announce readiness after responder is armed');
   assert.ok(mockBodyDiv.innerHTML.includes('Esperar asistencia de SA Oficina'), 'must show attendance header');
-  assert.ok(statusText.includes('Listo para recibir la solicitud de asistencia'), 'status text must reflect attendance readiness');
+  assert.ok((statusText + statusHtml).includes('Listo para recibir la solicitud de asistencia'), 'status must reflect attendance readiness');
 
   // 2. Simulate incoming attendance-request/v1
   for (const handler of channelMessageHandlers) {
@@ -282,13 +300,13 @@ test('trusted wait dynamic behavioral test: attendance sends ready only after re
       })
     });
   }
-  assert.equal(statusHtml, '', 'UI must not claim attendance delivery success before SA validates the response');
-  assert.ok(statusText.includes('Listo para recibir la solicitud de asistencia'), 'wait status remains honest until SA confirms reception');
+  assert.ok(!(statusText + statusHtml).includes('Respuesta de asistencia enviada'), 'UI must not claim attendance delivery success before a response is actually sent');
+  assert.ok((statusText + statusHtml).includes('Listo para recibir la solicitud de asistencia'), 'wait status remains honest while waiting for the request');
 
   // 3. Test backward-compatible waitTrustedRoster
   await ctx.waitTrustedRoster('sa-device-test');
   assert.ok(mockBodyDiv.innerHTML.includes('Esperar roster de SA Oficina'), 'waitTrustedRoster must show roster header');
-  assert.ok(statusText.includes('Esperando roster'), 'status text must reflect roster wait');
+  assert.ok((statusText + statusHtml).includes('Esperando roster'), 'status must reflect roster wait');
   assert.equal(rosterReceiverAttached, true, 'roster mode must arm the roster receiver');
 });
 
@@ -329,31 +347,19 @@ test('shared core preserves a real failure reason instead of collapsing every te
 
 test('token compliance and absence of invented tokens or raw color literals in changed connection UI', () => {
   const ui = read('p2p-roster-ui.js');
-  // 1. Invented tokens
-  assert.ok(!ui.includes('--whatsapp-color'), 'Invented --whatsapp-color must not be present');
-  // 2. Direct hex colors in styling
-  const hexMatches = ui.match(/#[0-9a-fA-F]{3,8}/g) || [];
-  const nonEntityHex = hexMatches.filter(h => h !== '#39');
+  const css = read('p2p-transfer.css');
+  const surface = ui + '\n' + css;
+  assert.ok(!surface.includes('--whatsapp-color'), 'Unrelated token must not be used by P2P UI');
+  const uiHexMatches = ui.match(/#[0-9a-fA-F]{3,8}/g) || [];
+  const nonEntityHex = uiHexMatches.filter(h => h !== '#39');
   assert.equal(nonEntityHex.length, 0, `No direct hex colors allowed in p2p-roster-ui.js: ${nonEntityHex.join(', ')}`);
-  // 3. Direct rgba literals introduced by UI components
-  assert.doesNotMatch(ui, /rgba\(37,\s*99,\s*235/, 'No blue rgba literals');
-  assert.doesNotMatch(ui, /rgba\(59,\s*130,\s*246/, 'No light blue rgba literals');
-  assert.doesNotMatch(ui, /rgba\(239,\s*68,\s*68/, 'No red rgba literals');
-  assert.doesNotMatch(ui, /rgba\(10,\s*14,\s*39/, 'No invented rgba literals');
-  // 4. Documented tokens are used
-  assert.ok(ui.includes('var(--card-bg)'), 'Must use --card-bg');
-  assert.ok(ui.includes('var(--input-bg)'), 'Must use --input-bg');
-  assert.ok(ui.includes('var(--border-color)'), 'Must use --border-color');
-  assert.ok(ui.includes('var(--text-color)'), 'Must use --text-color');
-  assert.ok(ui.includes('var(--text-muted)'), 'Must use --text-muted');
-  assert.ok(ui.includes('var(--accent-color)'), 'Must use --accent-color');
-  assert.ok(ui.includes('var(--success-color)'), 'Must use --success-color');
-  assert.ok(ui.includes('var(--danger-color)'), 'Must use --danger-color');
-  // 5. Standard button classes
-  assert.ok(ui.includes('btn-full btn-primary'), 'Must use btn-full btn-primary');
-  assert.ok(ui.includes('btn-full btn-secondary'), 'Must use btn-full btn-secondary');
-  assert.ok(ui.includes('class="btn-primary"'), 'Must use btn-primary');
-  assert.ok(ui.includes('class="btn-secondary"'), 'Must use btn-secondary');
+  for (const token of ['--card-bg','--input-bg','--border-color','--text-color','--text-muted','--accent-color','--success-color','--danger-color']) {
+    assert.ok(css.includes(`var(${token})`), `Must use ${token}`);
+  }
+  assert.ok(ui.includes('mini-p2p-button-${kind}'), 'button helper applies semantic P2P classes');
+  assert.ok(css.includes('.mini-p2p-button-primary'));
+  assert.ok(css.includes('.mini-p2p-button-secondary'));
+  assert.equal((ui.match(/style=/g) || []).length, 0, 'P2P markup must use the design stylesheet instead of inline styles');
 });
 
 test('unlink flow uses root.showConfirm and forbids native confirm with safe non-destructive fallback', async () => {
@@ -807,8 +813,8 @@ test('retry wiring in waitTrustedTransfer handles connection errors and restarts
 test('roster and attendance coexistence in UI actions, mode badges, and responder/receiver binding', async () => {
   const ui = read('p2p-roster-ui.js');
   // Check explicit mode representations
-  assert.ok(ui.includes('Modo: Asistencia'));
-  assert.ok(ui.includes('Modo: Personal / Roster'));
+  assert.ok(ui.includes("isAttendance ? 'Asistencia' : 'Personal / Roster'"));
+  assert.ok(ui.includes('mini-p2p-mode-chip'));
   assert.ok(ui.includes('data-wait-peer'));
   assert.ok(ui.includes('data-wait-attendance'));
   assert.ok(ui.includes('root.waitTrustedTransfer'));
