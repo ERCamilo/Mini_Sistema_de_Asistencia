@@ -74,9 +74,20 @@ test('Mini stages only validated sa-roster/v1 and never auto-imports from P2P',(
   }
   assert.ok(ui.includes('MAX_REJECTION_REASON_BYTES'), 'rejection reason must be bounded');
   assert.ok(ui.includes('boundedUserSafeError'), 'rejection reason must be user-safe');
-  assert.ok(ui.includes('root.openImportEmployeesModal()'));
-  assert.ok(ui.includes('root.validateImportTextarea(ta)'));
+  assert.ok(ui.includes('function buildRosterReviewModel'), 'validated roster must enter dedicated review model');
+  assert.ok(ui.includes('function reviewPendingRoster'), 'validated roster must stay inside the P2P review shell');
+  assert.ok(ui.includes('root.applyReviewedSaRoster'), 'P2P delegates the final write through the app-owned apply seam');
+  assert.ok(!ui.includes('root.openImportEmployeesModal()'), 'P2P roster must not jump to the generic JSON import modal');
   assert.ok(!ui.includes('employeeRepository.importSaRoster('),'P2P must not mutate employee repository directly');
+});
+
+test('SA roster review follows Mini design system with executive summary, expandable detail and vector-only actions',()=>{
+  const ui=read('p2p-roster-ui.js'), css=read('p2p-transfer.css'), html=read('index.html');
+  for (const text of ['Revisa qué cambiará en Mini','Ver detalle de cambios','Resolver vínculos','Aplicar roster en Mini','se conservará en Mini']) assert.ok(ui.includes(text), text);
+  for (const cls of ['mini-roster-metrics','mini-roster-conflict-card','mini-roster-choice','mini-roster-footer']) assert.ok(css.includes('.'+cls), cls);
+  assert.ok(html.includes('window.applyReviewedSaRoster'), 'app-owned apply seam is required');
+  assert.ok(ui.includes("vectorIcon('check'"), 'review/result states use vector icons');
+  assert.doesNotMatch(ui,/[✅⚠️🔗📤📥👥]/u,'new P2P roster UI must not use emoji icons');
 });
 
 test('Mini revokes invalid rosters through core without directly closing the channel',()=>{

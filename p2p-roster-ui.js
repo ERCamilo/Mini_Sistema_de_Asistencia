@@ -733,11 +733,7 @@
         schema:'sa-roster/v1',
         validated:true
       });
-      const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');
-      if(!box)return;
-      box.classList?.add?.('is-success');
-      box.innerHTML=`${statusMessage('check','Roster recibido · SHA-256 verificado',`${pendingRoster.employeeCount} empleados de ${peerName(peer)}. Aún no se ha importado nada.`)}<div class="mini-p2p-actions">${primary('Revisar roster en Mini','data-review-roster','users')}</div>`;
-      box.querySelector('[data-review-roster]').addEventListener('click',reviewPendingRoster);
+      renderRosterReceived();
     }catch(error){
       pendingRoster=null;
       const reason=boundedUserSafeError(error);
@@ -755,20 +751,93 @@
     }
   }
 
+  function hasOwn(value,key){return Object.prototype.hasOwnProperty.call(value||{},key);}
+
+  function rosterTuple(projectId,employeeId){return JSON.stringify([String(projectId||''),String(employeeId||'')]);}
+
+  function buildRosterReviewModel(text) {
+    const parsed=JSON.parse(text);
+    const roster=root.SaRosterImport.normalizeSaRoster(parsed);
+    const current=Array.isArray(root.users)?root.users:(root.employeeRepository?.getAll?.()||[]);
+    const plan=root.SaRosterImport.buildSaImportPlan(current,roster,root.EmployeeNumberRules);
+    const currentByTuple=new Map(current.filter(u=>u?.saProjectId&&u?.saEmployeeId).map(u=>[rosterTuple(u.saProjectId,u.saEmployeeId),u]));
+    const rawByTuple=new Map((parsed.employees||[]).map(r=>[rosterTuple(r.saProjectId||parsed.saProjectId,r.saEmployeeId),r]));
+    const incomingKeys=new Set(roster.employees.map(r=>rosterTuple(r.saProjectId,r.saEmployeeId)));
+    const updates=[];
+    let unchangedCount=0;
+    for(const incoming of roster.employees){
+      const local=currentByTuple.get(rosterTuple(incoming.saProjectId,incoming.saEmployeeId));
+      if(!local)continue;
+      const raw=rawByTuple.get(rosterTuple(incoming.saProjectId,incoming.saEmployeeId))||{};
+      const changes=[];
+      if(String(local.number??'')!==String(incoming.number??''))changes.push(`Ficha ${local.number??'—'} → ${incoming.number}`);
+      if(String(local.name??'')!==String(incoming.name??''))changes.push(`Nombre: ${local.name||'—'} → ${incoming.name}`);
+      if(hasOwn(raw,'position')&&String(local.position??'')!==String(incoming.position??''))changes.push(`Cargo: ${local.position||'Sin cargo'} → ${incoming.position||'Sin cargo'}`);
+      if(hasOwn(raw,'sueldo')&&String(local.sueldo??'')!==String(incoming.sueldo??''))changes.push('Sueldo actualizado');
+      if(hasOwn(raw,'paused')){
+        const before=local.paused===true;
+        const after=incoming.paused===true;
+        if(before!==after)changes.push(after?'Pausado desde SA':'Reactivado desde SA');
+      }
+      if(changes.length)updates.push({incoming,local,changes});else unchangedCount+=1;
+    }
+    const creates=plan.creates.map(incoming=>({incoming}));
+    const missing=current.filter(u=>u?.saProjectId===roster.saProjectId&&u?.saEmployeeId&&!incomingKeys.has(rosterTuple(u.saProjectId,u.saEmployeeId)));
+    return {parsed,roster,plan,updates,creates,missing,unchangedCount,current};
+  }
+
+  function rosterMetric(icon,label,value,kind='') {
+    return `<div class="mini-roster-metric ${kind}"><span class="mini-roster-metric-icon">${vectorIcon(icon,16)}</span><strong>${esc(value)}</strong><span>${esc(label)}</span></div>`;
+  }
+
+  function renderRosterReceived() {
+    if(!pendingRoster)return renderHome();
+    const name=peerName(pendingRoster.peer);
+    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step">${backButton()}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>Personal / Roster</span></div><span class="mini-roster-step-count">1 / 3</span></div>${statusMessage('check','Roster recibido y verificado',`${pendingRoster.employeeCount} empleados de ${name}. Aún no se ha aplicado nada.`)}<div class="mini-p2p-actions">${primary('Revisar cambios','data-review-roster','chevronRight')}${secondary('Cancelar','data-cancel-review','close')}</div></div>`;});
+    body().querySelector('[data-back]')?.addEventListener('click',renderHome);
+    body().querySelector('[data-cancel-review]')?.addEventListener('click',renderHome);
+    body().querySelector('[data-review-roster]')?.addEventListener('click',reviewPendingRoster);
+  }
+
   function reviewPendingRoster() {
     if(!pendingRoster)return;
-    const text=pendingRoster.text;
-    pendingRoster=null;
-    cleanupSession();
-    modal()?.remove();
-    if(typeof root.openImportEmployeesModal!=='function'||typeof root.validateImportTextarea!=='function'){
-      toast('No se pudo abrir la revisión del roster.');return;
-    }
-    root.openImportEmployeesModal();
-    const ta=document.getElementById('import-employees-textarea');
-    if(!ta){toast('No se encontró el importador de personal.');return;}
-    ta.value=text;
-    root.validateImportTextarea(ta);
+    let model;
+    try{model=buildRosterReviewModel(pendingRoster.text);}catch(error){return renderError(error);}
+    pendingRoster.reviewModel=model;
+    pendingRoster.resolutions=pendingRoster.resolutions||{};
+    const conflictCount=model.plan.reconciliationCandidates.length;
+    const handled=model.plan.reconciliationCandidates.filter(c=>hasOwn(pendingRoster.resolutions,rosterTuple(c.saProjectId,c.saEmployeeId))).length;
+    const allHandled=handled===conflictCount;
+    const detailRows=[
+      ...model.updates.map(x=>`<li><strong>${esc(x.incoming.name)}</strong><span>${x.changes.map(esc).join(' · ')}</span></li>`),
+      ...model.creates.map(x=>`<li><strong>${esc(x.incoming.name)}</strong><span>Se agregará a Mini · ficha ${esc(x.incoming.number)}</span></li>`)
+    ].join('');
+    const missingRows=model.missing.map(u=>`<li><strong>${esc(u.name||u.saEmployeeId)}</strong><span>Ya no aparece en este roster de SA · se conservará en Mini</span></li>`).join('');
+    const conflicts=model.plan.reconciliationCandidates.map(c=>{
+      const key=rosterTuple(c.saProjectId,c.saEmployeeId);
+      const chosen=pendingRoster.resolutions[key];
+      const choices=c.candidates.map(candidate=>`<button type="button" class="mini-roster-choice ${chosen===candidate.id?'is-selected':''}" data-roster-choice="${esc(key)}" data-local-id="${esc(candidate.id)}">${vectorIcon(chosen===candidate.id?'check':'link',15)}<span><strong>Vincular con ${esc(candidate.name)}</strong><small>Ficha ${esc(candidate.number)} · conserva el ID local</small></span></button>`).join('');
+      return `<section class="mini-roster-conflict-card"><div class="mini-roster-conflict-head"><span class="mini-roster-state is-warning">Conflicto</span><div><strong>${esc(c.name)}</strong><small>SA ID ${esc(c.saEmployeeId)} · ficha ${esc(c.number)}</small></div></div><p>La ficha ya pertenece a un empleado local. Elige el vínculo correcto o deja este registro fuera de esta importación.</p><div class="mini-roster-choice-grid">${choices}<button type="button" class="mini-roster-choice ${chosen==='skip'?'is-selected':''}" data-roster-choice="${esc(key)}" data-local-id="skip">${vectorIcon(chosen==='skip'?'check':'close',15)}<span><strong>No vincular ahora</strong><small>Este registro de SA se omitirá en esta aplicación</small></span></button></div></section>`;
+    }).join('');
+    const hint=!allHandled?`Resuelve ${conflictCount-handled} conflicto${conflictCount-handled===1?'':'s'} para aplicar.`:'Los cambios están listos para aplicar en Mini.';
+    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Roster recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Revisa qué cambiará en Mini</h3><p>Compara el roster validado con el personal actual antes de guardar.</p></div><div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${rosterMetric('conflict','Conflictos',conflictCount,conflictCount?'is-danger':'is-success')}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios (${model.updates.length+model.creates.length+model.missing.length})</span>${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4><span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar roster en Mini','data-apply-roster '+(allHandled?'':'disabled'),'check')}</footer></div>`;});
+    body().querySelector('[data-back]')?.addEventListener('click',renderRosterReceived);
+    body().querySelectorAll('[data-roster-choice]').forEach(btn=>btn.addEventListener('click',()=>{pendingRoster.resolutions[btn.dataset.rosterChoice]=btn.dataset.localId;reviewPendingRoster();}));
+    body().querySelector('[data-apply-roster]')?.addEventListener('click',applyReviewedRoster);
+  }
+
+  async function applyReviewedRoster(){
+    if(!pendingRoster?.reviewModel||typeof root.applyReviewedSaRoster!=='function'){toast('No se pudo aplicar el roster revisado.');return;}
+    const confirmedLinks=Object.entries(pendingRoster.resolutions||{}).filter(([,localId])=>localId!=='skip').map(([key,localId])=>{const [saProjectId,saEmployeeId]=JSON.parse(key);return{saProjectId,saEmployeeId,localId};});
+    try{
+      const result=await root.applyReviewedSaRoster({text:pendingRoster.text,confirmedLinks});
+      const skipped=result.skippedCount||0;
+      const model=pendingRoster.reviewModel;
+      const linkedCount=confirmedLinks.length;
+      morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-result"><div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check',15)}<span>APLICADO</span></div><span class="mini-roster-step-count">3 / 3</span></div><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',20)}</span><div class="mini-p2p-result-copy"><h3>Roster aplicado</h3><p>Mini conserva los IDs locales y la asistencia histórica vinculada.</p></div></div><div class="mini-roster-metrics">${rosterMetric('add','Agregados',result.createdCount||0,'is-info')}${rosterMetric('edit','Con cambios',(model?.updates?.length||0)+linkedCount,'is-success')}${rosterMetric('check','Sin cambios',model?.unchangedCount||0,'is-success')}${rosterMetric('warning','Omitidos',skipped,skipped?'is-warning':'is-success')}</div>${skipped?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${skipped} registro${skipped===1?' quedó':'s quedaron'} sin vincular</strong><span>Puedes volver a recibir el roster y resolverlos más adelante.</span></div></div>`:''}<div class="mini-p2p-actions">${primary('Finalizar','data-finish-roster','check')}</div></div>`;});
+      pendingRoster=null;
+      body().querySelector('[data-finish-roster]')?.addEventListener('click',renderHome);
+    }catch(error){renderError(error);}
   }
 
   async function consumePairHash() {

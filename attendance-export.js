@@ -26,6 +26,7 @@
         'capturedAt',
         'workDate',
         'rows',
+        'coverageMode',
         'clientSequence',
         'excludedCount',
         'errorSummary'
@@ -37,6 +38,7 @@
         'normalHours',
         'overtimeHours',
         'status',
+        'rosterStatus',
         'saEmployeeId'
     ];
     const ATTENDANCE_SUBMISSION_SCOPE_KEYS = ['ownerUid', 'siteId', 'sourceId'];
@@ -179,11 +181,17 @@
             throw new TypeError(`rows[${index}].overtimeHours must be finite and >= 0`);
         }
         const total = rec.normalHours + rec.overtimeHours;
-        if (!(total > 0) || total > 24) {
-            throw new TypeError(`rows[${index}] hours must sum to > 0 and <= 24`);
+        if (total > 24) {
+            throw new TypeError(`rows[${index}] hours must sum to <= 24`);
         }
-        if (rec.status !== 'present') {
-            throw new TypeError(`rows[${index}].status must be present`);
+        if (rec.status !== 'present' && rec.status !== 'unmarked') {
+            throw new TypeError(`rows[${index}].status must be present or unmarked`);
+        }
+        if (rec.status === 'present' && !(total > 0)) {
+            throw new TypeError(`rows[${index}] present hours must sum to > 0`);
+        }
+        if (rec.status === 'unmarked' && total !== 0) {
+            throw new TypeError(`rows[${index}] unmarked hours must sum to 0`);
         }
         const safe = {
             miniLocalId,
@@ -191,8 +199,14 @@
             name,
             normalHours: rec.normalHours,
             overtimeHours: rec.overtimeHours,
-            status: 'present'
+            status: rec.status
         };
+        if (Object.prototype.hasOwnProperty.call(rec, 'rosterStatus')) {
+            if (rec.rosterStatus !== 'active' && rec.rosterStatus !== 'paused') {
+                throw new TypeError(`rows[${index}].rosterStatus must be active or paused`);
+            }
+            safe.rosterStatus = rec.rosterStatus;
+        }
         if (Object.prototype.hasOwnProperty.call(rec, 'saEmployeeId')) {
             safe.saEmployeeId = requireCanonicalSaId(rec.saEmployeeId, `rows[${index}].saEmployeeId`);
         }
@@ -225,6 +239,16 @@
             throw new TypeError('rows are required');
         }
         const rows = rec.rows.map((r, i) => validateRow(r, i));
+        let coverageMode;
+        if (Object.prototype.hasOwnProperty.call(rec, 'coverageMode')) {
+            if (rec.coverageMode !== 'linked-roster-full') {
+                throw new TypeError('coverageMode must be linked-roster-full');
+            }
+            coverageMode = 'linked-roster-full';
+        }
+        if (!coverageMode && rows.some(row => row.status !== 'present' || row.rosterStatus !== undefined)) {
+            throw new TypeError('unmarked/rosterStatus rows require coverageMode=linked-roster-full');
+        }
         const seenMini = new Set();
         const seenSa = new Set();
         for (let index = 0; index < rows.length; index++) {
@@ -251,6 +275,8 @@
             workDate: workDay,
             rows
         };
+        if (coverageMode)
+            result.coverageMode = coverageMode;
         if (Object.prototype.hasOwnProperty.call(rec, 'clientSequence')) {
             if (!Number.isSafeInteger(rec.clientSequence) || rec.clientSequence < 1) {
                 throw new TypeError('clientSequence must be a positive safe integer');
@@ -363,54 +389,62 @@
         let excludedCount = 0;
         const errorCodes = new Set();
         const expectedHours = options.expectedHours && options.expectedHours > 0 ? options.expectedHours : 8;
-        const empEntries = Object.entries(dayRecords);
+        const includeRosterCoverage = options.includeRosterCoverage === true;
+        const empEntries = includeRosterCoverage
+            ? employeesList.filter(emp => emp && emp.id).map(emp => [String(emp.id), dayRecords[String(emp.id)] || null])
+            : Object.entries(dayRecords);
         for (const [empId, rec] of empEntries) {
-            if (!rec || rec.status !== 'present')
+            const hasPresent = Boolean(rec && rec.status === 'present');
+            if (!hasPresent && !includeRosterCoverage)
                 continue;
             const emp = empMap.get(empId) || { id: empId, name: empId, number: '' };
-            // Check project match: if employee has an SA project that does NOT match target project, exclude
             const empProject = emp.saProjectId ? normalizeAttendanceSubmissionId(emp.saProjectId) : '';
             if (empProject && empProject !== saProjectId) {
-                excludedCount += 1;
-                errorCodes.add('PROJECT_MISMATCH');
+                if (hasPresent) {
+                    excludedCount += 1;
+                    errorCodes.add('PROJECT_MISMATCH');
+                }
                 continue;
             }
-            // Check unlinked option: if unlinked rows should be excluded
             const empSaId = emp.saEmployeeId ? normalizeAttendanceSubmissionId(emp.saEmployeeId) : '';
-            if (!empSaId && options.includeUnlinked === false) {
-                excludedCount += 1;
-                errorCodes.add('UNLINKED_EMPLOYEE');
+            if (!empSaId && (!hasPresent || options.includeUnlinked === false)) {
+                if (hasPresent && options.includeUnlinked === false) {
+                    excludedCount += 1;
+                    errorCodes.add('UNLINKED_EMPLOYEE');
+                }
                 continue;
             }
-            // Calculate normal and overtime hours
             let normalHours = 0;
             let overtimeHours = 0;
-            if (typeof rec.normalHours === 'number' &&
-                Number.isFinite(rec.normalHours) &&
-                rec.normalHours >= 0 &&
-                typeof rec.overtimeHours === 'number' &&
-                Number.isFinite(rec.overtimeHours) &&
-                rec.overtimeHours >= 0) {
-                normalHours = rec.normalHours;
-                overtimeHours = rec.overtimeHours;
-            }
-            else {
-                const total = typeof rec.hours === 'number' && Number.isFinite(rec.hours)
-                    ? rec.hours
-                    : (parseFloat(rec.hours) || 8);
-                if (total <= 0 || total > 24 || !Number.isFinite(total)) {
+            let rowStatus = hasPresent ? 'present' : 'unmarked';
+            if (hasPresent) {
+                if (typeof rec.normalHours === 'number' &&
+                    Number.isFinite(rec.normalHours) &&
+                    rec.normalHours >= 0 &&
+                    typeof rec.overtimeHours === 'number' &&
+                    Number.isFinite(rec.overtimeHours) &&
+                    rec.overtimeHours >= 0) {
+                    normalHours = rec.normalHours;
+                    overtimeHours = rec.overtimeHours;
+                }
+                else {
+                    const total = typeof rec.hours === 'number' && Number.isFinite(rec.hours)
+                        ? rec.hours
+                        : (parseFloat(rec.hours) || 8);
+                    if (total <= 0 || total > 24 || !Number.isFinite(total)) {
+                        excludedCount += 1;
+                        errorCodes.add('INVALID_HOURS');
+                        continue;
+                    }
+                    normalHours = Math.min(total, expectedHours);
+                    overtimeHours = Math.max(0, total - expectedHours);
+                }
+                const totalSum = normalHours + overtimeHours;
+                if (!(totalSum > 0) || totalSum > 24) {
                     excludedCount += 1;
                     errorCodes.add('INVALID_HOURS');
                     continue;
                 }
-                normalHours = Math.min(total, expectedHours);
-                overtimeHours = Math.max(0, total - expectedHours);
-            }
-            const totalSum = normalHours + overtimeHours;
-            if (!(totalSum > 0) || totalSum > 24) {
-                excludedCount += 1;
-                errorCodes.add('INVALID_HOURS');
-                continue;
             }
             const row = {
                 miniLocalId: String(emp.id).trim(),
@@ -418,15 +452,16 @@
                 name: String((_d = emp.name) !== null && _d !== void 0 ? _d : '').trim() || String(emp.id).trim(),
                 normalHours,
                 overtimeHours,
-                status: 'present'
+                status: rowStatus
             };
-            // Only include saEmployeeId when present and valid
-            if (empSaId) {
-                row.saEmployeeId = empSaId;
+            if (includeRosterCoverage) {
+                row.rosterStatus = emp.paused ? 'paused' : 'active';
             }
+            if (empSaId)
+                row.saEmployeeId = empSaId;
             rows.push(row);
         }
-        // Carry only data actually present: if no valid present rows, return null
+        // Legacy mode carries only attendance rows. Coverage mode may return 0h/unmarked roster rows.
         if (rows.length === 0) {
             return null;
         }
@@ -448,6 +483,8 @@
             workDate: workDay,
             rows
         };
+        if (includeRosterCoverage)
+            submission.coverageMode = 'linked-roster-full';
         if (options.clientSequence !== undefined && options.clientSequence >= 1) {
             submission.clientSequence = options.clientSequence;
         }
@@ -565,7 +602,8 @@
             expectedHours: context.expectedHours,
             now: context.now,
             generateUuid: context.generateUuid,
-            includeUnlinked: context.includeUnlinked
+            includeUnlinked: context.includeUnlinked,
+            includeRosterCoverage: true
         });
         const response = {
             schema: ATTENDANCE_RESPONSE_SCHEMA,

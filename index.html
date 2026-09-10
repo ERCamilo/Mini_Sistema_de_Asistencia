@@ -2990,7 +2990,7 @@
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
-                <div class="modal-title">&#x1F465; Importar / Actualizar Empleados</div>
+                <div class="modal-title"><span class="ic" data-icon="users" data-icon-vector></span> Importar / Actualizar Empleados</div>
                 <div class="modal-subtitle">Pegá un JSON para actualizar datos existentes o sustituir la nómina</div>
             </div>
 
@@ -6774,7 +6774,7 @@
                     const roster = saApi.normalizeSaRoster(parsed);
                     const plan = saApi.buildSaImportPlan(users, roster, window.EmployeeNumberRules);
                     const candCount = plan.reconciliationCandidates.length;
-                    let statusMsg = '&#x2705; Roster SA v1: ' + roster.employees.length + ' registro(s)';
+                    let statusMsg = 'Roster SA v1: ' + roster.employees.length + ' registro(s)';
                     statusMsg += ' (' + plan.updates.length + ' actualizarán existentes, ' + plan.creates.length + ' nuevos';
                     if (candCount > 0) statusMsg += ', ' + candCount + ' por conciliar — requieren confirmación explícita, no se vincularán automáticamente';
                     statusMsg += ') · Reemplazo deshabilitado para SA (solo combinado)';
@@ -6782,7 +6782,7 @@
                         statusMsg += '<br><span style="color:var(--warning-color);">';
                         plan.reconciliationCandidates.slice(0, 5).forEach(c => {
                             const owner = c.candidates[0];
-                            statusMsg += '&#x26A0;&#xFE0F; Nº ' + esc(c.number) + ' "' + esc(c.name) + '"';
+                            statusMsg += 'Nº ' + esc(c.number) + ' "' + esc(c.name) + '"';
                             statusMsg += ' · SA ID <code>' + esc(c.saEmployeeId) + '</code> ya coincide por número con ' + esc(owner ? owner.name : '?');
                             statusMsg += ' — requiere confirmación para vincular (se mantiene el ID local).';
                             if (c.candidates.length === 1 && owner) {
@@ -6903,6 +6903,40 @@
             });
         };
 
+        window.applyReviewedSaRoster = ({ text, confirmedLinks = [] } = {}) => {
+            const saApi = window.SaRosterImport || null;
+            if (!saApi) throw new Error('Módulo SA no disponible.');
+            if (typeof text !== 'string' || !text.trim()) throw new Error('No hay un roster SA para aplicar.');
+            const parsed = JSON.parse(text);
+            const classification = saApi.classifyImportPayload(parsed);
+            if (!classification || classification.kind !== 'sa') throw new Error('El contenido no es un roster SA válido.');
+            const roster = saApi.normalizeSaRoster(parsed);
+            const snapshotBefore = { users: employeeRepository.getAll() };
+            const result = employeeRepository.importSaRoster(roster, { confirmedLinks });
+            users = employeeRepository.getAll();
+            try {
+                importHistoryRepository.recordImport({
+                    source: 'sa-p2p',
+                    mode: 'merge',
+                    summary: {
+                        totalIncoming: result.totalValid,
+                        createdCount: result.createdCount,
+                        updatedCount: result.updatedCount,
+                        skippedCount: result.skippedCount,
+                        conflictsCount: (result.reconciliationCandidates || []).length
+                    },
+                    snapshotBefore
+                });
+            } catch (historyErr) {
+                console.warn('No se pudo guardar el historial de importación:', historyErr);
+            }
+            saveData();
+            renderList();
+            renderEmployeesList();
+            updateUndoImportButton();
+            return result;
+        };
+
         window.confirmSaIdentityLink = (localId, saProjectId, saEmployeeId) => {
             try {
                 const saApi = window.SaRosterImport || null;
@@ -6953,7 +6987,7 @@
                 renderList();
                 renderEmployeesList();
                 updateUndoImportButton();
-                showToast('Vinculado SA manteniendo ID local ✅');
+                showToast('Vinculado SA manteniendo ID local');
                 validateImportTextarea(ta);
             } catch (err) {
                 showToast(err.message || 'No se pudo vincular ❌');

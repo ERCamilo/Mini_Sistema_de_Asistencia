@@ -221,21 +221,74 @@ test('range: produces one canonical submission per workDate without mutating fro
   assert.equal(response.fromDate, '2026-09-01');
   assert.equal(response.toDate, '2026-09-04');
 
-  // Submissions array contains exactly 2 submissions (dates with data), none for empty 2026-09-02 or 2026-09-04
-  assert.equal(response.submissions.length, 2);
+  // Connected responses carry a full linked-roster snapshot for every requested day.
+  assert.equal(response.submissions.length, 4);
 
   // Each submission is a pure frozen attendance-submission/v1 for that single workDate
   const sub1 = response.submissions[0];
   assert.equal(sub1.schema, 'attendance-submission/v1');
   assert.equal(sub1.workDate, '2026-09-01');
-  assert.equal(sub1.rows.length, 1);
+  assert.equal(sub1.coverageMode, 'linked-roster-full');
+  assert.equal(sub1.rows.length, 2);
+  assert.equal(sub1.rows.find(r => r.saEmployeeId === 'EMP-001').status, 'present');
+  assert.equal(sub1.rows.find(r => r.saEmployeeId === 'EMP-004').status, 'unmarked');
   AttendanceExport.validateAttendanceSubmission(sub1, SA_PROJECT);
 
   const sub2 = response.submissions[1];
-  assert.equal(sub2.schema, 'attendance-submission/v1');
-  assert.equal(sub2.workDate, '2026-09-03');
+  assert.equal(sub2.workDate, '2026-09-02');
+  assert.equal(sub2.coverageMode, 'linked-roster-full');
   assert.equal(sub2.rows.length, 2);
-  AttendanceExport.validateAttendanceSubmission(sub2, SA_PROJECT);
+  assert.ok(sub2.rows.every(r => r.status === 'unmarked' && r.normalHours === 0 && r.overtimeHours === 0));
+
+  const sub3 = response.submissions[2];
+  assert.equal(sub3.workDate, '2026-09-03');
+  assert.equal(sub3.rows.length, 2);
+  assert.equal(sub3.rows.find(r => r.saEmployeeId === 'EMP-004').normalHours, 8);
+  assert.equal(sub3.rows.find(r => r.saEmployeeId === 'EMP-004').overtimeHours, 1);
+  AttendanceExport.validateAttendanceSubmission(sub3, SA_PROJECT);
+
+  const sub4 = response.submissions[3];
+  assert.equal(sub4.workDate, '2026-09-04');
+  assert.ok(sub4.rows.every(r => r.status === 'unmarked'));
+  AttendanceExport.validateAttendanceSubmission(sub4, SA_PROJECT);
+});
+
+
+test('connected coverage preserves 16h total and declares paused/unmarked roster state', () => {
+  const { attRepo, empRepo } = makeSetup();
+  attRepo.setRecord('mini-u1', '2026-09-06', 'present', 16);
+  empRepo.setPaused('mini-u4', true);
+
+  const response = AttendanceExport.handleAttendanceRequest({
+    schema: 'attendance-request/v1',
+    requestId: 'req-coverage-state',
+    saProjectId: SA_PROJECT,
+    fromDate: '2026-09-06',
+    toDate: '2026-09-06'
+  }, {
+    channel: new FakeChannel(),
+    peer: { peerId: 'sa-device-1', peerApp: 'sa' },
+    isChannelAuthenticated: () => true,
+    expectedSaProjectId: SA_PROJECT,
+    repository: attRepo,
+    employeeRepository: empRepo,
+    scope: SCOPE,
+    deviceId: DEVICE_ID,
+    rosterVersion: ROSTER_VERSION,
+    expectedHours: 8
+  });
+
+  assert.equal(response.submissions.length, 1);
+  const submission = response.submissions[0];
+  assert.equal(submission.coverageMode, 'linked-roster-full');
+  const ana = submission.rows.find(row => row.saEmployeeId === 'EMP-001');
+  assert.deepEqual({ normal: ana.normalHours, overtime: ana.overtimeHours, status: ana.status, roster: ana.rosterStatus }, {
+    normal: 8, overtime: 8, status: 'present', roster: 'active'
+  });
+  const elena = submission.rows.find(row => row.saEmployeeId === 'EMP-004');
+  assert.deepEqual({ normal: elena.normalHours, overtime: elena.overtimeHours, status: elena.status, roster: elena.rosterStatus }, {
+    normal: 0, overtime: 0, status: 'unmarked', roster: 'paused'
+  });
 });
 
 // 3. Project mismatch: fails closed when requested saProjectId does not match Mini project identity

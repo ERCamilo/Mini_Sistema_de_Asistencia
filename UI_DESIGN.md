@@ -203,3 +203,14 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 4. [ ] ¿Los botones y campos son cómodos de pulsar en pantallas pequeñas (mínimo 44px de alto)?
 5. [ ] ¿Se incluye un estado vacío claro si no hay datos?
 6. [ ] ¿Se ejecutan las pruebas (`npm test`) y pasan sin errores de sintaxis o renderizado?
+
+### 5.9 Revisión de roster recibido desde SA
+
+- Un roster `sa-roster/v1` ya validado por P2P no debe saltar al importador JSON genérico. La revisión ocurre dentro del mismo shell de Transferencias y conserva la continuidad espacial de 5.7.
+- La primera vista de revisión muestra un resumen ejecutivo de cambios: `Nuevos`, `Modificados`, `Sin cambios` y `Conflictos`. La información secundaria vive en un detalle desplegable; no se muestra un muro de texto ni el JSON crudo por defecto.
+- Los empleados que estaban vinculados y ya no aparecen en el roster actual de SA se muestran explícitamente como una advertencia no destructiva: Mini los conserva hasta que exista una decisión específica. Nunca se elimina historial o personal como efecto silencioso de una sincronización.
+- Los conflictos de número/identidad se resuelven mediante tarjetas táctiles completas, no radios diminutos. Cada opción explica si conservará el ID local o si el registro quedará sin vincular.
+- El pie de revisión tiene una sola acción primaria: `Aplicar roster en Mini`. Si faltan conflictos por resolver, el botón queda deshabilitado y un hint explica cuántos faltan.
+- El resultado final muestra contadores reales derivados del resultado aplicado (`Agregados`, `Actualizados`, `Omitidos`). No mostrar valores de demostración ni éxito genérico si quedaron registros sin vincular.
+- Todo estado o acción usa `IconSet`/SVG vectorial. No usar emojis ni símbolos Unicode decorativos como iconos en recepción, revisión, resolución o resultado.
+- La ruta P2P no escribe directamente en el repositorio de empleados: delega a una función de aplicación propiedad de la app que conserva historial de importación, rollback y renderizado canónico.
