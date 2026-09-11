@@ -242,3 +242,14 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - El punto de estado es un refuerzo visual. El badge rojo numerado indica exclusivamente **datos nuevos o elementos pendientes de revisar** y debe desaparecer al llegar a 0. Para conteos altos se muestra `99+`.
 - El badge nunca sustituye el estado de conexión: aro/punto y badge comunican conceptos diferentes. El nombre accesible debe incluir app remota, estado, pendientes y acción.
 - El control abre Transferencias; si no existe vínculo, inicia el flujo de vinculación. Los IDs técnicos no se muestran como identidad primaria.
+
+
+## Regla canónica: selección sólida y comparación de valores
+- Cuando Mini participe en una comparación con datos existentes, el flujo visual debe leerse izquierda→derecha: **Mini → valor actual**.
+- Los nombres internos de arquitectura no se muestran al usuario para identificar el dato persistido. Usar `Actual`, `Valor actual` o `Conservar actual`.
+- En conflictos simples y seguros, conservar el valor actual puede ser la selección predeterminada; situaciones complejas o destructivas mantienen confirmación explícita.
+- El valor que sería reemplazado se atenúa visualmente y el valor seleccionado conserva máximo contraste, sin ocultar información necesaria para comparar.
+- Las opciones de decisión mantienen el mismo orden que los datos comparados: acción de Mini a la izquierda y conservación del valor actual a la derecha.
+- La opción seleccionada usa **relleno sólido** y alto contraste; la alternativa usa un relleno sólido más oscuro o de menor énfasis.
+- **Prohibido** usar botones, chips, badges o etiquetas con `borde de color + centro transparente + texto de color` como lenguaje de estado/acción. No usar componentes outline/hollow como selección o estado principal.
+- Los estados se comunican con superficies sólidas, contraste, opacidad, tipografía y jerarquía; los bordes son sólo apoyo estructural.
