@@ -8,6 +8,169 @@
   const MODAL_ID = 'mini-p2p-transfer-modal';
   const identityStore = core.makeIdentityStore('mini', 'Mini - Dispositivo');
   const aliasStore = aliases.createPeerAliasStore({ storageKey: 'mini_p2p_peer_aliases_v1' });
+  const versionGuardApi = root.SaRosterVersionGuard || null;
+  let cachedVersionGuard = null;
+  function getVersionGuard() {
+    try {
+      if (!versionGuardApi || typeof versionGuardApi.createSaRosterVersionGuard !== 'function') return null;
+      if (cachedVersionGuard) return cachedVersionGuard;
+      let storage = null;
+      try { storage = root.localStorage || null; } catch (_) { storage = null; }
+      if (storage && (typeof storage.getItem !== 'function' || typeof storage.setItem !== 'function')) storage = null;
+      cachedVersionGuard = storage
+        ? versionGuardApi.createSaRosterVersionGuard({ storage })
+        : versionGuardApi.createSaRosterVersionGuard();
+      return cachedVersionGuard;
+    } catch (_) { return null; }
+  }
+  const ROSTER_VERSION_LABELS = { first: 'Primera versión', newer: 'Más reciente', equal: 'Ya aplicada', older: 'Versión anterior', ambiguous: 'Versión dudosa' };
+  const ROSTER_VERSION_ICONS = { first: 'add', newer: 'refresh', equal: 'check', older: 'clock', ambiguous: 'warning' };
+  function versionLabel(outcome) { return ROSTER_VERSION_LABELS[outcome] || ROSTER_VERSION_LABELS.ambiguous; }
+  function versionIcon(outcome) { return ROSTER_VERSION_ICONS[outcome] || 'warning'; }
+  function versionDetail(outcome) {
+    if (outcome === 'first') return 'Primera vez que Mini recibe este proyecto. Revisa los detalles y aplica.';
+    if (outcome === 'newer') return 'Hay cambios más recientes desde SA. Revisa los detalles y aplica.';
+    if (outcome === 'equal') return 'Este roster ya fue aplicado en Mini. No se puede aplicar de nuevo.';
+    if (outcome === 'older') return 'Es una versión anterior a la ya aplicada. Se bloqueó para proteger tus datos.';
+    return 'No se pudo verificar que sea la versión vigente. Se bloqueó por seguridad.';
+  }
+  function versionBlockedMessage(outcome) {
+    if (outcome === 'equal') return 'Este roster ya fue aplicado en Mini (Ya aplicada).';
+    if (outcome === 'older') return 'Este roster es una Versión anterior a la ya aplicada y no se puede aplicar.';
+    return 'Este roster es una Versión dudosa y no se puede aplicar por seguridad.';
+  }
+  function classifyReviewedRosterForUi(rosterLike) {
+    try {
+      const guard = getVersionGuard();
+      if (!guard) return { outcome: 'ambiguous', reason: 'version-guard-unavailable' };
+      return guard.classifyIncoming(rosterLike);
+    } catch (_) {
+      return { outcome: 'ambiguous', reason: 'version-guard-unavailable' };
+    }
+  }
+  const MINI_GENERIC_ALIASES = ['mini', 'dispositivo', 'mini dispositivo'];
+  let pendingPairIntent = null;
+  function normalizeMiniAliasForCheck(value) {
+    return String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function canonicalMiniAlias(value) {
+    return String(value ?? '').toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function isValidChosenMiniAlias(value) {
+    const clean = normalizeMiniAliasForCheck(value);
+    if (!clean || Array.from(clean).length < 2) return false;
+    if (MINI_GENERIC_ALIASES.includes(canonicalMiniAlias(clean))) return false;
+    return true;
+  }
+  function miniAliasIssue(value) {
+    const clean = normalizeMiniAliasForCheck(value);
+    if (!clean) return 'Escribe un nombre para este Mini.';
+    if (Array.from(clean).length < 2) return 'El nombre debe tener al menos 2 caracteres.';
+    if (MINI_GENERIC_ALIASES.includes(canonicalMiniAlias(clean))) return 'Elige un nombre propio para este Mini, no el valor genérico.';
+    return '';
+  }
+  function shortHeaderLabel(name) {
+    const clean = String(name ?? '').trim();
+    if (!clean) return 'SA vinculado';
+    if (['SA', 'Mini', 'Dispositivo'].includes(clean)) return 'SA vinculado';
+    if (Array.from(clean).length > 22) return 'SA vinculado';
+    return clean;
+  }
+  function headerLinkEl() {
+    try { return document.getElementById('btn-attendance-link'); } catch (_) { return null; }
+  }
+  async function refreshMiniP2PHeader() {
+    try {
+      const btn = headerLinkEl();
+      if (!btn) return 'missing';
+      const peers = sortPeersByRecentActivity((await identityStore.listPeers()).filter(p => p.peerApp === 'sa'));
+      const labelEl = btn.querySelector ? btn.querySelector('.header-p2p-link-label') : null;
+      if (!peers.length) {
+        if (labelEl) labelEl.textContent = 'Vincular';
+        try { btn.setAttribute('aria-label', 'Vincular Mini con SA'); } catch (_) {}
+        try { btn.setAttribute('title', 'Vincular con SA'); } catch (_) {}
+        try { btn.onclick = openP2PPairingScanner; } catch (_) {}
+        try { btn.setAttribute('data-p2p-header-state', 'unlinked'); } catch (_) {}
+        return 'unlinked';
+      }
+      const peer = peers[0];
+      const primary = peerName(peer);
+      const original = peerOriginalName(peer);
+      const visible = shortHeaderLabel(primary);
+      if (labelEl) labelEl.textContent = visible;
+      let alias = '';
+      try { alias = aliasStore.getAlias(peer.peerId); } catch (_) {}
+      const audit = (alias && alias !== original)
+        ? ('SA vinculado: ' + alias + ', proyecto ' + original + '. Abrir Transferencias')
+        : ('SA vinculado: ' + primary + '. Abrir Transferencias');
+      try { btn.setAttribute('aria-label', audit); } catch (_) {}
+      try { btn.setAttribute('title', audit); } catch (_) {}
+      try { btn.onclick = openP2PTransferModal; } catch (_) {}
+      try { btn.setAttribute('data-p2p-header-state', 'linked'); } catch (_) {}
+      return 'linked';
+    } catch (_) {
+      return 'error';
+    }
+  }
+  async function ensureMiniAliasChosen(intent) {
+    let self = null;
+    try { self = await identityStore.getSelf(); } catch (_) { self = null; }
+    if (self && isValidChosenMiniAlias(self.displayName)) return true;
+    await renderMiniAliasSetup(intent);
+    return false;
+  }
+  async function renderMiniAliasSetup(intent) {
+    pendingPairIntent = intent || null;
+    let self = null;
+    try { self = await identityStore.getSelf(); } catch (_) { self = null; }
+    const currentName = String(self?.displayName || '');
+    const isGenericCurrent = !normalizeMiniAliasForCheck(currentName) || MINI_GENERIC_ALIASES.includes(canonicalMiniAlias(currentName));
+    const prefill = isGenericCurrent ? '' : currentName;
+    shell();
+    morphShell(() => { body().innerHTML = `
+      <div class="mini-p2p-step">
+        ${backButton()}
+        <div><h3>Elige el nombre de este Mini</h3><p>Para vincularte con SA, primero elige cómo se llamará este Mini. SA verá este nombre al emparejarse y en futuras conexiones.</p></div>
+        <div class="mini-p2p-field"><label for="mini-p2p-mini-alias">Nombre de este Mini</label><input id="mini-p2p-mini-alias" data-mini-alias maxlength="80" value="${esc(prefill)}" placeholder="Ej: Mini almacén norte" autocomplete="off"></div>
+        <div class="mini-p2p-status" data-alias-status hidden role="status" aria-live="polite"></div>
+        <div class="mini-p2p-actions">${primary('Guardar y continuar', 'data-save-mini-alias', 'check')}</div>
+        <p class="mini-p2p-footnote">Se guarda en este Mini y se presenta a SA en futuros emparejamientos. No cambia vínculos ni claves existentes.</p>
+      </div>`; });
+    const input = body().querySelector('[data-mini-alias]');
+    try { input?.focus(); } catch (_) {}
+    try { input?.select?.(); } catch (_) {}
+    body().querySelector('[data-back]').addEventListener('click', () => {
+      pendingPairIntent = null;
+      renderHome();
+    });
+    body().querySelector('[data-save-mini-alias]').addEventListener('click', async () => {
+      const nextName = normalizeMiniAliasForCheck(input?.value);
+      const issue = miniAliasIssue(nextName);
+      const status = body()?.querySelector('[data-alias-status]');
+      if (issue) {
+        if (status) { status.hidden = false; status.textContent = issue; }
+        else toast(issue);
+        try { input?.focus(); } catch (_) {}
+        return;
+      }
+      try {
+        await identityStore.renameSelf(nextName);
+      } catch (error) {
+        const message = error?.message || 'No se pudo guardar el nombre.';
+        if (status) { status.hidden = false; status.textContent = message; }
+        else toast(message);
+        return;
+      }
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      const nextIntent = pendingPairIntent;
+      pendingPairIntent = null;
+      if (!nextIntent || nextIntent === 'home') return renderHome();
+      if (nextIntent === 'scan') return renderQrScanner();
+      if (nextIntent === 'manual') return renderManualPair();
+      if (nextIntent && nextIntent.type === 'pair' && nextIntent.descriptor) return startPairing(nextIntent.descriptor);
+      return renderHome();
+    });
+  }
   let activeSession = null;
   let activeChannel = null;
   let pendingRoster = null;
@@ -300,8 +463,8 @@
         ${uiButton('Usar código + clave', 'data-manual-pair', 'secondary', 'hash')}
       </div>
       <p class="mini-p2p-footnote">El QR evita escribir código y clave. Vincular sólo crea una relación segura; recibir datos nunca los incorpora automáticamente.</p>`; });
-    body().querySelector('[data-scan-pair]').addEventListener('click', renderQrScanner);
-    body().querySelector('[data-manual-pair]').addEventListener('click', renderManualPair);
+    body().querySelector('[data-scan-pair]').addEventListener('click', () => renderQrScanner());
+    body().querySelector('[data-manual-pair]').addEventListener('click', () => renderManualPair());
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
@@ -315,8 +478,10 @@
       if (!confirmed) return;
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
+      try { await refreshMiniP2PHeader(); } catch (_) {}
       renderHome();
     }));
+    try { await refreshMiniP2PHeader(); } catch (_) {}
   }
 
   async function renderSelfNameEditor() {
@@ -340,6 +505,7 @@
         return;
       }
       await identityStore.renameSelf(nextName);
+      try { await refreshMiniP2PHeader(); } catch (_) {}
       renderHome();
     });
   }
@@ -364,12 +530,14 @@
     input?.focus();
     input?.select();
     body().querySelector('[data-back]').addEventListener('click', renderHome);
-    body().querySelector('[data-save-alias]').addEventListener('click', () => {
+    body().querySelector('[data-save-alias]').addEventListener('click', async () => {
       aliasStore.setAlias(peer.peerId, input.value);
+      try { await refreshMiniP2PHeader(); } catch (_) {}
       renderHome();
     });
-    body().querySelector('[data-clear-alias]').addEventListener('click', () => {
+    body().querySelector('[data-clear-alias]').addEventListener('click', async () => {
       aliasStore.removeAlias(peer.peerId);
+      try { await refreshMiniP2PHeader(); } catch (_) {}
       renderHome();
     });
   }
@@ -389,6 +557,7 @@
   }
 
   async function renderQrScanner() {
+    if (!(await ensureMiniAliasChosen('scan'))) return;
     cleanupSession();
     shell();
     morphShell(() => { body().innerHTML = `
@@ -465,7 +634,8 @@
     }
   }
 
-  function renderManualPair() {
+  async function renderManualPair() {
+    if (!(await ensureMiniAliasChosen('manual'))) return;
     cleanupSession();
     morphShell(() => { body().innerHTML = `
       <div class="mini-p2p-step">
@@ -499,6 +669,16 @@
   }
 
   async function startPairing(descriptor) {
+    try {
+      const gateSelf = await identityStore.getSelf();
+      if (!isValidChosenMiniAlias(gateSelf?.displayName)) {
+        await renderMiniAliasSetup({ type: 'pair', descriptor });
+        return;
+      }
+    } catch (_) {
+      await renderMiniAliasSetup({ type: 'pair', descriptor });
+      return;
+    }
     cleanupSession();
     shell();
     if (descriptor.expiresAt !== undefined && Number(descriptor.expiresAt) <= Date.now()) throw new Error('La sesión de emparejamiento expiró.');
@@ -556,6 +736,7 @@
   function renderLinkedWaiting(peer) {
     morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',18)}</span><div class="mini-p2p-result-copy"><h3>SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p></div></div><div class="mini-p2p-status" data-receive-state>Esperando roster en esta conexión…</div><div class="mini-p2p-actions">${secondary('Terminar','data-finish')}</div></div>`; });
     body().querySelector('[data-finish]').addEventListener('click', renderHome);
+    try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
   }
 
   function renderError(error) {
@@ -819,8 +1000,20 @@
       const choices=c.candidates.map(candidate=>`<button type="button" class="mini-roster-choice ${chosen===candidate.id?'is-selected':''}" data-roster-choice="${esc(key)}" data-local-id="${esc(candidate.id)}">${vectorIcon(chosen===candidate.id?'check':'link',15)}<span><strong>Vincular con ${esc(candidate.name)}</strong><small>Ficha ${esc(candidate.number)} · conserva el ID local</small></span></button>`).join('');
       return `<section class="mini-roster-conflict-card"><div class="mini-roster-conflict-head"><span class="mini-roster-state is-warning">Conflicto</span><div><strong>${esc(c.name)}</strong><small>SA ID ${esc(c.saEmployeeId)} · ficha ${esc(c.number)}</small></div></div><p>La ficha ya pertenece a un empleado local. Elige el vínculo correcto o deja este registro fuera de esta importación.</p><div class="mini-roster-choice-grid">${choices}<button type="button" class="mini-roster-choice ${chosen==='skip'?'is-selected':''}" data-roster-choice="${esc(key)}" data-local-id="skip">${vectorIcon(chosen==='skip'?'check':'close',15)}<span><strong>No vincular ahora</strong><small>Este registro de SA se omitirá en esta aplicación</small></span></button></div></section>`;
     }).join('');
-    const hint=!allHandled?`Resuelve ${conflictCount-handled} conflicto${conflictCount-handled===1?'':'s'} para aplicar.`:'Los cambios están listos para aplicar en Mini.';
-    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Roster recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Revisa qué cambiará en Mini</h3><p>Compara el roster validado con el personal actual antes de guardar.</p></div><div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${rosterMetric('conflict','Conflictos',conflictCount,conflictCount?'is-danger':'is-success')}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios (${model.updates.length+model.creates.length+model.missing.length})</span>${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4><span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar roster en Mini','data-apply-roster '+(allHandled?'':'disabled'),'check')}</footer></div>`;});
+    const baseHint=!allHandled?`Resuelve ${conflictCount-handled} conflicto${conflictCount-handled===1?'':'s'} para aplicar.`:'Los cambios están listos para aplicar en Mini.';
+    let versionDecision = null;
+    try {
+      const target = (model && model.roster) || (model && model.parsed) || JSON.parse(pendingRoster.text);
+      versionDecision = classifyReviewedRosterForUi(target);
+    } catch (_) {
+      versionDecision = { outcome: 'ambiguous', reason: 'version-guard-unavailable' };
+    }
+    const versionOutcome = (versionDecision && versionDecision.outcome) || 'ambiguous';
+    const versionCanApply = versionOutcome === 'first' || versionOutcome === 'newer';
+    const versionBanner = `<div class="mini-roster-version is-${esc(versionOutcome)}" role="status" aria-live="polite">${vectorIcon(versionIcon(versionOutcome),16)}<div><strong>${esc(versionLabel(versionOutcome))}</strong><span>${esc(versionDetail(versionOutcome))}</span></div></div>`;
+    const hint = !versionCanApply ? versionDetail(versionOutcome) : baseHint;
+    const canApply = allHandled && versionCanApply;
+    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Roster recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Revisa qué cambiará en Mini</h3><p>Compara el roster validado con el personal actual antes de guardar.</p></div>${versionBanner}<div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${rosterMetric('conflict','Conflictos',conflictCount,conflictCount?'is-danger':'is-success')}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios (${model.updates.length+model.creates.length+model.missing.length})</span>${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4><span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar roster en Mini','data-apply-roster '+(canApply?'':'disabled'),'check')}</footer></div>`;});
     body().querySelector('[data-back]')?.addEventListener('click',renderRosterReceived);
     body().querySelectorAll('[data-roster-choice]').forEach(btn=>btn.addEventListener('click',()=>{pendingRoster.resolutions[btn.dataset.rosterChoice]=btn.dataset.localId;reviewPendingRoster();}));
     body().querySelector('[data-apply-roster]')?.addEventListener('click',applyReviewedRoster);
@@ -828,6 +1021,14 @@
 
   async function applyReviewedRoster(){
     if(!pendingRoster?.reviewModel||typeof root.applyReviewedSaRoster!=='function'){toast('No se pudo aplicar el roster revisado.');return;}
+    try {
+      const target = (pendingRoster.reviewModel && pendingRoster.reviewModel.roster) || (pendingRoster.reviewModel && pendingRoster.reviewModel.parsed) || null;
+      if (target) {
+        const recheck = classifyReviewedRosterForUi(target);
+        const outcome = (recheck && recheck.outcome) || 'ambiguous';
+        if (outcome !== 'first' && outcome !== 'newer') { renderError(new Error(versionBlockedMessage(outcome))); return; }
+      }
+    } catch (_) {}
     const confirmedLinks=Object.entries(pendingRoster.resolutions||{}).filter(([,localId])=>localId!=='skip').map(([key,localId])=>{const [saProjectId,saEmployeeId]=JSON.parse(key);return{saProjectId,saEmployeeId,localId};});
     try{
       const result=await root.applyReviewedSaRoster({text:pendingRoster.text,confirmedLinks});
@@ -865,8 +1066,11 @@
   root.waitTrustedTransfer=waitTrustedTransfer;
   root.waitTrustedRoster=waitTrustedRoster;
   root.waitTrustedAttendance=waitTrustedAttendance;
+  root.refreshMiniP2PHeader=refreshMiniP2PHeader;
+  root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
+  root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
 
-  const boot=()=>consumePairHash().catch(()=>{});
+  const boot=()=>{ refreshMiniP2PHeader().catch(()=>{}); return consumePairHash().catch(()=>{}); };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
   root.addEventListener('hashchange',()=>consumePairHash().catch(()=>{}));
 })(window);

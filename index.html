@@ -3299,6 +3299,7 @@
     <script src="./p2p-core.js"></script>
     <script src="./p2p-pairing.js"></script>
     <script src="./p2p-peer-alias-store.js"></script>
+    <script src="./sa-roster-version-guard.js"></script>
     <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
@@ -6911,6 +6912,25 @@
             const classification = saApi.classifyImportPayload(parsed);
             if (!classification || classification.kind !== 'sa') throw new Error('El contenido no es un roster SA válido.');
             const roster = saApi.normalizeSaRoster(parsed);
+            const guardApi = window.SaRosterVersionGuard || null;
+            if (!guardApi || typeof guardApi.createSaRosterVersionGuard !== 'function') throw new Error('Verificación de versión no disponible; no se puede aplicar el roster.');
+            let guardStorage = null;
+            try { guardStorage = window.localStorage || null; } catch (_) { guardStorage = null; }
+            const versionGuard = (guardStorage && typeof guardStorage.getItem === 'function' && typeof guardStorage.setItem === 'function')
+                ? guardApi.createSaRosterVersionGuard({ storage: guardStorage })
+                : guardApi.createSaRosterVersionGuard();
+            let decision = null;
+            try {
+                decision = versionGuard.classifyIncoming(roster);
+            } catch (_) {
+                throw new Error('Este roster es una Versión dudosa y no se puede aplicar por seguridad.');
+            }
+            const outcome = decision ? decision.outcome : 'ambiguous';
+            if (outcome !== 'first' && outcome !== 'newer') {
+                if (outcome === 'equal') throw new Error('Este roster ya fue aplicado en Mini (Ya aplicada).');
+                if (outcome === 'older') throw new Error('Este roster es una Versión anterior a la ya aplicada y no se puede aplicar.');
+                throw new Error('Este roster es una Versión dudosa y no se puede aplicar por seguridad.');
+            }
             const snapshotBefore = { users: employeeRepository.getAll() };
             const result = employeeRepository.importSaRoster(roster, { confirmedLinks });
             users = employeeRepository.getAll();
@@ -6934,6 +6954,7 @@
             renderList();
             renderEmployeesList();
             updateUndoImportButton();
+            versionGuard.markApplied(roster);
             return result;
         };
 

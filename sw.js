@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.13.0-20260910-181023-001';
+const CACHE_VERSION = 'asistencia-v2.13.0-20260911-024637-825';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -25,6 +25,7 @@ const PRECACHE_ASSETS = [
   './p2p-core.js',
   './p2p-pairing.js',
   './p2p-peer-alias-store.js',
+  './sa-roster-version-guard.js',
   './p2p-roster-ui.js',
   './p2p-transfer.css',
   './field-requests.js',
