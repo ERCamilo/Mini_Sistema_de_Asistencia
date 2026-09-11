@@ -241,6 +241,104 @@
     return bounded || fallback;
   }
 
+  const firedTerminalSuccessKeys = new Set();
+  function resetTerminalSuccessSignals() {
+    try { firedTerminalSuccessKeys.clear(); } catch (_) {}
+    try {
+      const shellEl = modal()?.querySelector?.('.mini-p2p-shell');
+      if (shellEl && shellEl.classList) {
+        shellEl.classList.remove('mini-p2p-success-pulse');
+        shellEl.classList.remove('mini-p2p-success-done');
+      }
+    } catch (_) {}
+  }
+  function playSuccessChime() {
+    try {
+      const Ctor = root.AudioContext || root.webkitAudioContext;
+      if (typeof Ctor !== 'function') return false;
+      let ctx = null;
+      try { ctx = new Ctor(); } catch (_) { return false; }
+      if (!ctx || typeof ctx.createOscillator !== 'function' || typeof ctx.createGain !== 'function' || !ctx.destination) {
+        try { if (ctx && typeof ctx.close === 'function') ctx.close(); } catch (_) {}
+        return false;
+      }
+      try {
+        const resumed = ctx.resume ? ctx.resume() : null;
+        if (resumed && typeof resumed.catch === 'function') resumed.catch(() => {});
+      } catch (_) {}
+      const now = typeof ctx.currentTime === 'number' ? ctx.currentTime : 0;
+      let gain = null;
+      try { gain = ctx.createGain(); } catch (_) { return false; }
+      try { gain.connect(ctx.destination); } catch (_) {}
+      try {
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.05, now + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      } catch (_) {
+        try { gain.gain.value = 0.05; } catch (_) {}
+      }
+      const notes = [{ freq: 660, at: 0, dur: 0.09 }, { freq: 880, at: 0.09, dur: 0.12 }];
+      for (const note of notes) {
+        try {
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          try { osc.frequency.setValueAtTime(note.freq, now + note.at); } catch (_) {}
+          try { osc.connect(gain); } catch (_) {}
+          try { osc.start(now + note.at); } catch (_) { try { osc.start(); } catch (_) {} }
+          try { osc.stop(now + note.at + note.dur); } catch (_) { try { osc.stop(); } catch (_) {} }
+        } catch (_) {}
+      }
+      try {
+        const closer = () => { try { if (typeof ctx.close === 'function') ctx.close(); } catch (_) {} };
+        if (typeof root.setTimeout === 'function') root.setTimeout(closer, 500);
+        else if (typeof setTimeout === 'function') setTimeout(closer, 500);
+      } catch (_) {}
+      return true;
+    } catch (_) { return false; }
+  }
+  function signalTerminalSuccess(key, options = {}) {
+    try {
+      const normalizedKey = String(key || '').trim();
+      if (!normalizedKey || firedTerminalSuccessKeys.has(normalizedKey)) return false;
+      firedTerminalSuccessKeys.add(normalizedKey);
+      const title = String(options.title || 'Operación exitosa');
+      const detail = String(options.detail || '');
+      try {
+        const shellEl = modal()?.querySelector?.('.mini-p2p-shell');
+        if (shellEl && shellEl.classList) {
+          try { shellEl.classList.add('mini-p2p-success-done'); } catch (_) {}
+          if (!isReducedMotion()) {
+            try { shellEl.classList.remove('mini-p2p-success-pulse'); } catch (_) {}
+            try { void shellEl.offsetWidth; } catch (_) {}
+            try { shellEl.classList.add('mini-p2p-success-pulse'); } catch (_) {}
+          }
+        }
+      } catch (_) {}
+      try {
+        const nav = root.navigator;
+        if (nav && typeof nav.vibrate === 'function') {
+          try { nav.vibrate(15); } catch (_) {}
+        }
+      } catch (_) {}
+      try { playSuccessChime(); } catch (_) {}
+      try {
+        const Notif = root.Notification;
+        const doc = root.document;
+        if (Notif && Notif.permission === 'granted' && doc && doc.hidden === true) {
+          try { new Notif(title, { body: detail || title, tag: normalizedKey }); } catch (_) {}
+        }
+      } catch (_) {}
+      return true;
+    } catch (_) { return false; }
+  }
+  function countBadge(count, label = 'elementos') {
+    const n = Number(count);
+    if (!Number.isFinite(n) || n < 0) return '';
+    const rounded = Math.floor(n);
+    if (rounded === 0) return '';
+    return `<span class="mini-count-badge" role="status" aria-label="${esc(rounded)} ${esc(label)}">${esc(rounded)}</span>`;
+  }
+
   function cleanupQrScanner() {
     activeQrScanGeneration += 1;
     if (activeQrScanTimer !== null) {
@@ -737,6 +835,10 @@
     morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',18)}</span><div class="mini-p2p-result-copy"><h3>SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p></div></div><div class="mini-p2p-status" data-receive-state>Esperando roster en esta conexión…</div><div class="mini-p2p-actions">${secondary('Terminar','data-finish')}</div></div>`; });
     body().querySelector('[data-finish]').addEventListener('click', renderHome);
     try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
+    try {
+      const peerId = String(peer?.peerId || '').trim();
+      signalTerminalSuccess(peerId ? ('pair-linked:' + peerId) : 'pair-linked', { title: 'SA vinculado', detail: peerName(peer) + ' quedó vinculado.' });
+    } catch (_) {}
   }
 
   function renderError(error) {
@@ -830,7 +932,7 @@
             try {
               if (isAttendance) {
                 activeAttendanceResponderDetach = armAttendanceResponder(channel,peer,self,{
-                  onResponseSent: () => {
+                  onResponseSent: (response) => {
                     attendanceResponseSent = true;
                     const liveBox=body()?.querySelector('[data-wait-status]');
                     if(liveBox) { liveBox.classList?.add?.('is-success'); liveBox.innerHTML=statusMessage('check','Respuesta de asistencia enviada','SA la validará antes de incorporarla.'); }
@@ -869,13 +971,21 @@
   function armAttendanceResponder(channel, peer, self, callbacks = {}) {
     if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return null;
     const deviceId = self?.deviceId || undefined;
+    const userSent = callbacks.onResponseSent;
+    const wrappedSent = (response) => {
+      try { if (typeof userSent === 'function') userSent(response); } catch (_) {}
+      try {
+        const reqId = String(response?.requestId || '').trim();
+        signalTerminalSuccess(reqId ? ('attendance-sent:' + reqId) : ('attendance-sent:' + String(peer?.peerId || '')), { title: 'Respuesta de asistencia enviada', detail: 'SA la validará antes de incorporarla.' });
+      } catch (_) {}
+    };
     return root.AttendanceExport.attachAttendanceResponder(channel, peer, {
       get repository() { return root.attendanceRepository; },
       get employeeRepository() { return root.employeeRepository; },
       get attendanceData() { return root.attendanceData; },
       get employees() { return root.users; },
       deviceId,
-      onResponseSent: callbacks.onResponseSent
+      onResponseSent: wrappedSent
     });
   }
 
@@ -915,6 +1025,11 @@
         validated:true
       });
       renderRosterReceived();
+      try {
+        const digest = String(result.sha256 || '').toLowerCase().trim();
+        const receivedKey = digest ? ('roster-received:' + digest) : ('roster-received:' + String(result.transferId || ''));
+        signalTerminalSuccess(receivedKey, { title: 'Roster recibido', detail: String(pendingRoster.employeeCount || 0) + ' empleados verificados.' });
+      } catch (_) {}
     }catch(error){
       pendingRoster=null;
       const reason=boundedUserSafeError(error);
@@ -1013,7 +1128,7 @@
     const versionBanner = `<div class="mini-roster-version is-${esc(versionOutcome)}" role="status" aria-live="polite">${vectorIcon(versionIcon(versionOutcome),16)}<div><strong>${esc(versionLabel(versionOutcome))}</strong><span>${esc(versionDetail(versionOutcome))}</span></div></div>`;
     const hint = !versionCanApply ? versionDetail(versionOutcome) : baseHint;
     const canApply = allHandled && versionCanApply;
-    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Roster recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Revisa qué cambiará en Mini</h3><p>Compara el roster validado con el personal actual antes de guardar.</p></div>${versionBanner}<div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${rosterMetric('conflict','Conflictos',conflictCount,conflictCount?'is-danger':'is-success')}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios (${model.updates.length+model.creates.length+model.missing.length})</span>${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4><span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar roster en Mini','data-apply-roster '+(canApply?'':'disabled'),'check')}</footer></div>`;});
+    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Roster recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Revisa qué cambiará en Mini</h3><p>Compara el roster validado con el personal actual antes de guardar.</p></div>${versionBanner}<div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${rosterMetric('conflict','Conflictos',conflictCount,conflictCount?'is-danger':'is-success')}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios</span>${countBadge(model.updates.length+model.creates.length+model.missing.length,'cambios')}${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4>${countBadge(conflictCount,'conflictos')}<span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar roster en Mini','data-apply-roster '+(canApply?'':'disabled'),'check')}</footer></div>`;});
     body().querySelector('[data-back]')?.addEventListener('click',renderRosterReceived);
     body().querySelectorAll('[data-roster-choice]').forEach(btn=>btn.addEventListener('click',()=>{pendingRoster.resolutions[btn.dataset.rosterChoice]=btn.dataset.localId;reviewPendingRoster();}));
     body().querySelector('[data-apply-roster]')?.addEventListener('click',applyReviewedRoster);
@@ -1035,7 +1150,9 @@
       const skipped=result.skippedCount||0;
       const model=pendingRoster.reviewModel;
       const linkedCount=confirmedLinks.length;
+      const appliedDigest = String(pendingRoster.sha256 || '').toLowerCase().trim();
       morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-result"><div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check',15)}<span>APLICADO</span></div><span class="mini-roster-step-count">3 / 3</span></div><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',20)}</span><div class="mini-p2p-result-copy"><h3>Roster aplicado</h3><p>Mini conserva los IDs locales y la asistencia histórica vinculada.</p></div></div><div class="mini-roster-metrics">${rosterMetric('add','Agregados',result.createdCount||0,'is-info')}${rosterMetric('edit','Con cambios',(model?.updates?.length||0)+linkedCount,'is-success')}${rosterMetric('check','Sin cambios',model?.unchangedCount||0,'is-success')}${rosterMetric('warning','Omitidos',skipped,skipped?'is-warning':'is-success')}</div>${skipped?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${skipped} registro${skipped===1?' quedó':'s quedaron'} sin vincular</strong><span>Puedes volver a recibir el roster y resolverlos más adelante.</span></div></div>`:''}<div class="mini-p2p-actions">${primary('Finalizar','data-finish-roster','check')}</div></div>`;});
+      try { signalTerminalSuccess(appliedDigest ? ('roster-applied:' + appliedDigest) : 'roster-applied', { title: 'Roster aplicado', detail: String(result.createdCount || 0) + ' agregados en Mini.' }); } catch (_) {}
       pendingRoster=null;
       body().querySelector('[data-finish-roster]')?.addEventListener('click',renderHome);
     }catch(error){renderError(error);}
@@ -1069,6 +1186,7 @@
   root.refreshMiniP2PHeader=refreshMiniP2PHeader;
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
+  root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
 
   const boot=()=>{ refreshMiniP2PHeader().catch(()=>{}); return consumePairHash().catch(()=>{}); };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);

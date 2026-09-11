@@ -214,3 +214,23 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - El resultado final muestra contadores reales derivados del resultado aplicado (`Agregados`, `Actualizados`, `Omitidos`). No mostrar valores de demostración ni éxito genérico si quedaron registros sin vincular.
 - Todo estado o acción usa `IconSet`/SVG vectorial. No usar emojis ni símbolos Unicode decorativos como iconos en recepción, revisión, resolución o resultado.
 - La ruta P2P no escribe directamente en el repositorio de empleados: delega a una función de aplicación propiedad de la app que conserva historial de importación, rollback y renderizado canónico.
+
+### 5.10 Insignia numérica canónica (conteos)
+
+- Los conteos usan una insignia sólida compacta (`.mini-count-badge`): círculo/píldora, número centrado, sin paréntesis tipo `(N)`.
+- La insignia usa sólo tokens existentes (`--accent-color` de fondo, `--bg-color` para el número) y texto de 11 px en negrita.
+- Cero se oculta salvo que el cero sea informativo (por ejemplo: `Omitidos: 0` en un resultado aplicado sí puede mostrarse como métrica, no como insignia).
+- Toda insignia expone el conteo a lectores de pantalla con `role="status"` y `aria-label` numérico (ejemplo: `aria-label="3 cambios"`).
+- El detalle de revisión muestra `Ver detalle de cambios` + insignia; la cabecera de conflictos muestra `Resolver vínculos` + insignia + progreso textual `resueltos / totales`.
+
+### 5.11 Retroalimentación de éxito terminal (Meta 3)
+
+- Un único helper reutilizable (`MiniP2PSuccessFeedback.signal`) emite la confirmación de éxito dentro de la UI P2P.
+- Sólo eventos terminales con significado real disparan confirmación, exactamente una vez por clave: primer SA vinculado, roster recibido y validado, roster aplicado, respuesta de asistencia enviada. No disparar en estados intermedios (autenticación, progreso, `ready`) ni en duplicados/reintentos.
+- Mejora progresiva, siempre con estado visual in-app (pulso + check/status del shell existente con `--success-color`); vibración, chime y notificación del sistema son opcionales y nunca bloquean.
+- `navigator.vibrate` sólo si existe, breve (15 ms) y con `try/catch`.
+- Chime WebAudio sólo si `AudioContext` existe y está permitido: dos tonos sinusoidales muy cortos (<250 ms totales) a bajo volumen, con `resume()`/`close()` best-effort y errores de autoplay capturados.
+- `Notification` sólo si `Notification.permission` ya es `granted` Y `document.hidden` es `true`; nunca pedir permiso automáticamente.
+- Con `prefers-reduced-motion: reduce` se conserva el estado estático de éxito pero se omite la animación de pulso.
+- Sin sonidos repetidos: cada clave terminal se marca en un `Set` y los duplicados retornan sin reemitir.
+- Sin `alert`/`confirm` nativos, sin emojis/símbolos Unicode como iconos (`IconSet`/SVG), objetivos táctiles >=44px.

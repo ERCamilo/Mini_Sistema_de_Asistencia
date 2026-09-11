@@ -210,3 +210,40 @@
 }
 .mini-p2p-field input[data-mini-alias] { min-height: 44px; }
 .mini-p2p-status[hidden] { display: none; }
+
+/* Meta 3: terminal success feedback is progressive enhancement over the same shell. */
+.mini-p2p-shell.mini-p2p-success-done { border-color: var(--success-color); }
+.mini-p2p-shell.mini-p2p-success-pulse { animation: mini-p2p-success-pulse 480ms cubic-bezier(.2,.8,.2,1); }
+.mini-p2p-result-icon.mini-p2p-success-pulse-icon { animation: mini-p2p-success-pulse-icon 480ms cubic-bezier(.2,.8,.2,1); }
+@keyframes mini-p2p-success-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success-color) 55%, transparent); }
+  100% { box-shadow: 0 0 0 14px color-mix(in srgb, var(--success-color) 0%, transparent); }
+}
+@keyframes mini-p2p-success-pulse-icon {
+  0% { transform: scale(0.86); }
+  55% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+/* Canonical numeric count badge: solid compact circle/pill, centered number. */
+.mini-count-badge {
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--accent-color);
+  color: var(--bg-color);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+.mini-roster-details summary .mini-count-badge { margin-left: 6px; }
+.mini-roster-section-head .mini-count-badge { margin-left: 8px; margin-right: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .mini-p2p-shell.mini-p2p-success-pulse,
+  .mini-p2p-result-icon.mini-p2p-success-pulse-icon { animation: none; }
+}
