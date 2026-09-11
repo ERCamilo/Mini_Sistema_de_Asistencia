@@ -2332,9 +2332,13 @@
 
     <div class="top-nav">
         <div class="app-title" id="section-title">Asistencia</div>
-        <button type="button" class="header-p2p-link" id="btn-attendance-link" onclick="openP2PPairingScanner()" aria-label="Vincular Mini con SA" title="Vincular con SA">
-            <span class="ic" data-icon="link" data-icon-vector></span>
-            <span class="header-p2p-link-label">Vincular</span>
+        <button type="button" class="header-p2p-link" id="btn-attendance-link" data-p2p-state="unlinked" data-p2p-header-state="unlinked" onclick="openP2PPairingScanner()" aria-label="SA no vinculado. Vincular" title="SA no vinculado">
+            <span class="header-p2p-ring" aria-hidden="true">
+                <img class="header-p2p-app-icon" src="./sa-app-icon.svg" alt="" decoding="async">
+                <span class="header-p2p-state-dot"></span>
+                <span class="header-p2p-notification-badge" data-p2p-header-pending hidden></span>
+            </span>
+            <span class="header-p2p-link-label">Estado de SA</span>
         </button>
     </div>
 
@@ -3299,6 +3303,7 @@
     <script src="./p2p-core.js"></script>
     <script src="./p2p-pairing.js"></script>
     <script src="./p2p-peer-alias-store.js"></script>
+    <script src="./p2p-activity-store.js"></script>
     <script src="./sa-roster-version-guard.js"></script>
     <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>

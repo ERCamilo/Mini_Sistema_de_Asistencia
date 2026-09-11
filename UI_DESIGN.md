@@ -234,3 +234,11 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - Con `prefers-reduced-motion: reduce` se conserva el estado estático de éxito pero se omite la animación de pulso.
 - Sin sonidos repetidos: cada clave terminal se marca en un `Set` y los duplicados retornan sin reemitir.
 - Sin `alert`/`confirm` nativos, sin emojis/símbolos Unicode como iconos (`IconSet`/SVG), objetivos táctiles >=44px.
+
+## Indicador de conexión entre aplicaciones
+- El acceso P2P del header representa siempre la **otra aplicación**: Mini muestra el icono oficial de SA y SA muestra el icono oficial de Mini.
+- Patrón canónico: botón circular de al menos 44×44 px con aro de estado. **No vinculado** usa aro gris discontinuo; **vinculado sin conexión activa**, aro gris continuo; **conectado/autenticado**, aro verde.
+- El icono se muestra atenuado o en escala de grises fuera de una conexión activa y recupera su color cuando el canal autenticado está disponible.
+- El punto de estado es un refuerzo visual. El badge rojo numerado indica exclusivamente **datos nuevos o elementos pendientes de revisar** y debe desaparecer al llegar a 0. Para conteos altos se muestra `99+`.
+- El badge nunca sustituye el estado de conexión: aro/punto y badge comunican conceptos diferentes. El nombre accesible debe incluir app remota, estado, pendientes y acción.
+- El control abre Transferencias; si no existe vínculo, inicia el flujo de vinculación. Los IDs técnicos no se muestran como identidad primaria.

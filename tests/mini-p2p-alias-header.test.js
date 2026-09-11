@@ -261,7 +261,7 @@ test('linked header shows SA project name and routes to Transferencias; unlinked
   const linked = loadUi({ selfName: 'Mini almacen', peers: [peer] });
   const state = await linked.ctx.refreshMiniP2PHeader();
   assert.equal(state, 'linked');
-  assert.equal(linked.labelState.text, 'Proyecto Obra Norte', 'header must show project name');
+  assert.equal(linked.labelState.text, 'SA disconnected', 'header visual label is screen-reader-only status copy');
   assert.ok(linked.headerAttrs['aria-label'].includes('Proyecto Obra Norte'), 'aria must carry project name');
   assert.ok(linked.headerAttrs['aria-label'].includes('Abrir Transferencias'), 'aria must describe Transferencias routing');
   assert.equal(linked.headerBtn.onclick, linked.ctx.openP2PTransferModal, 'linked tap must open Transferencias, not scanner');
@@ -269,14 +269,14 @@ test('linked header shows SA project name and routes to Transferencias; unlinked
   const unlinked = loadUi({ selfName: 'Mini almacen', peers: [] });
   const state2 = await unlinked.ctx.refreshMiniP2PHeader();
   assert.equal(state2, 'unlinked');
-  assert.equal(unlinked.labelState.text, 'Vincular');
-  assert.equal(unlinked.headerAttrs['aria-label'], 'Vincular Mini con SA');
+  assert.equal(unlinked.labelState.text, 'SA no vinculado');
+  assert.equal(unlinked.headerAttrs['aria-label'], 'SA no vinculado. Vincular');
   assert.equal(unlinked.headerBtn.onclick, unlinked.ctx.openP2PPairingScanner, 'unlinked tap must open scanner');
 
   const longPeer = { peerId: 'sa-2', peerApp: 'sa', displayName: 'Proyecto Obra Norte Muy Largo Excede', linkToken: 'tok', linkedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString() };
   const constrained = loadUi({ selfName: 'Mini almacen', peers: [longPeer] });
   await constrained.ctx.refreshMiniP2PHeader();
-  assert.equal(constrained.labelState.text, 'SA vinculado', 'long names collapse to concise label');
+  assert.equal(constrained.labelState.text, 'SA disconnected', 'header remains compact while full project stays in aria');
   assert.ok(constrained.headerAttrs['aria-label'].includes('Proyecto Obra Norte Muy Largo Excede'), 'full project must stay in aria for audit');
 });
 
@@ -316,9 +316,9 @@ test('alias setup and header meet accessibility and mobile contract', () => {
   assert.match(css, /\.mini-p2p-button\s*\{[^}]*min-height:\s*44px;/, 'buttons must meet 44px touch target');
   assert.match(css, /\.mini-p2p-field input\s*\{[^}]*min-height:\s*44px;/, 'inputs must meet 44px touch target');
   assert.match(css, /\.mini-p2p-icon-btn\s*\{[^}]*width:\s*44px;/, 'icon buttons must meet 44px');
-  assert.ok(css.includes('.header-p2p-link-label'), 'header label must have truncation rules');
-  assert.ok(css.includes('text-overflow: ellipsis'), 'long project names must ellipsize');
+  assert.ok(css.includes('.header-p2p-link-label'), 'header keeps screen-reader status copy');
+  assert.ok(css.includes('.header-p2p-ring'), 'header must expose circular connection ring styling');
   assert.match(css, /@media\s*\(max-width:\s*640px\)/, 'transfer shell must adapt to mobile');
-  assert.match(html, /id="btn-attendance-link"[\s\S]*aria-label="Vincular Mini con SA"[\s\S]*data-icon="link"[\s\S]*data-icon-vector/, 'header must keep vector icon with accessible name');
+  assert.match(html, /id="btn-attendance-link"[\s\S]*aria-label="SA no vinculado\. Vincular"[\s\S]*sa-app-icon\.svg/, 'header must use the real SA vector app icon with an accessible name');
   assert.match(html, /\.header-p2p-link\s*\{[^}]*min-height:\s*44px;/, 'header control must meet 44px');
 });

@@ -3,11 +3,18 @@
   const core = root.SaMiniP2P;
   const pairing = root.SaMiniP2PPairing;
   const aliases = root.SaMiniP2PPeerAliases;
+  const activityApi = root.SaMiniP2PActivity || null;
   if (!core || !pairing || !aliases) throw new Error('P2P core/pairing/alias store must load before P2P roster UI.');
 
   const MODAL_ID = 'mini-p2p-transfer-modal';
   const identityStore = core.makeIdentityStore('mini', 'Mini - Dispositivo');
   const aliasStore = aliases.createPeerAliasStore({ storageKey: 'mini_p2p_peer_aliases_v1' });
+  let activityStore = null;
+  let stagedStore = null;
+  try {
+    if (activityApi && typeof activityApi.createActivityStore === 'function') activityStore = activityApi.createActivityStore({ storageKey: 'mini_p2p_activity_v1' });
+    if (activityApi && typeof activityApi.createStagedRosterStore === 'function') stagedStore = activityApi.createStagedRosterStore({ storageKey: 'mini_p2p_staged_roster_v1' });
+  } catch (_) { activityStore = null; stagedStore = null; }
   const versionGuardApi = root.SaRosterVersionGuard || null;
   let cachedVersionGuard = null;
   function getVersionGuard() {
@@ -79,34 +86,59 @@
   function headerLinkEl() {
     try { return document.getElementById('btn-attendance-link'); } catch (_) { return null; }
   }
+  function isPassivePeerLive(peerId) {
+    try {
+      const entry = passivePeerListeners.get(String(peerId || '').trim());
+      const channel = entry?.channel;
+      return Boolean(channel && channel.readyState === 'open' && core.isChannelAuthenticated?.(channel) === true);
+    } catch (_) { return false; }
+  }
   async function refreshMiniP2PHeader() {
     try {
       const btn = headerLinkEl();
       if (!btn) return 'missing';
       const peers = sortPeersByRecentActivity((await identityStore.listPeers()).filter(p => p.peerApp === 'sa'));
       const labelEl = btn.querySelector ? btn.querySelector('.header-p2p-link-label') : null;
+      const pendingCount = getStagedPendingCount();
+      const pendingBadge = btn.querySelector ? btn.querySelector('[data-p2p-header-pending]') : null;
+      if (pendingBadge) {
+        if (pendingCount > 0) {
+          pendingBadge.hidden = false;
+          pendingBadge.textContent = pendingCount > 99 ? '99+' : String(pendingCount);
+          pendingBadge.setAttribute('aria-label', pendingCount + ' pendiente' + (pendingCount === 1 ? '' : 's') + ' por revisar');
+        } else {
+          pendingBadge.hidden = true;
+          pendingBadge.textContent = '';
+          pendingBadge.removeAttribute('aria-label');
+        }
+      }
       if (!peers.length) {
-        if (labelEl) labelEl.textContent = 'Vincular';
-        try { btn.setAttribute('aria-label', 'Vincular Mini con SA'); } catch (_) {}
-        try { btn.setAttribute('title', 'Vincular con SA'); } catch (_) {}
+        if (labelEl) labelEl.textContent = 'SA no vinculado';
+        try { btn.setAttribute('aria-label', 'SA no vinculado. Vincular'); } catch (_) {}
+        try { btn.setAttribute('title', 'SA no vinculado'); } catch (_) {}
         try { btn.onclick = openP2PPairingScanner; } catch (_) {}
         try { btn.setAttribute('data-p2p-header-state', 'unlinked'); } catch (_) {}
+        try { btn.setAttribute('data-p2p-state', 'unlinked'); } catch (_) {}
         return 'unlinked';
       }
       const peer = peers[0];
       const primary = peerName(peer);
       const original = peerOriginalName(peer);
-      const visible = shortHeaderLabel(primary);
-      if (labelEl) labelEl.textContent = visible;
+      const live = peers.some(item => isPassivePeerLive(item.peerId)) || Boolean(activeChannel && activeChannel.readyState === 'open' && core.isChannelAuthenticated?.(activeChannel) === true);
+      const connectionState = live ? 'connected' : 'disconnected';
+      if (labelEl) labelEl.textContent = 'SA ' + connectionState;
       let alias = '';
       try { alias = aliasStore.getAlias(peer.peerId); } catch (_) {}
+      const pendingSuffix = pendingCount > 0 ? '. ' + pendingCount + ' pendiente' + (pendingCount === 1 ? '' : 's') + ' por revisar' : '';
+      const stateText = live ? 'conectado' : 'vinculado, sin conexión activa';
       const audit = (alias && alias !== original)
-        ? ('SA vinculado: ' + alias + ', proyecto ' + original + '. Abrir Transferencias')
-        : ('SA vinculado: ' + primary + '. Abrir Transferencias');
+        ? ('SA ' + stateText + ': ' + alias + ', proyecto ' + original + pendingSuffix + '. Abrir Transferencias')
+        : ('SA ' + stateText + ': ' + primary + pendingSuffix + '. Abrir Transferencias');
       try { btn.setAttribute('aria-label', audit); } catch (_) {}
       try { btn.setAttribute('title', audit); } catch (_) {}
       try { btn.onclick = openP2PTransferModal; } catch (_) {}
       try { btn.setAttribute('data-p2p-header-state', 'linked'); } catch (_) {}
+      try { btn.setAttribute('data-p2p-state', connectionState); } catch (_) {}
       return 'linked';
     } catch (_) {
       return 'error';
@@ -179,6 +211,11 @@
   let activeQrScanTimer = null;
   let activeQrScanGeneration = 0;
   const ATTENDANCE_READY_SCHEMA = 'attendance-ready/v1';
+  const PASSIVE_BASE_DELAY_MS = 1000;
+  const PASSIVE_MAX_DELAY_MS = 30000;
+  const passivePeerListeners = new Map();
+  let passiveInboxStarted = false;
+  let activeManualPeerId = null;
 
   function esc(value) {
     return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -358,6 +395,7 @@
 
   function cleanupSession() {
     cleanupQrScanner();
+    activeManualPeerId = null;
     if (activeAttendanceResponderDetach) {
       try { activeAttendanceResponderDetach(); } catch (_) {}
       activeAttendanceResponderDetach = null;
@@ -518,7 +556,6 @@
   async function renderHome() {
     shell();
     cleanupSession();
-    pendingRoster = null;
     const self = await identityStore.getSelf();
     const peers = sortPeersByRecentActivity((await identityStore.listPeers()).filter(p => p.peerApp === 'sa'));
     const peerRows = peers.length ? peers.map(peer => {
@@ -539,7 +576,33 @@
         </div>`;
     }).join('') : '<div class="mini-p2p-empty">Aún no hay SA vinculados. Escanea el QR de SA para agregar el primero.</div>';
 
+    const stagedEntries = getAllStaged();
+    const stagedCount = stagedEntries.length;
+    const activities = getRecentP2PActivities(10);
+    const activityRows = activities.length ? activities.map(entry => {
+      const who = String(entry.peerName || 'SA');
+      const when = formatPeerDate(entry.createdAt);
+      const kindLabel = entry.type === 'roster-staged' ? 'Roster listo para revisar' : entry.type === 'roster-applied' ? 'Roster aplicado' : entry.type === 'attendance-sent' ? 'Asistencia respondida' : 'SA vinculado';
+      const icon = entry.type === 'roster-staged' ? 'inbox' : entry.type === 'roster-applied' ? 'check' : entry.type === 'attendance-sent' ? 'attendance' : 'link';
+      return `<div class="mini-p2p-activity-row"><span class="mini-p2p-activity-icon">${vectorIcon(icon, 16)}</span><div class="mini-p2p-activity-copy"><strong>${esc(kindLabel)} · ${esc(who)}</strong><span>${esc(entry.detail || '')}</span><small>${esc(when)}</small></div></div>`;
+    }).join('') : '<div class="mini-p2p-empty">Sin actividad reciente. La recepción en segundo plano aparecerá aquí.</div>';
+    const stagedCards = stagedEntries.map(staged => {
+      const stagedName = String(staged.peerName || (staged.peer ? peerName(staged.peer) : 'SA'));
+      const stagedWhen = formatPeerDate(staged.receivedAt);
+      const stagedEmployees = Number(staged.employeeCount || 0);
+      const stagedPeerId = String(staged.peer?.peerId || staged.peerId || '');
+      return `<div class="mini-p2p-staged-card" data-staged-peer="${esc(stagedPeerId)}"><span class="mini-p2p-staged-icon">${vectorIcon('users', 17)}</span><div class="mini-p2p-staged-copy"><strong>Roster de ${esc(stagedName)} listo para revisar</strong><span>${esc(stagedEmployees)} empleados · recibido ${esc(stagedWhen)}. Aún no se ha aplicado nada.</span></div><div class="mini-p2p-staged-actions">${uiButton('Revisar', 'data-review-staged="' + esc(stagedPeerId) + '" aria-label="Revisar roster de ' + esc(stagedName) + '"', 'primary', 'chevronRight')}${uiButton('Descartar', 'data-discard-staged="' + esc(stagedPeerId) + '" aria-label="Descartar roster de ' + esc(stagedName) + '"', 'secondary', 'close')}</div></div>`;
+    }).join('');
     morphShell(() => { body().innerHTML = `
+      <section class="mini-p2p-activity" aria-labelledby="mini-p2p-activity-title">
+        <div class="mini-p2p-activity-head">
+          <div><h3 id="mini-p2p-activity-title">Actividad P2P</h3><div class="mini-p2p-subtitle">Roster por revisar y avisos recientes</div></div>
+          ${countBadge(stagedCount, 'pendientes')}
+        </div>
+        ${stagedCards}
+        <div class="mini-p2p-activity-list">${activityRows}</div>
+        <p class="mini-p2p-footnote">La recepción en segundo plano sólo prepara el roster para revisar. Esperar manualmente sigue disponible como alternativa.</p>
+      </section>
       <section class="mini-p2p-capabilities-wrap" aria-labelledby="mini-p2p-capabilities-title">
         <h3 id="mini-p2p-capabilities-title" class="mini-p2p-section-label">Capacidades</h3>
         <div class="mini-p2p-capabilities">
@@ -567,6 +630,16 @@
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
     body().querySelectorAll('[data-wait-attendance]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')));
+    body().querySelectorAll('[data-review-staged]').forEach(btn => btn.addEventListener('click', () => reviewPersistedStagedRoster(btn.dataset.reviewStaged)));
+    body().querySelectorAll('[data-discard-staged]').forEach(btn => btn.addEventListener('click', async () => {
+      const peerId = String(btn.dataset.discardStaged || '').trim();
+      const current = getEffectiveStaged(peerId);
+      try { stagedStore?.clear?.(peerId || current?.peerId); } catch (_) {}
+      try { if (!peerId || String(pendingRoster?.peer?.peerId || pendingRoster?.peerId || '') === peerId) pendingRoster = null; } catch (_) {}
+      try { activityStore?.markStagedReviewed?.(peerId || current?.peerId); } catch (_) {}
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      renderHome();
+    }));
     body().querySelectorAll('[data-unlink]').forEach(btn => btn.addEventListener('click', async () => {
       const peerId = btn.dataset.unlink;
       const peer = await identityStore.getPeer(peerId);
@@ -576,10 +649,15 @@
       if (!confirmed) return;
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
+      try { stopPeerListener(peerId); } catch (_) {}
+      try { stagedStore?.clear?.(peerId); } catch (_) {}
+      try { if (pendingRoster?.peer?.peerId === peerId) pendingRoster = null; } catch (_) {}
+      try { activityStore?.markStagedReviewed?.(peerId); } catch (_) {}
       try { await refreshMiniP2PHeader(); } catch (_) {}
       renderHome();
     }));
     try { await refreshMiniP2PHeader(); } catch (_) {}
+    try { startPassiveInbox().catch(() => {}); } catch (_) {}
   }
 
   async function renderSelfNameEditor() {
@@ -838,6 +916,7 @@
     try {
       const peerId = String(peer?.peerId || '').trim();
       signalTerminalSuccess(peerId ? ('pair-linked:' + peerId) : 'pair-linked', { title: 'SA vinculado', detail: peerName(peer) + ' quedó vinculado.' });
+      recordP2PActivity('peer-linked', peer, peerName(peer) + ' quedó vinculado a este Mini.', peerId ? ('peer-linked:' + peerId) : '');
     } catch (_) {}
   }
 
@@ -879,6 +958,8 @@
 
   async function waitTrustedTransfer(peerId, mode = 'roster') {
     cleanupSession();
+    activeManualPeerId = String(peerId || '').trim();
+    try { stopPeerListener(peerId); } catch (_) {}
     shell();
     pendingRoster = null;
     const self=await identityStore.getSelf();
@@ -968,6 +1049,13 @@
     channel.send(JSON.stringify({ schema: ATTENDANCE_READY_SCHEMA }));
   }
 
+  function recordP2PActivity(type, peer, detail, id = '') {
+    try {
+      if (!activityStore || typeof activityStore.record !== 'function') return null;
+      const display = peer ? peerName(peer) : 'SA';
+      return activityStore.record({ id: id || undefined, type, peerId: peer?.peerId || '', peerName: display, detail: String(detail || '') });
+    } catch (_) { return null; }
+  }
   function armAttendanceResponder(channel, peer, self, callbacks = {}) {
     if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return null;
     const deviceId = self?.deviceId || undefined;
@@ -977,6 +1065,11 @@
       try {
         const reqId = String(response?.requestId || '').trim();
         signalTerminalSuccess(reqId ? ('attendance-sent:' + reqId) : ('attendance-sent:' + String(peer?.peerId || '')), { title: 'Respuesta de asistencia enviada', detail: 'SA la validará antes de incorporarla.' });
+      } catch (_) {}
+      try {
+        const display = peer ? peerName(peer) : 'SA';
+        const requestId = String(response?.requestId || '').trim();
+        recordP2PActivity('attendance-sent', peer, 'Asistencia respondida a ' + display + '. SA la validará antes de incorporarla.', requestId ? ('attendance:' + requestId) : '');
       } catch (_) {}
     };
     return root.AttendanceExport.attachAttendanceResponder(channel, peer, {
@@ -989,18 +1082,193 @@
     });
   }
 
-  function armRosterReceiver(channel, peer) {
+  function armRosterReceiver(channel, peer, options = {}) {
+    const background = options.background === true;
     const receiver=core.createTransferReceiver({
       channel,
-      onProgress:progress=>{const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');if(box)box.textContent='Recibiendo roster… '+Math.round(progress*100)+'%';},
-      onError:renderError,
-      onComplete:result=>stageReceivedRoster(result,peer,channel)
+      onProgress:progress=>{ if (background) return; const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');if(box)box.textContent='Recibiendo roster… '+Math.round(progress*100)+'%';},
+      onError:error=>{ if (!background) renderError(error); },
+      onComplete:result=>stageReceivedRoster(result,peer,channel,{ background })
     });
     channel.addEventListener('message',event=>{
       const control=core.parseControl(event.data);
       if(control)return;
       receiver(event);
     });
+  }
+
+  function passiveBackoffDelayMs(attempt) {
+    const safeAttempt = Number.isSafeInteger(attempt) && attempt >= 0 ? Math.min(attempt, 5) : 0;
+    const delay = PASSIVE_BASE_DELAY_MS * (2 ** safeAttempt);
+    return Math.min(PASSIVE_MAX_DELAY_MS, delay);
+  }
+  function isTransferModalOpen() {
+    try { return Boolean(modal()); } catch (_) { return false; }
+  }
+  function getAllStaged() {
+    let entries = [];
+    try {
+      if (typeof stagedStore?.list === 'function') entries = stagedStore.list();
+      else { const one = stagedStore?.load?.() || stagedStore?.loadStaged?.(); if (one) entries = [one]; }
+    } catch (_) { entries = []; }
+    if (pendingRoster && typeof pendingRoster.text === 'string' && pendingRoster.text) {
+      const peerId = String(pendingRoster.peer?.peerId || pendingRoster.peerId || '').trim();
+      const sha = String(pendingRoster.sha256 || '').trim();
+      const exists = entries.some(item => String(item.peerId || '') === peerId && String(item.sha256 || '') === sha);
+      if (!exists && peerId) entries.unshift({ ...pendingRoster, peerId, peerName: pendingRoster.peer ? peerName(pendingRoster.peer) : (pendingRoster.peerName || 'SA'), receivedAt: pendingRoster.receivedAt || new Date().toISOString() });
+    }
+    return entries;
+  }
+  function getEffectiveStaged(peerId = null) {
+    const key = String(peerId || '').trim();
+    if (pendingRoster && typeof pendingRoster.text === 'string' && pendingRoster.text) {
+      const pendingPeer = String(pendingRoster.peer?.peerId || pendingRoster.peerId || '').trim();
+      if (!key || key === pendingPeer) return pendingRoster;
+    }
+    try {
+      const stored = stagedStore?.load?.(key || null) || stagedStore?.loadStaged?.(key || null);
+      return stored || null;
+    } catch (_) { return null; }
+  }
+  function persistStagedEntry(entry) {
+    try { stagedStore?.save?.(entry); } catch (_) {}
+  }
+  function getRecentP2PActivities(limit = 10) {
+    try {
+      const entries = activityStore?.list?.() || [];
+      const safeLimit = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 20) : 10;
+      return entries.slice(0, safeLimit);
+    } catch (_) { return []; }
+  }
+  function getStagedPendingCount() {
+    try { return getAllStaged().length; } catch (_) { return 0; }
+  }
+  function armPassiveChannel(channel, peer, self) {
+    armRosterReceiver(channel, peer);
+    const detach = armAttendanceResponder(channel, peer, self, {});
+    sendAttendanceReady(channel);
+    return detach;
+  }
+  function schedulePassiveRetry(peer, attempt) {
+    const peerId = String(peer?.peerId || '').trim();
+    if (!peerId) return;
+    const existing = passivePeerListeners.get(peerId);
+    if (!existing || existing.stopped) return;
+    const nextAttempt = Number.isSafeInteger(attempt) ? attempt + 1 : 1;
+    const delay = passiveBackoffDelayMs(nextAttempt);
+    try { if (existing.retryTimer) root.clearTimeout?.(existing.retryTimer); } catch (_) {}
+    let timer = null;
+    try {
+      const schedule = typeof root.setTimeout === 'function' ? root.setTimeout.bind(root) : setTimeout;
+      timer = schedule(() => {
+        const current = passivePeerListeners.get(peerId);
+        if (!current || current.stopped) return;
+        current.retryTimer = null;
+        try { current.attendanceDetach?.(); } catch (_) {}
+        current.attendanceDetach = null;
+        current.session = null;
+        current.channel = null;
+        ensurePeerListener(peer, nextAttempt).catch(() => {});
+      }, delay);
+    } catch (_) { return; }
+    existing.retryTimer = timer;
+    existing.retryCount = nextAttempt;
+  }
+  async function ensurePeerListener(peer, attempt = 0) {
+    const peerId = String(peer?.peerId || '').trim();
+    if (!peerId || peer?.peerApp !== 'sa' || !peer?.linkToken) throw new Error('SA vinculado no encontrado.');
+    if (activeManualPeerId && activeManualPeerId === peerId) return null;
+    const existing = passivePeerListeners.get(peerId);
+    if (existing && !existing.stopped && (existing.session || existing.retryTimer)) return existing;
+    if (existing?.retryTimer) { try { root.clearTimeout?.(existing.retryTimer); } catch (_) {} }
+    const entry = { peer, session: null, channel: null, detach: null, attendanceDetach: null, retryTimer: null, retryCount: attempt, stopped: false };
+    passivePeerListeners.set(peerId, entry);
+    try {
+      const self = await identityStore.getSelf();
+      const route = await core.deriveTrustedRoute(peer.linkToken);
+      const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
+      const session = await core.createRtcSession({
+        signaling, initiator: false,
+        onState: (status, error) => {
+          const current = passivePeerListeners.get(peerId);
+          if (!current || current.stopped) return;
+          if (error || status === 'disconnected' || status === 'failed' || status === 'closed') {
+            try { session?.close?.(); } catch (_) {}
+            try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
+            schedulePassiveRetry(peer, current.retryCount || attempt);
+          }
+        },
+        onChannel: channel => {
+          const current = passivePeerListeners.get(peerId);
+          if (!current || current.stopped) { try { channel?.close?.(); } catch (_) {} return; }
+          current.channel = channel;
+          pairing.attachTrusted(channel, {
+            self, peer, store: identityStore,
+            onAuthenticated: () => {
+              const live = passivePeerListeners.get(peerId);
+              if (!live || live.stopped) return;
+              try {
+                live.retryCount = 0;
+                armRosterReceiver(channel, peer, { background: true });
+                live.attendanceDetach = armAttendanceResponder(channel, peer, self, {});
+                sendAttendanceReady(channel);
+                refreshMiniP2PHeader().catch(() => {});
+              } catch (_) {
+                schedulePassiveRetry(peer, live.retryCount || 0);
+              }
+            },
+            onError: () => { schedulePassiveRetry(peer, (passivePeerListeners.get(peerId)?.retryCount) || attempt); }
+          });
+        }
+      });
+      const live = passivePeerListeners.get(peerId);
+      if (!live || live.stopped) { try { session?.close?.(); } catch (_) {} return live || entry; }
+      live.session = session;
+      live.detach = () => { try { session?.close?.(); } catch (_) {} };
+      return live;
+    } catch (_) {
+      schedulePassiveRetry(peer, attempt);
+      return passivePeerListeners.get(peerId) || entry;
+    }
+  }
+  async function startPassiveInbox() {
+    passiveInboxStarted = true;
+    let peers = [];
+    try { peers = (await identityStore.listPeers()).filter(p => p.peerApp === 'sa'); }
+    catch (_) { return 0; }
+    let started = 0;
+    for (const peer of sortPeersByRecentActivity(peers)) {
+      try { await ensurePeerListener(peer, 0); started += 1; } catch (_) {}
+    }
+    return started;
+  }
+  function stopPeerListener(peerId) {
+    const key = String(peerId || '').trim();
+    if (!key) return false;
+    const entry = passivePeerListeners.get(key);
+    if (!entry) return false;
+    entry.stopped = true;
+    try { if (entry.retryTimer) root.clearTimeout?.(entry.retryTimer); } catch (_) {}
+    try { entry.attendanceDetach?.(); } catch (_) {}
+    try { entry.session?.close?.('unlinked'); } catch (_) { try { entry.session?.close?.(); } catch (_) {} }
+    passivePeerListeners.delete(key);
+    try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
+    return true;
+  }
+  async function reviewPersistedStagedRoster(peerId = null) {
+    const staged = getEffectiveStaged(peerId);
+    if (!staged || typeof staged.text !== 'string' || !staged.text) { toast('No hay roster pendiente por revisar.'); return renderHome(); }
+    let peer = staged.peer || null;
+    if (!peer) {
+      try {
+        const fresh = await identityStore.getPeer(staged.peerId);
+        peer = fresh && fresh.peerApp === 'sa' ? fresh : { peerId: staged.peerId, peerApp: 'sa', displayName: staged.peerName || 'SA' };
+      } catch (_) {
+        peer = { peerId: staged.peerId, peerApp: 'sa', displayName: staged.peerName || 'SA' };
+      }
+    }
+    pendingRoster = { text: staged.text, sha256: staged.sha256, transferId: staged.transferId || '', peer, employeeCount: staged.employeeCount || 0 };
+    return reviewPendingRoster();
   }
 
   function validateRosterBeforeReview(result) {
@@ -1013,10 +1281,19 @@
     return parsed;
   }
 
-  async function stageReceivedRoster(result,peer,channel) {
+  async function stageReceivedRoster(result,peer,channel,options = {}) {
+    const background = options.background === true;
     try {
       const parsed=validateRosterBeforeReview(result);
-      pendingRoster={text:result.text,sha256:result.sha256,peer,employeeCount:Array.isArray(parsed.employees)?parsed.employees.length:0};
+      pendingRoster={text:result.text,sha256:result.sha256,transferId:result.transferId,peer,employeeCount:Array.isArray(parsed.employees)?parsed.employees.length:0};
+      try {
+        persistStagedEntry({ text: result.text, sha256: result.sha256, transferId: result.transferId, peerId: peer?.peerId || '', peerName: peer ? peerName(peer) : 'SA', employeeCount: pendingRoster.employeeCount, receivedAt: new Date().toISOString() });
+      } catch (_) {}
+      try {
+        const display = peer ? peerName(peer) : 'SA';
+        const digest = String(result.sha256 || '').toLowerCase().trim();
+        recordP2PActivity('roster-staged', peer, 'Roster de ' + display + ' con ' + String(pendingRoster.employeeCount || 0) + ' empleados listo para revisar.', digest ? ('roster-staged:' + digest) : ('roster-staged:' + String(result.transferId || '')));
+      } catch (_) {}
       core.sendControl(channel,'roster-staged',{
         transferId:result.transferId,
         sha256:result.sha256,
@@ -1024,12 +1301,19 @@
         schema:'sa-roster/v1',
         validated:true
       });
-      renderRosterReceived();
       try {
         const digest = String(result.sha256 || '').toLowerCase().trim();
         const receivedKey = digest ? ('roster-received:' + digest) : ('roster-received:' + String(result.transferId || ''));
         signalTerminalSuccess(receivedKey, { title: 'Roster recibido', detail: String(pendingRoster.employeeCount || 0) + ' empleados verificados.' });
       } catch (_) {}
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      if (!background && isTransferModalOpen()) renderRosterReceived();
+      else {
+        try {
+          const display = peer ? peerName(peer) : 'SA';
+          toast('Roster de ' + display + ' listo para revisar en Transferencias.');
+        } catch (_) {}
+      }
     }catch(error){
       pendingRoster=null;
       const reason=boundedUserSafeError(error);
@@ -1153,7 +1437,15 @@
       const appliedDigest = String(pendingRoster.sha256 || '').toLowerCase().trim();
       morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-result"><div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check',15)}<span>APLICADO</span></div><span class="mini-roster-step-count">3 / 3</span></div><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',20)}</span><div class="mini-p2p-result-copy"><h3>Roster aplicado</h3><p>Mini conserva los IDs locales y la asistencia histórica vinculada.</p></div></div><div class="mini-roster-metrics">${rosterMetric('add','Agregados',result.createdCount||0,'is-info')}${rosterMetric('edit','Con cambios',(model?.updates?.length||0)+linkedCount,'is-success')}${rosterMetric('check','Sin cambios',model?.unchangedCount||0,'is-success')}${rosterMetric('warning','Omitidos',skipped,skipped?'is-warning':'is-success')}</div>${skipped?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${skipped} registro${skipped===1?' quedó':'s quedaron'} sin vincular</strong><span>Puedes volver a recibir el roster y resolverlos más adelante.</span></div></div>`:''}<div class="mini-p2p-actions">${primary('Finalizar','data-finish-roster','check')}</div></div>`;});
       try { signalTerminalSuccess(appliedDigest ? ('roster-applied:' + appliedDigest) : 'roster-applied', { title: 'Roster aplicado', detail: String(result.createdCount || 0) + ' agregados en Mini.' }); } catch (_) {}
+      try {
+        const appliedPeer = pendingRoster.peer || null;
+        const appliedName = appliedPeer ? peerName(appliedPeer) : 'SA';
+        recordP2PActivity('roster-applied', appliedPeer, 'Roster de ' + appliedName + ' aplicado con ' + String(result.createdCount || 0) + ' agregados.', appliedDigest ? ('roster-applied:' + appliedDigest) : '');
+      } catch (_) {}
+      try { stagedStore?.clear?.(pendingRoster.peer?.peerId); } catch (_) {}
+      try { activityStore?.markStagedReviewed?.(pendingRoster.peer?.peerId); } catch (_) {}
       pendingRoster=null;
+      try { await refreshMiniP2PHeader(); } catch (_) {}
       body().querySelector('[data-finish-roster]')?.addEventListener('click',renderHome);
     }catch(error){renderError(error);}
   }
@@ -1187,8 +1479,10 @@
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
   root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
+  root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel };
+  root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };
 
-  const boot=()=>{ refreshMiniP2PHeader().catch(()=>{}); return consumePairHash().catch(()=>{}); };
+  const boot=()=>{ refreshMiniP2PHeader().catch(()=>{}); try { startPassiveInbox().catch(()=>{}); } catch (_) {} return consumePairHash().catch(()=>{}); };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
   root.addEventListener('hashchange',()=>consumePairHash().catch(()=>{}));
 })(window);
