@@ -15,8 +15,13 @@ Este documento establece las reglas, tokens y patrones de diseño visual que rig
 3. **Consistencia Temática**:
    - **Nunca hardcodear colores directos** (`#fff`, `#000`, `rgb(...)`) en componentes o estilos en línea. Usar siempre las variables CSS del sistema (`var(--...)`).
 4. **Accesibilidad y Legibilidad**:
-   - Alto contraste visual y soporte para daltonismo (complementar colores con iconos y glifos de estado como `✓`, `↑`, `↓`).
-   - Foco visible nativo (`outline: 2px solid var(--accent-color)`) para navegación por teclado y lectores de pantalla.
+   - Alto contraste visual y soporte para daltonismo: ningún estado depende sólo del color; se complementa con texto y `IconSet`/SVG accesible.
+   - Foco visible (`outline: 2px solid var(--accent-color)`) para navegación por teclado y lectores de pantalla.
+5. **Cero muros de texto**:
+   - Si una vista necesita un párrafo para explicar cómo usarla, simplificar la interacción antes de añadir más texto.
+   - Las decisiones importantes se presentan como opciones visuales directas, con una sola acción primaria clara por etapa.
+6. **Feedback localizado, no re-render dramático**:
+   - Un toggle, una selección o un cambio de valor anima sólo el control afectado; no debe reiniciar la animación de toda la pantalla, mover el scroll ni perder el foco.
 
 ---
 
@@ -56,11 +61,23 @@ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, A
 - **15 - 16 px**: Títulos de tarjetas de empleados/solicitudes, botones principales (`font-weight: 600` o `700`).
 - **18 - 20 px**: Títulos de modales y cabeceras de sección (`font-weight: 700`).
 
+### 3.1 Jerarquía textual y microcopy
+
+Mini adapta la jerarquía de comunicación de SA a una pantalla más pequeña y a uso rápido en campo:
+
+- **Kicker / contexto**: 2–3 palabras como máximo, preferentemente en mayúsculas (`CONSOLIDACIÓN`, `TRANSFERENCIAS`, `PASO 2 · REVISIÓN`).
+- **Título**: breve y accionable; debe explicar qué decisión se toma ahora (`Revisa este día`, `Elige la fuente correcta`, `Roster listo para aplicar`).
+- **Subtítulo**: una sola idea y, siempre que sea posible, una sola línea. Explica el beneficio o consecuencia inmediata, no repite el título.
+- **Hints dinámicos**: si una acción primaria está deshabilitada, mostrar cerca de ella la causa exacta (`Faltan 2 conflictos por resolver`, `Selecciona una obra para continuar`).
+- **Errores y advertencias**: inline dentro del mismo shell. Nunca usar `alert()`/`confirm()` nativos para explicar estados del flujo.
+- **Verbos consistentes**: `Revisar` antes de decidir, `Aplicar` cuando se escribe dato oficial, `Guardar` para persistencia local y `Finalizar` para cerrar un flujo ya aplicado.
+- **Evitar competencia**: no colocar varias acciones primarias con significados parecidos en la misma etapa. La secundaria debe ser claramente reversible o de navegación.
+
 ---
 
 ## 4. Sistema de Iconografía Vectorial (`IconSet`)
 
-Todos los iconos de la aplicación se gestionan a través del módulo centralizado [`src/icon-set.ts`](file:///c:/Users/the_b/proyectos/Asistencia%20mini/src/icon-set.ts).
+Todos los iconos de la aplicación se gestionan a través del módulo centralizado `src/icon-set.ts`.
 
 ### Reglas de Uso de Iconos:
 1. **Marcado HTML**: Utilizar la etiqueta contenedora con el atributo `data-icon`:
@@ -193,17 +210,6 @@ Cuando una acción cambia de una vista compacta a otra más grande o pequeña de
 - Desvincular siempre usa `showConfirm()`; nunca `confirm()` nativo.
 
 
-## 6. Checklist de Validación UI para Nuevos Cambios
-
-Antes de finalizar cualquier modificación en la interfaz, verificar:
-
-1. [ ] ¿Todos los colores usan variables CSS (`var(--...)`) y se ven correctamente en los 4 temas?
-2. [ ] ¿Los botones e iconos tienen etiquetas de accesibilidad (`aria-label`, `title`)?
-3. [ ] ¿Los iconos están registrados en `IconSet` y se renderizan con `applyIcons()`?
-4. [ ] ¿Los botones y campos son cómodos de pulsar en pantallas pequeñas (mínimo 44px de alto)?
-5. [ ] ¿Se incluye un estado vacío claro si no hay datos?
-6. [ ] ¿Se ejecutan las pruebas (`npm test`) y pasan sin errores de sintaxis o renderizado?
-
 ### 5.9 Revisión de roster recibido desde SA
 
 - Un roster `sa-roster/v1` ya validado por P2P no debe saltar al importador JSON genérico. La revisión ocurre dentro del mismo shell de Transferencias y conserva la continuidad espacial de 5.7.
@@ -215,41 +221,162 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - Todo estado o acción usa `IconSet`/SVG vectorial. No usar emojis ni símbolos Unicode decorativos como iconos en recepción, revisión, resolución o resultado.
 - La ruta P2P no escribe directamente en el repositorio de empleados: delega a una función de aplicación propiedad de la app que conserva historial de importación, rollback y renderizado canónico.
 
-### 5.10 Insignia numérica canónica (conteos)
+---
 
-- Los conteos usan una insignia sólida compacta (`.mini-count-badge`): círculo/píldora, número centrado, sin paréntesis tipo `(N)`.
-- La insignia usa sólo tokens existentes (`--accent-color` de fondo, `--bg-color` para el número) y texto de 11 px en negrita.
-- Cero se oculta salvo que el cero sea informativo (por ejemplo: `Omitidos: 0` en un resultado aplicado sí puede mostrarse como métrica, no como insignia).
-- Toda insignia expone el conteo a lectores de pantalla con `role="status"` y `aria-label` numérico (ejemplo: `aria-label="3 cambios"`).
-- El detalle de revisión muestra `Ver detalle de cambios` + insignia; la cabecera de conflictos muestra `Resolver vínculos` + insignia + progreso textual `resueltos / totales`.
+### 5.10 Ingeniería de animación y fluidez
 
-### 5.11 Retroalimentación de éxito terminal (Meta 3)
+Mini usa el mismo principio de motion de SA, adaptado a hardware móvil y uso táctil. El movimiento debe aclarar continuidad, jerarquía y resultado; nunca retrasar una acción.
 
-- Un único helper reutilizable (`MiniP2PSuccessFeedback.signal`) emite la confirmación de éxito dentro de la UI P2P.
-- Sólo eventos terminales con significado real disparan confirmación, exactamente una vez por clave: primer SA vinculado, roster recibido y validado, roster aplicado, respuesta de asistencia enviada. No disparar en estados intermedios (autenticación, progreso, `ready`) ni en duplicados/reintentos.
-- Mejora progresiva, siempre con estado visual in-app (pulso + check/status del shell existente con `--success-color`); vibración, chime y notificación del sistema son opcionales y nunca bloquean.
-- `navigator.vibrate` sólo si existe, breve (15 ms) y con `try/catch`.
-- Chime WebAudio sólo si `AudioContext` existe y está permitido: dos tonos sinusoidales muy cortos (<250 ms totales) a bajo volumen, con `resume()`/`close()` best-effort y errores de autoplay capturados.
-- `Notification` sólo si `Notification.permission` ya es `granted` Y `document.hidden` es `true`; nunca pedir permiso automáticamente.
-- Con `prefers-reduced-motion: reduce` se conserva el estado estático de éxito pero se omite la animación de pulso.
-- Sin sonidos repetidos: cada clave terminal se marca en un `Set` y los duplicados retornan sin reemitir.
-- Sin `alert`/`confirm` nativos, sin emojis/símbolos Unicode como iconos (`IconSet`/SVG), objetivos táctiles >=44px.
+#### Navegación nueva vs. interacción interna
 
-## Indicador de conexión entre aplicaciones
-- El acceso P2P del header representa siempre la **otra aplicación**: Mini muestra el icono oficial de SA y SA muestra el icono oficial de Mini.
-- Patrón canónico: botón circular de al menos 44×44 px con aro de estado. **No vinculado** usa aro gris discontinuo; **vinculado sin conexión activa**, aro gris continuo; **conectado/autenticado**, aro verde.
-- El icono se muestra atenuado o en escala de grises fuera de una conexión activa y recupera su color cuando el canal autenticado está disponible.
-- El punto de estado es un refuerzo visual. El badge rojo numerado indica exclusivamente **datos nuevos o elementos pendientes de revisar** y debe desaparecer al llegar a 0. Para conteos altos se muestra `99+`.
-- El badge nunca sustituye el estado de conexión: aro/punto y badge comunican conceptos diferentes. El nombre accesible debe incluir app remota, estado, pendientes y acción.
-- El control abre Transferencias; si no existe vínculo, inicia el flujo de vinculación. Los IDs técnicos no se muestran como identidad primaria.
+- **Navegación entre pasos o vistas**: se permite una entrada suave (`riseIn`/morphing) porque el contexto cambió.
+- **Interacción dentro de la misma vista**: toggles, selección de fuente, checkboxes, steppers, escritura y filtros no vuelven a animar toda la pantalla. Sólo el elemento modificado recibe feedback localizado.
+- Mantener el scroll, el foco y el elemento activo siempre que la estructura continúe siendo la misma.
+- Si el modal cambia de tamaño, seguir la regla de morphing de 5.7 y mantener el mismo overlay/shell.
 
+#### Keyframes canónicos adaptados a Mini
 
-## Regla canónica: selección sólida y comparación de valores
-- Cuando Mini participe en una comparación con datos existentes, el flujo visual debe leerse izquierda→derecha: **Mini → valor actual**.
-- Los nombres internos de arquitectura no se muestran al usuario para identificar el dato persistido. Usar `Actual`, `Valor actual` o `Conservar actual`.
-- En conflictos simples y seguros, conservar el valor actual puede ser la selección predeterminada; situaciones complejas o destructivas mantienen confirmación explícita.
-- El valor que sería reemplazado se atenúa visualmente y el valor seleccionado conserva máximo contraste, sin ocultar información necesaria para comparar.
-- Las opciones de decisión mantienen el mismo orden que los datos comparados: acción de Mini a la izquierda y conservación del valor actual a la derecha.
-- La opción seleccionada usa **relleno sólido** y alto contraste; la alternativa usa un relleno sólido más oscuro o de menor énfasis.
-- **Prohibido** usar botones, chips, badges o etiquetas con `borde de color + centro transparente + texto de color` como lenguaje de estado/acción. No usar componentes outline/hollow como selección o estado principal.
-- Los estados se comunican con superficies sólidas, contraste, opacidad, tipografía y jerarquía; los bordes son sólo apoyo estructural.
+```css
+@keyframes miniRiseIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes miniPopIn {
+  0%   { opacity: 0; transform: scale(.72); }
+  65%  { transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes miniSlideRow {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes miniTapRing {
+  0%   { opacity: 0; transform: scale(.55); }
+  35%  { opacity: .65; }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+
+@keyframes miniBreathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.035); }
+}
+```
+
+Reglas de uso:
+
+- `miniRiseIn`: entrada de una etapa nueva, no de cada re-render. Duración orientativa `180–260ms`.
+- `miniPopIn`: check SVG, confirmación local o tarjeta que acaba de quedar seleccionada. `140–220ms`.
+- `miniSlideRow`: filas nuevas añadidas explícitamente por el usuario; evitarlo en listas largas al restaurar estado.
+- `miniTapRing`: feedback táctil opcional en botones importantes; no debe bloquear el click ni crear layout.
+- `miniBreathe`: reservado para espera/conexión muy breve. Nunca usarlo en listas completas ni de forma permanente.
+
+#### Rendimiento
+
+- Animar preferentemente `transform` y `opacity`; evitar animar `top`, `left`, `width` o `height` salvo el morphing medido del shell.
+- Objetivo perceptual: 60 FPS en dispositivos móviles medios.
+- No añadir librerías de animación externas para efectos que CSS y `requestAnimationFrame` pueden resolver.
+- Los contadores que cambian de forma visible pueden interpolarse con `requestAnimationFrame`, pero se actualiza sólo el nodo numérico, no el árbol completo.
+- No hacer `await` de red/IndexedDB antes de mostrar feedback visual inmediato al toque.
+
+### 5.11 Tarjetas táctiles de selección
+
+Para decisiones binarias o de pocas opciones, preferir tarjetas/botones completos frente a radios pequeños:
+
+- Target mínimo `44x44px`; en decisiones críticas se recomienda `48–56px` de alto.
+- Estado activo con fondo sólido o superficie elevada y borde/acento claro; no depender sólo de un outline fino.
+- Añadir check SVG accesible cuando la selección deba permanecer visible después del toque.
+- Usar `aria-pressed` para botones toggle y `aria-selected` cuando el patrón semántico sea de lista/tab.
+- Una selección persistida debe volver a renderizarse como seleccionada; el estado visual nunca puede depender sólo del evento de click.
+
+### 5.12 Footer canónico de flujos por pasos
+
+- Mantener las acciones del paso en una zona estable al pie del shell o bottom sheet.
+- Acción primaria a la derecha/en posición dominante; secundaria de navegación o aplazamiento claramente separada.
+- Si la primaria está deshabilitada, mostrar un hint que explique exactamente por qué.
+- En móvil, si dos acciones compiten por ancho, apilarlas verticalmente manteniendo targets táctiles de `44px` o más.
+- Para revisión multi-día se distingue entre **continuar sin completar** y **confirmar/completar el día**; la redacción debe reflejar la diferencia de persistencia.
+
+### 5.13 Previsualización y reflejo en tiempo real
+
+Cuando un input, selector o stepper cambia una decisión visible, reflejar el resultado inmediatamente en el mismo contexto:
+
+- No esperar a guardar para actualizar la vista.
+- Parchear sólo el dato afectado o re-renderizar preservando foco/scroll.
+- Si el valor tiene consecuencia importante, mostrar una frase corta de resultado (`8 normales + 3 extra se aplicarán como 11 normales`).
+- No duplicar el dato en varios lugares si no ayuda a decidir.
+
+---
+
+## 6. Navegación, accesibilidad y motion reducido
+
+- Todo control interactivo debe ser alcanzable por teclado y tener foco visible.
+- `Enter` activa la acción primaria contextual sólo cuando no interfiere con escritura multilínea o controles nativos.
+- `Escape` puede volver/cerrar cuando no exista una operación destructiva pendiente; nunca descarta cambios importantes sin confirmación in-app.
+- Las flechas izquierda/derecha pueden navegar pasos en un wizard cuando el foco no está dentro de un input, select, textarea o control que ya use esas teclas.
+- Al re-renderizar formularios, preservar foco y cursor cuando sea técnicamente posible.
+- Con `prefers-reduced-motion: reduce`, eliminar desplazamientos, escalados y morphing animado; mantener cambios instantáneos y continuidad del mismo shell.
+- Lectores de pantalla deben recibir el estado por texto/ARIA; las animaciones son decoración y nunca la única forma de comunicar éxito, error o selección.
+
+---
+
+## 7. Checklist de Validación UI para Nuevos Cambios
+
+Antes de finalizar cualquier modificación en la interfaz, verificar:
+
+1. [ ] ¿Todos los colores usan variables CSS (`var(--...)`) y se ven correctamente en los 4 temas?
+2. [ ] ¿Los botones e iconos tienen etiquetas de accesibilidad (`aria-label`, `title`) cuando el texto visible no basta?
+3. [ ] ¿Los iconos nuevos están registrados en `IconSet` y se renderizan como SVG accesible?
+4. [ ] ¿Los botones y campos mantienen un target táctil mínimo de `44x44px`?
+5. [ ] ¿La pantalla evita muros de texto y tiene una única acción primaria clara por etapa?
+6. [ ] ¿Los estados seleccionados/resueltos sobreviven al re-render y no dependen sólo del color?
+7. [ ] ¿Las interacciones internas evitan reanimar toda la vista, mover el scroll o perder el foco?
+8. [ ] ¿Las transiciones entre pasos mantienen el mismo shell cuando pertenecen al mismo flujo?
+9. [ ] ¿Existe comportamiento correcto con `prefers-reduced-motion: reduce`?
+10. [ ] ¿No se usan `alert()`/`confirm()` nativos ni emojis/símbolos Unicode como iconografía nueva?
+11. [ ] ¿Hay un estado vacío claro cuando no existen datos?
+12. [ ] ¿Se ejecutan las pruebas relevantes y no aparecen errores de sintaxis/renderizado?
+
+---
+
+## 8. Reglas complementarias P2P y comparación SA ↔ Mini
+
+### 8.1 Iconografía P2P
+
+- En acciones P2P nuevas no se escriben emojis ni símbolos Unicode decorativos directamente (`🔗`, `⇄`, `📤`, etc.). Usar `IconSet`/Lucide o SVG vectorial equivalente.
+- Los accesos críticos que deban conservar SVG aunque exista un estilo heredado se marcan con `data-icon-vector`; `applyIcons()` debe resolverlos mediante `IconSet.iconSvg()`.
+- Los accesos principales combinan icono vectorial con etiqueta textual; en pantallas muy estrechas el texto puede ocultarse sólo si se preservan `aria-label`, `title` y target mínimo `44x44px`.
+
+### 8.2 Insignia numérica canónica
+
+- Los conteos usan una insignia sólida compacta (`.mini-count-badge`), con número centrado y sin paréntesis tipo `(N)`.
+- Cero se oculta salvo que sea una métrica informativa del resultado.
+- Toda insignia expone el conteo con `role="status"` y `aria-label` numérico.
+
+### 8.3 Retroalimentación de éxito terminal
+
+- `MiniP2PSuccessFeedback.signal` sólo confirma eventos terminales reales: primer SA vinculado, roster recibido/validado, roster aplicado y respuesta de asistencia enviada.
+- No emitir confirmación en autenticación, progreso, `ready`, duplicados o reintentos.
+- La confirmación visual in-app es obligatoria; vibración, WebAudio y notificación son mejoras opcionales y nunca solicitan permisos automáticamente.
+- Con `prefers-reduced-motion: reduce` se mantiene el estado estático de éxito y se omite el pulso.
+
+### 8.4 Indicador de conexión entre aplicaciones
+
+- El acceso P2P del header representa siempre la otra aplicación: Mini muestra el icono oficial de SA y SA muestra el icono oficial de Mini.
+- El botón es circular, al menos `44x44px`, con aro: no vinculado = gris discontinuo; vinculado sin canal = gris continuo; conectado/autenticado = verde.
+- El icono se atenúa fuera de una conexión activa y recupera color con canal autenticado.
+- El badge rojo numerado representa sólo datos nuevos o trabajo pendiente de revisar; desaparece en cero y se limita visualmente a `99+`.
+- Aro/punto y badge son señales independientes. El nombre accesible incluye app remota, estado, pendientes y acción.
+- El recurso cuadrado del icono se recorta visualmente dentro del aro circular, centrado y sin deformación; no debe percibirse como un cuadrado insertado en el botón.
+
+### 8.5 Selección sólida y comparación de valores
+
+- La comparación se lee izquierda→derecha: **Mini → valor actual**.
+- No mostrar nombres internos de arquitectura al usuario; usar `Actual`, `Valor actual` o `Conservar actual`.
+- En conflictos simples y seguros, `Conservar actual` puede ser la selección predeterminada; casos complejos/destructivos exigen decisión explícita.
+- El valor que sería reemplazado se atenúa y el seleccionado conserva máximo contraste.
+- Las acciones siguen el mismo orden: Mini a la izquierda, conservación del valor actual a la derecha.
+- La selección usa relleno sólido y alto contraste; la alternativa usa una superficie sólida más oscura o de menor énfasis.
+- Está prohibido usar `borde de color + centro transparente + texto de color` como lenguaje principal en botones, chips, badges o etiquetas. Los bordes sólo apoyan la estructura.
