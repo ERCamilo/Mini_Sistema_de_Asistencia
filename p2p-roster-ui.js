@@ -578,14 +578,6 @@
 
     const stagedEntries = getAllStaged();
     const stagedCount = stagedEntries.length;
-    const activities = getRecentP2PActivities(10);
-    const activityRows = activities.length ? activities.map(entry => {
-      const who = String(entry.peerName || 'SA');
-      const when = formatPeerDate(entry.createdAt);
-      const kindLabel = entry.type === 'roster-staged' ? 'Roster listo para revisar' : entry.type === 'roster-applied' ? 'Roster aplicado' : entry.type === 'attendance-sent' ? 'Asistencia respondida' : 'SA vinculado';
-      const icon = entry.type === 'roster-staged' ? 'inbox' : entry.type === 'roster-applied' ? 'check' : entry.type === 'attendance-sent' ? 'attendance' : 'link';
-      return `<div class="mini-p2p-activity-row"><span class="mini-p2p-activity-icon">${vectorIcon(icon, 16)}</span><div class="mini-p2p-activity-copy"><strong>${esc(kindLabel)} · ${esc(who)}</strong><span>${esc(entry.detail || '')}</span><small>${esc(when)}</small></div></div>`;
-    }).join('') : '<div class="mini-p2p-empty">Sin actividad reciente. La recepción en segundo plano aparecerá aquí.</div>';
     const stagedCards = stagedEntries.map(staged => {
       const stagedName = String(staged.peerName || (staged.peer ? peerName(staged.peer) : 'SA'));
       const stagedWhen = formatPeerDate(staged.receivedAt);
@@ -593,16 +585,16 @@
       const stagedPeerId = String(staged.peer?.peerId || staged.peerId || '');
       return `<div class="mini-p2p-staged-card" data-staged-peer="${esc(stagedPeerId)}"><span class="mini-p2p-staged-icon">${vectorIcon('users', 17)}</span><div class="mini-p2p-staged-copy"><strong>Roster de ${esc(stagedName)} listo para revisar</strong><span>${esc(stagedEmployees)} empleados · recibido ${esc(stagedWhen)}. Aún no se ha aplicado nada.</span></div><div class="mini-p2p-staged-actions">${uiButton('Revisar', 'data-review-staged="' + esc(stagedPeerId) + '" aria-label="Revisar roster de ' + esc(stagedName) + '"', 'primary', 'chevronRight')}${uiButton('Descartar', 'data-discard-staged="' + esc(stagedPeerId) + '" aria-label="Descartar roster de ' + esc(stagedName) + '"', 'secondary', 'close')}</div></div>`;
     }).join('');
-    morphShell(() => { body().innerHTML = `
-      <section class="mini-p2p-activity" aria-labelledby="mini-p2p-activity-title">
+    const pendingSection = stagedCount > 0 ? `
+      <section class="mini-p2p-activity" aria-labelledby="mini-p2p-pending-title">
         <div class="mini-p2p-activity-head">
-          <div><h3 id="mini-p2p-activity-title">Actividad P2P</h3><div class="mini-p2p-subtitle">Roster por revisar y avisos recientes</div></div>
+          <div><h3 id="mini-p2p-pending-title">Pendientes por revisar</h3><div class="mini-p2p-subtitle">Datos recibidos que requieren una decisión</div></div>
           ${countBadge(stagedCount, 'pendientes')}
         </div>
         ${stagedCards}
-        <div class="mini-p2p-activity-list">${activityRows}</div>
-        <p class="mini-p2p-footnote">La recepción en segundo plano sólo prepara el roster para revisar. Esperar manualmente sigue disponible como alternativa.</p>
-      </section>
+      </section>` : '';
+    morphShell(() => { body().innerHTML = `
+      ${pendingSection}
       <section class="mini-p2p-capabilities-wrap" aria-labelledby="mini-p2p-capabilities-title">
         <h3 id="mini-p2p-capabilities-title" class="mini-p2p-section-label">Capacidades</h3>
         <div class="mini-p2p-capabilities">

@@ -359,11 +359,12 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 
 - `MiniP2PSuccessFeedback.signal` sólo confirma eventos terminales reales: primer SA vinculado, roster recibido/validado, roster aplicado y respuesta de asistencia enviada.
 - No emitir confirmación en autenticación, progreso, `ready`, duplicados o reintentos.
-- La confirmación visual in-app es obligatoria; vibración, WebAudio y notificación son mejoras opcionales y nunca solicitan permisos automáticamente.
+- La confirmación visual in-app es obligatoria; vibración, WebAudio y notificación son mejoras opcionales: **nunca pedir permiso automáticamente** para notificaciones u otros canales.
 - Con `prefers-reduced-motion: reduce` se mantiene el estado estático de éxito y se omite el pulso.
 
 ### 8.4 Indicador de conexión entre aplicaciones
 
+- La portada de Transferencias no muestra un historial/log pasivo de eventos. Sólo se muestran pendientes que requieren una acción inmediata; el historial técnico permanece interno y una futura vista de Actividad debe ser accionable, no un listado decorativo.
 - El acceso P2P del header representa siempre la otra aplicación: Mini muestra el icono oficial de SA y SA muestra el icono oficial de Mini.
 - El botón es circular, al menos `44x44px`, con aro: no vinculado = gris discontinuo; vinculado sin canal = gris continuo; conectado/autenticado = verde.
 - El icono se atenúa fuera de una conexión activa y recupera color con canal autenticado.

@@ -278,7 +278,7 @@
   position: relative; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
   border: 2px solid var(--text-muted); transition: border-color .2s ease, box-shadow .2s ease, filter .2s ease;
 }
-.header-p2p-app-icon { width: 32px; height: 32px; display: block; border-radius: 9px; filter: grayscale(1) saturate(.25) opacity(.72); }
+.header-p2p-app-icon { width: 35px; height: 35px; display: block; border-radius: 50%; object-fit: cover; clip-path: circle(50%); filter: grayscale(1) saturate(.25) opacity(.72); }
 .header-p2p-state-dot { position: absolute; right: -1px; bottom: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); border: 2px solid var(--bg-color); box-sizing: border-box; }
 .header-p2p-notification-badge { position: absolute; right: -7px; top: -7px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--danger-color); color: var(--text-color); border: 2px solid var(--bg-color); font-size: 10px; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; box-sizing: border-box; z-index: 2; }
 .header-p2p-notification-badge[hidden] { display: none; }

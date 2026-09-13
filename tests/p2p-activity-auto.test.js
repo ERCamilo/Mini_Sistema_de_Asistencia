@@ -13,6 +13,8 @@ test('Mini header shows real SA icon with circular state ring and red numeric ba
   assert.ok(css.includes('.header-p2p-ring'));
   assert.ok(css.includes('[data-p2p-state="connected"]'));
   assert.ok(css.includes('.header-p2p-notification-badge'));
+  assert.match(css, /\.header-p2p-app-icon[^}]*border-radius:\s*50%/);
+  assert.match(css, /\.header-p2p-app-icon[^}]*clip-path:\s*circle\(50%\)/);
 });
 
 test('passive inbox receives trusted roster/attendance without auto-applying data', () => {
@@ -27,13 +29,16 @@ test('passive inbox receives trusted roster/attendance without auto-applying dat
   assert.doesNotMatch(ui, /employeeRepository\.importSaRoster\([^)]*channel/);
 });
 
-test('activity center supports multiple pending SA rosters and preserves manual fallback', () => {
+test('connection home shows only actionable pending rosters and keeps passive activity metadata internal', () => {
   const ui = read('p2p-roster-ui.js');
   const store = read('p2p-activity-store.js');
-  assert.ok(ui.includes('Actividad P2P'));
-  assert.ok(ui.includes('stagedEntries.map'));
-  assert.ok(ui.includes("querySelectorAll('[data-review-staged]')"));
-  assert.ok(ui.includes("querySelectorAll('[data-discard-staged]')"));
+  const home = ui.slice(ui.indexOf('async function renderHome()'), ui.indexOf('async function renderQrScanner'));
+  assert.ok(home.includes('Pendientes por revisar'));
+  assert.ok(home.includes('stagedEntries.map'));
+  assert.ok(home.includes("querySelectorAll('[data-review-staged]')"));
+  assert.ok(home.includes("querySelectorAll('[data-discard-staged]')"));
+  assert.doesNotMatch(home, /mini-p2p-activity-list|activityRows|Sin actividad reciente/);
+  assert.ok(ui.includes('getRecentP2PActivities'));
   assert.ok(ui.includes('data-wait-peer'));
   assert.ok(ui.includes('data-wait-attendance'));
   assert.ok(store.includes('STAGED_STORE_VERSION = 2'));
