@@ -868,6 +868,37 @@
     return rejection;
   }
 
+  const PRESENCE_PING_TYPE = 'presence-ping/v1';
+  const PRESENCE_PONG_TYPE = 'presence-pong/v1';
+  const PRESENCE_HEARTBEAT_MS = 25000;
+  const PRESENCE_TTL_MS = 60000;
+
+  function validatePresenceProbeId(value) {
+    return boundedString(value, 128, 'probeId de presencia inválido.');
+  }
+
+  function validatePresenceFrame(frame) {
+    exactKeys(frame, ['type', 'probeId', 'sentAt'], 'Frame de presencia inválido.');
+    if (frame.type !== PRESENCE_PING_TYPE && frame.type !== PRESENCE_PONG_TYPE) {
+      throw new Error('Tipo de presencia inválido.');
+    }
+    const probeId = validatePresenceProbeId(frame.probeId);
+    if (!Number.isSafeInteger(frame.sentAt) || frame.sentAt <= 0) {
+      throw new Error('sentAt de presencia inválido.');
+    }
+    return { type: frame.type, probeId, sentAt: frame.sentAt };
+  }
+
+  function makePresencePing(probeId = null, sentAt = Date.now()) {
+    const id = probeId ? validatePresenceProbeId(probeId) : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : randomToken(16));
+    const time = Number.isSafeInteger(sentAt) && sentAt > 0 ? sentAt : Date.now();
+    return validatePresenceFrame({ type: PRESENCE_PING_TYPE, probeId: id, sentAt: time });
+  }
+
+  function makePresencePong(probeId, sentAt) {
+    return validatePresenceFrame({ type: PRESENCE_PONG_TYPE, probeId, sentAt });
+  }
+
   async function makeSas(nonceA, nonceB, context) {
     const parts = [String(nonceA), String(nonceB)].sort();
     const hex = await sha256Hex(parts.join(':') + ':' + String(context || ''));
@@ -880,6 +911,7 @@
     LINK_TOKEN_BYTES,
     MAX_ROSTER_BYTES, CHUNK_SIZE, MAX_SIGNAL_BYTES, MAX_SDP_BYTES, MAX_ICE_CANDIDATE_BYTES,
     PAIR_SESSION_TTL_MS, ICE_SERVERS,
+    PRESENCE_PING_TYPE, PRESENCE_PONG_TYPE, PRESENCE_HEARTBEAT_MS, PRESENCE_TTL_MS,
     randomToken, randomCode, randomPairKey, sha256Hex, hmacHex,
     validateLinkToken, validateDeviceId, pairSessionExpiry, assertPairSessionActive,
     normalizeCode, normalizePairKey, makePairDescriptor, pairDescriptorFromManual,
@@ -888,6 +920,7 @@
     validateSignalData, validateSignalFrameObject, validateTransferStart, validateTransferEnd,
     validateControlFrame, sendControl, parseControl, makePairSessionId, makePairLinkMac,
     validateRosterStageAck, validateRosterRejected,
+    validatePresenceProbeId, validatePresenceFrame, makePresencePing, makePresencePong,
     markChannelAuthenticated, markChannelUnauthenticated, revokeChannel, isChannelAuthenticated,
     bindChannelSession, makeSas
   };

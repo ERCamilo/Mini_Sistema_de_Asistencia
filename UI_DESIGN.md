@@ -381,3 +381,22 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - Las acciones siguen el mismo orden: Mini a la izquierda, conservación del valor actual a la derecha.
 - La selección usa relleno sólido y alto contraste; la alternativa usa una superficie sólida más oscura o de menor énfasis.
 - Está prohibido usar `borde de color + centro transparente + texto de color` como lenguaje principal en botones, chips, badges o etiquetas. Los bordes sólo apoyan la estructura.
+
+### 8.6 Presencia P2P en tiempo real y estados de conexión (F3.4)
+
+- **Compuerta de red (`navigator.onLine`):** `navigator.onLine === false` es la compuerta primaria infranqueable. Mientras el dispositivo esté desconectado de la red, no se inician sondas WebRTC ni reintentos pasivos; el estado de presencia expira de inmediato a desconectado. Al regresar a `online`, se dispara una verificación acotada inmediata. Estar `online` en el navegador no garantiza disponibilidad del par (no es prueba suficiente).
+- **Semántica de presencia autenticada:** La presencia sólo se altera mediante canales P2P WebRTC autenticados y de confianza mutua. Marcos de pre-autenticación o de canales no verificados son descartados y jamás establecen estado conectado.
+- **Tiempos de latido y caducidad:** Latido nominal cada ~25s (`PRESENCE_HEARTBEAT_MS`) mientras la PWA esté activa y exista ruta de sesión de confianza. Caducidad (TTL) de 60s (`PRESENCE_TTL_MS`) tras el último `presence-pong/v1` válido recibido. Reintentos con retroceso exponencial escalonado (5s → 15s → 30s → 60s máx.) reiniciado a 5s tras un pong autenticado exitoso.
+- **Suspensión de navegador:** La suspensión del dispositivo/navegador puede demorar timers. Al reanudar la ejecución o recibir eventos `focus`, `visibilitychange` o `pageshow`, el estado obsoleto que supere el TTL caduca honestamente a desconectado.
+- **Aro e insignias duales independientes en Header:**
+  - Sin pares vinculados: presentación gris / desconectado (`data-p2p-state="unlinked"`).
+  - Vinculado pero sin pares activos en TTL: presentación gris continuo (`data-p2p-state="disconnected"`).
+  - Al menos 1 par autenticado dentro de TTL: aro verde continuo (`data-p2p-state="connected"`).
+  - Transferencia activa en curso: aro verde con pulsación controlada (`data-p2p-state="transferring"`), respetando `prefers-reduced-motion: reduce`.
+  - Conteo de pares en línea > 1: pequeña insignia numérica verde dedicada (`.header-p2p-online-badge`, `data-p2p-header-online`).
+  - Tareas pendientes de revisión > 0: insignia numérica roja independiente (`.header-p2p-badge`, `data-p2p-header-badge`).
+  - Regla de oro: jamás fusionar los significados de la insignia verde (disponibilidad de red) y la insignia roja (trabajo pendiente).
+- **Lista de dispositivos en modal:**
+  - Tarjetas/filas compactas por par vinculado, ordenadas prioritariamente: (1) En línea con pendientes, (2) En línea, (3) Desconectado visto recientemente, (4) Desconectado antiguo.
+  - Jerarquía visual: alias/nombre humano primario; tipo de dispositivo cuando se conoce; píldora de estado (`Conectado`, `En transferencia`, `Conectando…`, `Desconectado`); marca de tiempo relativa ("hace Xm", "hace Xh", "ayer") cuando está desconectado; e insignia de pendientes de revisión si aplica.
+  - Prohibido exponer identificadores técnicos o IDs criptográficos como etiquetas primarias. Prohibido mostrar registros de actividad pasiva en la pantalla principal.

@@ -83,16 +83,344 @@
     if (Array.from(clean).length > 22) return 'SA vinculado';
     return clean;
   }
+  const passivePeerListeners = new Map();
+  const peerPresenceTracker = new Map();
+  const peerRecentLastSeen = new Map();
+  let activeTransferPeerId = null;
+  let passiveInboxStarted = false;
+  let activeManualPeerId = null;
+  const PASSIVE_BACKOFF_SCHEDULE_MS = [5000, 15000, 30000, 60000];
+
+  function passiveBackoffDelayMs(attempt) {
+    const safe = Number.isSafeInteger(attempt) && attempt >= 0 ? attempt : 0;
+    if (safe >= PASSIVE_BACKOFF_SCHEDULE_MS.length) {
+      return PASSIVE_BACKOFF_SCHEDULE_MS[PASSIVE_BACKOFF_SCHEDULE_MS.length - 1];
+    }
+    return PASSIVE_BACKOFF_SCHEDULE_MS[safe];
+  }
+
+  function isNetworkOnline() {
+    try {
+      const nav = (typeof root !== 'undefined' && root.navigator) || (typeof navigator !== 'undefined' ? navigator : null);
+      if (nav && nav.onLine === false) {
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function getPeerPresence(peerId) {
+    const key = String(peerId || '').trim();
+    if (!key) return null;
+    return peerPresenceTracker.get(key) || null;
+  }
+
+  function isPeerOnline(peerId) {
+    if (!isNetworkOnline()) return false;
+    const key = String(peerId || '').trim();
+    if (!key) return false;
+    const record = peerPresenceTracker.get(key);
+    if (!record || !record.isOnline) return false;
+    if (!record.channel || record.channel.readyState !== 'open') return false;
+    if (typeof core.isChannelAuthenticated === 'function' && !core.isChannelAuthenticated(record.channel)) return false;
+    const ttlMs = core.PRESENCE_TTL_MS || 60000;
+    if (!record.lastPongAt || Date.now() - record.lastPongAt >= ttlMs) {
+      return false;
+    }
+    return true;
+  }
+
+  function getPeerVisualState(peerId) {
+    const key = String(peerId || '').trim();
+    if (!key) return 'unlinked';
+    if (activeTransferPeerId === key) return 'transferring';
+    if (isPeerOnline(key)) return 'online';
+    const entry = passivePeerListeners.get(key);
+    if (entry && !entry.stopped && entry.session && !entry.channel) return 'connecting';
+    return 'offline';
+  }
+
+  function detachPresence(peerId, { persist = true } = {}) {
+    const key = String(peerId || '').trim();
+    if (!key) return;
+    const record = peerPresenceTracker.get(key);
+    if (!record) return;
+    if (record.heartbeatTimer) {
+      try { root.clearInterval?.(record.heartbeatTimer); } catch (_) {}
+      record.heartbeatTimer = null;
+    }
+    if (record.ttlTimer) {
+      try { root.clearTimeout?.(record.ttlTimer); } catch (_) {}
+      record.ttlTimer = null;
+    }
+    if (record.channel) {
+      if (record.messageHandler) {
+        try { record.channel.removeEventListener('message', record.messageHandler); } catch (_) {}
+        record.messageHandler = null;
+      }
+      if (record.closeHandler) {
+        try { record.channel.removeEventListener('close', record.closeHandler); } catch (_) {}
+        record.closeHandler = null;
+      }
+    }
+    try { record.pendingProbes?.clear?.(); } catch (_) {}
+    record.isOnline = false;
+    if (persist && record.hasUnsavedPong && record.lastPongAt && record.peer) {
+      record.hasUnsavedPong = false;
+      try {
+        const lastSeenAt = new Date(record.lastPongAt).toISOString();
+        record.peer.lastSeenAt = lastSeenAt;
+        if (typeof identityStore.getPeer === 'function') {
+          identityStore.getPeer(key).then(existing => {
+            if (existing) {
+              identityStore.savePeer({ ...record.peer, lastSeenAt }).catch(() => {});
+            }
+          }).catch(() => {});
+        } else {
+          identityStore.savePeer({ ...record.peer, lastSeenAt }).catch(() => {});
+        }
+      } catch (_) {}
+    }
+    peerPresenceTracker.delete(key);
+  }
+
+  function attachPresence(channel, peer, liveEntry = null) {
+    const peerId = String(peer?.peerId || '').trim();
+    if (!peerId || !channel) return;
+    detachPresence(peerId);
+
+    const record = {
+      peerId,
+      peer,
+      channel,
+      lastPongAt: 0,
+      isOnline: false,
+      hasUnsavedPong: false,
+      pendingProbes: new Map(),
+      heartbeatTimer: null,
+      ttlTimer: null,
+      messageHandler: null,
+      closeHandler: null,
+      sendProbe: null
+    };
+    peerPresenceTracker.set(peerId, record);
+
+    const onPresenceSuccess = (timestamp) => {
+      record.lastPongAt = timestamp || Date.now();
+      record.isOnline = true;
+      record.hasUnsavedPong = true;
+      peerRecentLastSeen.set(peerId, record.lastPongAt);
+      if (liveEntry) liveEntry.retryCount = 0;
+      if (record.peer) {
+        record.peer.lastSeenAt = new Date(record.lastPongAt).toISOString();
+      }
+      if (record.ttlTimer) {
+        try { root.clearTimeout?.(record.ttlTimer); } catch (_) {}
+      }
+      try {
+        const ttlMs = core.PRESENCE_TTL_MS || 60000;
+        record.ttlTimer = root.setTimeout(() => {
+          record.isOnline = false;
+          refreshMiniP2PHeader().catch(() => {});
+          if (isTransferModalOpen() && body()?.querySelector('.mini-p2p-peer-list')) {
+            renderHome().catch(() => {});
+          }
+        }, ttlMs);
+      } catch (_) {}
+      refreshMiniP2PHeader().catch(() => {});
+      if (isTransferModalOpen() && body()?.querySelector('.mini-p2p-peer-list')) {
+        renderHome().catch(() => {});
+      }
+    };
+
+    const sendProbe = () => {
+      if (!isNetworkOnline()) return;
+      if (!channel || channel.readyState !== 'open') return;
+      if (typeof core.isChannelAuthenticated === 'function' && !core.isChannelAuthenticated(channel)) return;
+      try {
+        const probeId = typeof core.randomToken === 'function' ? core.randomToken(16) : String(Date.now());
+        const sentAt = Date.now();
+        const ping = core.makePresencePing ? core.makePresencePing(probeId, sentAt) : { type: 'presence-ping/v1', probeId, sentAt };
+        if (record.pendingProbes.size > 5) {
+          const oldest = record.pendingProbes.keys().next().value;
+          record.pendingProbes.delete(oldest);
+        }
+        record.pendingProbes.set(probeId, { sentAt });
+        channel.send(JSON.stringify(ping));
+      } catch (_) {}
+    };
+    record.sendProbe = sendProbe;
+
+    const messageHandler = (event) => {
+      if (typeof event.data !== 'string') return;
+      let parsed;
+      try {
+        parsed = JSON.parse(event.data);
+      } catch (_) {
+        return;
+      }
+      if (!parsed || typeof parsed !== 'object') return;
+      if (parsed.type !== 'presence-ping/v1' && parsed.type !== 'presence-pong/v1') return;
+
+      // Gate: Only authenticated trusted channels may affect online state.
+      // Never let pre-auth/untrusted frames mark SA online.
+      if (typeof core.isChannelAuthenticated === 'function' && !core.isChannelAuthenticated(channel)) {
+        return;
+      }
+
+      let frame;
+      try {
+        frame = core.validatePresenceFrame ? core.validatePresenceFrame(parsed) : parsed;
+      } catch (_) {
+        return;
+      }
+
+      if (frame.type === 'presence-ping/v1') {
+        try {
+          const pong = core.makePresencePong ? core.makePresencePong(frame.probeId, frame.sentAt) : { type: 'presence-pong/v1', probeId: frame.probeId, sentAt: frame.sentAt };
+          channel.send(JSON.stringify(pong));
+        } catch (_) {}
+        // Ping alone MUST NOT mark online, MUST NOT refresh lastPongAt, MUST NOT renew TTL.
+        return;
+      } else if (frame.type === 'presence-pong/v1') {
+        const pending = record.pendingProbes.get(frame.probeId);
+        if (!pending || pending.sentAt !== frame.sentAt) {
+          return;
+        }
+        record.pendingProbes.delete(frame.probeId);
+        onPresenceSuccess(Date.now());
+      }
+    };
+
+    record.messageHandler = messageHandler;
+    channel.addEventListener('message', messageHandler);
+
+    const closeHandler = () => {
+      detachPresence(peerId);
+      refreshMiniP2PHeader().catch(() => {});
+      if (isTransferModalOpen() && body()?.querySelector('.mini-p2p-peer-list')) {
+        renderHome().catch(() => {});
+      }
+    };
+    record.closeHandler = closeHandler;
+    try { channel.addEventListener('close', closeHandler); } catch (_) {}
+
+    sendProbe();
+
+    try {
+      const hbMs = core.PRESENCE_HEARTBEAT_MS || 25000;
+      record.heartbeatTimer = root.setInterval(() => {
+        if (!isNetworkOnline()) return;
+        const ttlMs = core.PRESENCE_TTL_MS || 60000;
+        if (record.lastPongAt && Date.now() - record.lastPongAt >= ttlMs) {
+          record.isOnline = false;
+          refreshMiniP2PHeader().catch(() => {});
+          if (isTransferModalOpen() && body()?.querySelector('.mini-p2p-peer-list')) {
+            renderHome().catch(() => {});
+          }
+        }
+        sendProbe();
+      }, hbMs);
+    } catch (_) {}
+  }
+
+  function expireStalePresence() {
+    const now = Date.now();
+    let changed = false;
+    const ttlMs = core.PRESENCE_TTL_MS || 60000;
+    for (const [, record] of peerPresenceTracker.entries()) {
+      if (record.isOnline) {
+        if (!record.lastPongAt || now - record.lastPongAt >= ttlMs) {
+          record.isOnline = false;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      refreshMiniP2PHeader().catch(() => {});
+      if (isTransferModalOpen() && body()?.querySelector('.mini-p2p-peer-list')) {
+        renderHome().catch(() => {});
+      }
+    }
+  }
+
+  function handleNetworkOffline() {
+    for (const [, entry] of passivePeerListeners.entries()) {
+      if (entry.retryTimer) {
+        try { root.clearTimeout?.(entry.retryTimer); } catch (_) {}
+        entry.retryTimer = null;
+      }
+    }
+    for (const [, record] of peerPresenceTracker.entries()) {
+      record.isOnline = false;
+      if (record.heartbeatTimer) {
+        try { root.clearInterval?.(record.heartbeatTimer); } catch (_) {}
+        record.heartbeatTimer = null;
+      }
+      if (record.ttlTimer) {
+        try { root.clearTimeout?.(record.ttlTimer); } catch (_) {}
+        record.ttlTimer = null;
+      }
+    }
+    refreshMiniP2PHeader().catch(() => {});
+    if (isTransferModalOpen() && body()?.querySelector('.mini-p2p-peer-list')) {
+      renderHome().catch(() => {});
+    }
+  }
+
+  function handleNetworkOnline() {
+    expireStalePresence();
+    if (passiveInboxStarted) {
+      identityStore.listPeers().then(peers => {
+        const saPeers = (peers || []).filter(p => p.peerApp === 'sa');
+        for (const peer of saPeers) {
+          ensurePeerListener(peer, 0).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+  }
+
+  try {
+    root.addEventListener?.('offline', handleNetworkOffline);
+    root.addEventListener?.('online', handleNetworkOnline);
+    const onVisibilityChange = () => {
+      try {
+        if (root.document?.visibilityState === 'visible') {
+          expireStalePresence();
+          if (isNetworkOnline()) handleNetworkOnline();
+          else handleNetworkOffline();
+        }
+      } catch (_) {}
+    };
+    root.addEventListener?.('visibilitychange', onVisibilityChange);
+    root.document?.addEventListener?.('visibilitychange', onVisibilityChange);
+    root.addEventListener?.('focus', () => {
+      expireStalePresence();
+      if (isNetworkOnline()) handleNetworkOnline();
+      else handleNetworkOffline();
+    });
+    root.addEventListener?.('pageshow', () => {
+      expireStalePresence();
+      if (isNetworkOnline()) handleNetworkOnline();
+      else handleNetworkOffline();
+    });
+  } catch (_) {}
+
   function headerLinkEl() {
     try { return document.getElementById('btn-attendance-link'); } catch (_) { return null; }
   }
+
   function isPassivePeerLive(peerId) {
     try {
+      if (isPeerOnline(peerId)) return true;
       const entry = passivePeerListeners.get(String(peerId || '').trim());
       const channel = entry?.channel;
-      return Boolean(channel && channel.readyState === 'open' && core.isChannelAuthenticated?.(channel) === true);
+      return Boolean(channel && channel.readyState === 'open' && core.isChannelAuthenticated?.(channel) === true && isPeerOnline(peerId));
     } catch (_) { return false; }
   }
+
   async function refreshMiniP2PHeader() {
     try {
       const btn = headerLinkEl();
@@ -112,6 +440,32 @@
           pendingBadge.removeAttribute('aria-label');
         }
       }
+
+      const onlinePeers = peers.filter(p => isPeerOnline(p.peerId));
+      const onlineCount = onlinePeers.length;
+      let onlineBadge = btn.querySelector ? btn.querySelector('[data-p2p-header-online]') : null;
+      if (!onlineBadge && btn.querySelector) {
+        const ring = btn.querySelector('.header-p2p-ring');
+        if (ring) {
+          onlineBadge = document.createElement('span');
+          onlineBadge.className = 'header-p2p-online-badge';
+          onlineBadge.setAttribute('data-p2p-header-online', '');
+          onlineBadge.hidden = true;
+          ring.appendChild(onlineBadge);
+        }
+      }
+      if (onlineBadge) {
+        if (onlineCount > 1) {
+          onlineBadge.hidden = false;
+          onlineBadge.textContent = String(onlineCount);
+          onlineBadge.setAttribute('aria-label', onlineCount + ' SA conectados');
+        } else {
+          onlineBadge.hidden = true;
+          onlineBadge.textContent = '';
+          onlineBadge.removeAttribute('aria-label');
+        }
+      }
+
       if (!peers.length) {
         if (labelEl) labelEl.textContent = 'SA no vinculado';
         try { btn.setAttribute('aria-label', 'SA no vinculado. Vincular'); } catch (_) {}
@@ -121,19 +475,25 @@
         try { btn.setAttribute('data-p2p-state', 'unlinked'); } catch (_) {}
         return 'unlinked';
       }
-      const peer = peers[0];
+
+      const isTransferring = Boolean(activeTransferPeerId);
+      const isLive = onlineCount > 0 || isTransferring;
+      const connectionState = isTransferring ? 'transferring' : (isLive ? 'connected' : 'disconnected');
+      if (labelEl) labelEl.textContent = 'SA ' + connectionState;
+
+      const peer = onlinePeers[0] || peers[0];
       const primary = peerName(peer);
       const original = peerOriginalName(peer);
-      const live = peers.some(item => isPassivePeerLive(item.peerId)) || Boolean(activeChannel && activeChannel.readyState === 'open' && core.isChannelAuthenticated?.(activeChannel) === true);
-      const connectionState = live ? 'connected' : 'disconnected';
-      if (labelEl) labelEl.textContent = 'SA ' + connectionState;
       let alias = '';
       try { alias = aliasStore.getAlias(peer.peerId); } catch (_) {}
       const pendingSuffix = pendingCount > 0 ? '. ' + pendingCount + ' pendiente' + (pendingCount === 1 ? '' : 's') + ' por revisar' : '';
-      const stateText = live ? 'conectado' : 'vinculado, sin conexión activa';
+      const onlineSuffix = onlineCount > 1 ? ' (' + onlineCount + ' conectados)' : '';
+      const stateText = isTransferring
+        ? 'en transferencia'
+        : (isLive ? 'conectado' : 'vinculado, sin conexión activa');
       const audit = (alias && alias !== original)
-        ? ('SA ' + stateText + ': ' + alias + ', proyecto ' + original + pendingSuffix + '. Abrir Transferencias')
-        : ('SA ' + stateText + ': ' + primary + pendingSuffix + '. Abrir Transferencias');
+        ? ('SA ' + stateText + onlineSuffix + ': ' + alias + ', proyecto ' + original + pendingSuffix + '. Abrir Transferencias')
+        : ('SA ' + stateText + onlineSuffix + ': ' + primary + pendingSuffix + '. Abrir Transferencias');
       try { btn.setAttribute('aria-label', audit); } catch (_) {}
       try { btn.setAttribute('title', audit); } catch (_) {}
       try { btn.onclick = openP2PTransferModal; } catch (_) {}
@@ -211,11 +571,6 @@
   let activeQrScanTimer = null;
   let activeQrScanGeneration = 0;
   const ATTENDANCE_READY_SCHEMA = 'attendance-ready/v1';
-  const PASSIVE_BASE_DELAY_MS = 1000;
-  const PASSIVE_MAX_DELAY_MS = 30000;
-  const passivePeerListeners = new Map();
-  let passiveInboxStarted = false;
-  let activeManualPeerId = null;
 
   function esc(value) {
     return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
@@ -226,8 +581,11 @@
     return original || (peer?.peerApp === 'sa' ? 'SA' : peer?.peerApp === 'mini' ? 'Mini' : 'Dispositivo');
   }
   function peerActivityMs(peer) {
+    const id = String(peer?.peerId || '').trim();
+    const rec = peerPresenceTracker.get(id);
+    const inMem = rec?.lastPongAt || peerRecentLastSeen.get(id) || 0;
     const parsed = Date.parse(peer?.lastSeenAt || peer?.linkedAt || '');
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Math.max(inMem, Number.isFinite(parsed) ? parsed : 0);
   }
   function sortPeersByRecentActivity(peers) {
     return [...(peers || [])].sort((a,b)=>peerActivityMs(b)-peerActivityMs(a)||String(a?.peerId||'').localeCompare(String(b?.peerId||'')));
@@ -553,20 +911,59 @@
     return `<div class="mini-p2p-capability ${stateClass}"><span class="mini-p2p-capability-icon">${vectorIcon(iconName, 16)}</span><span class="mini-p2p-capability-copy"><strong>${esc(title)}</strong><small>${esc(detail)}</small></span></div>`;
   }
 
+  function peerSortScore(peer) {
+    const id = String(peer?.peerId || '').trim();
+    const online = isPeerOnline(id);
+    const pending = Boolean(getEffectiveStaged(id));
+    if (online && pending) return 4;
+    if (online) return 3;
+    if (pending) return 2;
+    return 1;
+  }
+
+  function sortPeersForDisplay(peers) {
+    return [...(peers || [])].sort((a, b) => {
+      const scoreDiff = peerSortScore(b) - peerSortScore(a);
+      if (scoreDiff !== 0) return scoreDiff;
+      return peerActivityMs(b) - peerActivityMs(a) || String(a?.peerId || '').localeCompare(String(b?.peerId || ''));
+    });
+  }
+
   async function renderHome() {
     shell();
     cleanupSession();
     const self = await identityStore.getSelf();
     const peers = sortPeersByRecentActivity((await identityStore.listPeers()).filter(p => p.peerApp === 'sa'));
-    const peerRows = peers.length ? peers.map(peer => {
+    const sortedPeers = sortPeersForDisplay(peers);
+    const peerRows = sortedPeers.length ? sortedPeers.map(peer => {
       const alias = aliasStore.getAlias(peer.peerId);
       const original = peerOriginalName(peer);
-      const lastSeen = formatPeerDate(peer.lastSeenAt || peer.linkedAt);
+      const rec = getPeerPresence(peer.peerId);
+      const inMemPong = rec?.lastPongAt || peerRecentLastSeen.get(peer.peerId);
+      const effectiveLastSeen = inMemPong ? new Date(inMemPong).toISOString() : (peer.lastSeenAt || peer.linkedAt);
+      const lastSeen = formatPeerDate(effectiveLastSeen);
       const originalLine = alias ? ` · Original: ${esc(original)}` : '';
+      const visualState = getPeerVisualState(peer.peerId);
+      const isOnline = visualState === 'online';
+      const isTransferring = visualState === 'transferring';
+      const isConnecting = visualState === 'connecting';
+      const statePillClass = isTransferring ? 'is-transferring' : (isOnline ? 'is-online' : (isConnecting ? 'is-connecting' : 'is-offline'));
+      const stateLabel = isTransferring ? 'En transferencia' : (isOnline ? 'Conectado' : (isConnecting ? 'Conectando…' : 'Desconectado'));
+      const avatarStateClass = isTransferring ? 'is-transferring' : (isOnline ? 'is-online' : '');
+      const peerStaged = getEffectiveStaged(peer.peerId);
+      const peerPendingBadge = peerStaged ? `<span class="mini-count-badge" role="status" aria-label="1 pendiente">1</span>` : '';
+      const stateMeta = isOnline ? 'Conectado recientemente' : `Última conexión: ${esc(lastSeen)}`;
       return `
         <div class="mini-p2p-peer-row">
-          <span class="mini-p2p-peer-avatar">${vectorIcon('hardHat', 17)}</span>
-          <div class="mini-p2p-peer-copy"><strong>${esc(peerName(peer))}</strong><div class="mini-p2p-peer-meta">Última conexión: ${esc(lastSeen)}${originalLine}</div></div>
+          <span class="mini-p2p-peer-avatar ${avatarStateClass}">${vectorIcon('hardHat', 17)}</span>
+          <div class="mini-p2p-peer-copy">
+            <div class="mini-p2p-peer-title-line">
+              <strong>${esc(peerName(peer))}</strong>
+              <span class="mini-p2p-peer-pill ${statePillClass}">${stateLabel}</span>
+              ${peerPendingBadge}
+            </div>
+            <div class="mini-p2p-peer-meta">${stateMeta}${originalLine}</div>
+          </div>
           <div class="mini-p2p-device-actions">
             <button type="button" class="mini-p2p-icon-btn" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre">${vectorIcon('edit', 16)}</button>
             ${uiButton('Roster', `data-wait-peer="${esc(peer.peerId)}" aria-label="Esperar roster de ${esc(peerName(peer))}"`, 'primary', 'users')}
@@ -639,6 +1036,8 @@
       if (typeof root.showConfirm !== 'function') { toast('Confirmación no disponible en este entorno.'); return; }
       const confirmed = await root.showConfirm(`¿Desvincular a ${name}?`, { title: 'Desvincular SA', confirmText: 'Desvincular', danger: true });
       if (!confirmed) return;
+      peerRecentLastSeen.delete(peerId);
+      detachPresence(peerId, { persist: false });
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
       try { stopPeerListener(peerId); } catch (_) {}
@@ -1007,6 +1406,8 @@
                 activeAttendanceResponderDetach = armAttendanceResponder(channel,peer,self,{
                   onResponseSent: (response) => {
                     attendanceResponseSent = true;
+                    activeTransferPeerId = null;
+                    refreshMiniP2PHeader().catch(() => {});
                     const liveBox=body()?.querySelector('[data-wait-status]');
                     if(liveBox) { liveBox.classList?.add?.('is-success'); liveBox.innerHTML=statusMessage('check','Respuesta de asistencia enviada','SA la validará antes de incorporarla.'); }
                   }
@@ -1078,22 +1479,43 @@
     const background = options.background === true;
     const receiver=core.createTransferReceiver({
       channel,
-      onProgress:progress=>{ if (background) return; const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');if(box)box.textContent='Recibiendo roster… '+Math.round(progress*100)+'%';},
-      onError:error=>{ if (!background) renderError(error); },
-      onComplete:result=>stageReceivedRoster(result,peer,channel,{ background })
+      onProgress:progress=>{
+        activeTransferPeerId = peer?.peerId || null;
+        refreshMiniP2PHeader().catch(() => {});
+        if (background) return;
+        const box=body()?.querySelector('[data-receive-state]')||body()?.querySelector('[data-wait-status]');
+        if(box)box.textContent='Recibiendo roster… '+Math.round(progress*100)+'%';
+      },
+      onError:error=>{
+        activeTransferPeerId = null;
+        refreshMiniP2PHeader().catch(() => {});
+        if (!background) renderError(error);
+      },
+      onComplete:result=>{
+        activeTransferPeerId = null;
+        refreshMiniP2PHeader().catch(() => {});
+        stageReceivedRoster(result,peer,channel,{ background });
+      }
     });
     channel.addEventListener('message',event=>{
       const control=core.parseControl(event.data);
       if(control)return;
+      if (typeof event.data === 'string') {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && (parsed.type === 'presence-ping/v1' || parsed.type === 'presence-pong/v1')) {
+            return;
+          }
+          if (parsed && parsed.protocol === core.TRANSFER_PROTOCOL && parsed.type === 'start') {
+            activeTransferPeerId = peer?.peerId || null;
+            refreshMiniP2PHeader().catch(() => {});
+          }
+        } catch (_) {}
+      }
       receiver(event);
     });
   }
 
-  function passiveBackoffDelayMs(attempt) {
-    const safeAttempt = Number.isSafeInteger(attempt) && attempt >= 0 ? Math.min(attempt, 5) : 0;
-    const delay = PASSIVE_BASE_DELAY_MS * (2 ** safeAttempt);
-    return Math.min(PASSIVE_MAX_DELAY_MS, delay);
-  }
   function isTransferModalOpen() {
     try { return Boolean(modal()); } catch (_) { return false; }
   }
@@ -1144,10 +1566,12 @@
   function schedulePassiveRetry(peer, attempt) {
     const peerId = String(peer?.peerId || '').trim();
     if (!peerId) return;
+    if (!isNetworkOnline()) return;
     const existing = passivePeerListeners.get(peerId);
     if (!existing || existing.stopped) return;
-    const nextAttempt = Number.isSafeInteger(attempt) ? attempt + 1 : 1;
-    const delay = passiveBackoffDelayMs(nextAttempt);
+    const currentCount = Number.isSafeInteger(existing.retryCount) ? existing.retryCount : (Number.isSafeInteger(attempt) ? attempt : 0);
+    const delay = passiveBackoffDelayMs(currentCount);
+    const nextAttempt = Math.min(currentCount + 1, PASSIVE_BACKOFF_SCHEDULE_MS.length - 1);
     try { if (existing.retryTimer) root.clearTimeout?.(existing.retryTimer); } catch (_) {}
     let timer = null;
     try {
@@ -1160,6 +1584,7 @@
         current.attendanceDetach = null;
         current.session = null;
         current.channel = null;
+        detachPresence(peerId);
         ensurePeerListener(peer, nextAttempt).catch(() => {});
       }, delay);
     } catch (_) { return; }
@@ -1169,6 +1594,7 @@
   async function ensurePeerListener(peer, attempt = 0) {
     const peerId = String(peer?.peerId || '').trim();
     if (!peerId || peer?.peerApp !== 'sa' || !peer?.linkToken) throw new Error('SA vinculado no encontrado.');
+    if (!isNetworkOnline()) return null;
     if (activeManualPeerId && activeManualPeerId === peerId) return null;
     const existing = passivePeerListeners.get(peerId);
     if (existing && !existing.stopped && (existing.session || existing.retryTimer)) return existing;
@@ -1186,6 +1612,7 @@
           if (!current || current.stopped) return;
           if (error || status === 'disconnected' || status === 'failed' || status === 'closed') {
             try { session?.close?.(); } catch (_) {}
+            detachPresence(peerId);
             try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
             schedulePassiveRetry(peer, current.retryCount || attempt);
           }
@@ -1204,12 +1631,17 @@
                 armRosterReceiver(channel, peer, { background: true });
                 live.attendanceDetach = armAttendanceResponder(channel, peer, self, {});
                 sendAttendanceReady(channel);
+                attachPresence(channel, peer, live);
                 refreshMiniP2PHeader().catch(() => {});
               } catch (_) {
+                detachPresence(peerId);
                 schedulePassiveRetry(peer, live.retryCount || 0);
               }
             },
-            onError: () => { schedulePassiveRetry(peer, (passivePeerListeners.get(peerId)?.retryCount) || attempt); }
+            onError: () => {
+              detachPresence(peerId);
+              schedulePassiveRetry(peer, (passivePeerListeners.get(peerId)?.retryCount) || attempt);
+            }
           });
         }
       });
@@ -1219,12 +1651,14 @@
       live.detach = () => { try { session?.close?.(); } catch (_) {} };
       return live;
     } catch (_) {
+      detachPresence(peerId);
       schedulePassiveRetry(peer, attempt);
       return passivePeerListeners.get(peerId) || entry;
     }
   }
   async function startPassiveInbox() {
     passiveInboxStarted = true;
+    if (!isNetworkOnline()) return 0;
     let peers = [];
     try { peers = (await identityStore.listPeers()).filter(p => p.peerApp === 'sa'); }
     catch (_) { return 0; }
@@ -1237,6 +1671,7 @@
   function stopPeerListener(peerId) {
     const key = String(peerId || '').trim();
     if (!key) return false;
+    detachPresence(key);
     const entry = passivePeerListeners.get(key);
     if (!entry) return false;
     entry.stopped = true;
@@ -1471,7 +1906,8 @@
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
   root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
-  root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel };
+  root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel, isPeerOnline, isNetworkOnline };
+  root.MiniP2PPresence = { isPeerOnline, getPeerState: getPeerVisualState, getPresence: getPeerPresence, attach: attachPresence, detach: detachPresence, isNetworkOnline, expireStale: expireStalePresence, handleOffline: handleNetworkOffline, handleOnline: handleNetworkOnline, HEARTBEAT_MS: core.PRESENCE_HEARTBEAT_MS || 25000, TTL_MS: core.PRESENCE_TTL_MS || 60000, BACKOFF_SCHEDULE_MS: PASSIVE_BACKOFF_SCHEDULE_MS };
   root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };
 
   const boot=()=>{ refreshMiniP2PHeader().catch(()=>{}); try { startPassiveInbox().catch(()=>{}); } catch (_) {} return consumePairHash().catch(()=>{}); };
