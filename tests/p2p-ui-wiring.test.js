@@ -7,9 +7,9 @@ const read=rel=>fs.readFileSync(path.join(root,rel),'utf8');
 
 test('Mini loads P2P runtime in dependency order and precaches it',()=>{
   const html=read('index.html'), sw=read('sw.js');
-  const core=html.indexOf('./p2p-core.js'), pairing=html.indexOf('./p2p-pairing.js'), aliases=html.indexOf('./p2p-peer-alias-store.js'), ui=html.indexOf('./p2p-roster-ui.js');
-  assert.ok(core>0&&core<pairing&&pairing<aliases&&aliases<ui);
-  for(const asset of ['./p2p-core.js','./p2p-pairing.js','./p2p-peer-alias-store.js','./p2p-roster-ui.js']) assert.ok(sw.includes(asset),asset+' precached');
+  const core=html.indexOf('./p2p-core.js'), pairing=html.indexOf('./p2p-pairing.js'), aliases=html.indexOf('./p2p-peer-alias-store.js'), backup=html.indexOf('./p2p-backup-bridge.js'), ui=html.indexOf('./p2p-roster-ui.js');
+  assert.ok(core>0&&core<pairing&&pairing<aliases&&aliases<backup&&backup<ui);
+  for(const asset of ['./p2p-core.js','./p2p-pairing.js','./p2p-peer-alias-store.js','./p2p-backup-bridge.js','./p2p-roster-ui.js']) assert.ok(sw.includes(asset),asset+' precached');
 });
 
 test('Mini P2P linking UI follows the compact UI_DESIGN contract',()=>{
@@ -115,7 +115,7 @@ test('transfer types: active and future capabilities share one compact capabilit
   for (const label of ['Personal','Asistencia','Backup','Archivos']) assert.ok(ui.includes(label), label + ' visible');
   assert.match(ui, /capability\('users', 'Personal',[\s\S]*'is-ready'\)/);
   assert.match(ui, /capability\('attendance', 'Asistencia',[\s\S]*'is-ready'\)/);
-  assert.match(ui, /capability\('backup', 'Backup',[\s\S]*'is-disabled'\)/);
+  assert.match(ui, /capability\('backup', 'Backup',[\s\S]*'is-ready'/);
   assert.match(ui, /capability\('restore', 'Archivos',[\s\S]*'is-disabled'\)/);
 });
 

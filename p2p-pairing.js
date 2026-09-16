@@ -12,37 +12,47 @@
     return { deviceId, appType, displayName: displayName.slice(0, 80) || appType };
   }
 
-  function validateHello(data, self) {
+  function validateHello(data, self, { allowSameApp = false } = {}) {
     if (!data || typeof data !== 'object') throw new Error('Identidad P2P inválida.');
     const deviceId = core.validateDeviceId(data.deviceId, 'deviceId remoto inválido.');
     const appType = String(data.appType || '').trim();
     const displayName = String(data.displayName || '').trim();
     const nonce = String(data.nonce || '').trim();
-    if (!['sa', 'mini'].includes(appType) || appType === self.appType) throw new Error('La app remota P2P no es compatible.');
-    if (self.appType === 'sa' && appType !== 'mini') throw new Error('SA sólo puede vincular Mini.');
-    if (self.appType === 'mini' && appType !== 'sa') throw new Error('Mini sólo puede vincular SA.');
+    if (!['sa', 'mini'].includes(appType)) throw new Error('La app remota P2P no es compatible.');
+    if (!allowSameApp) {
+      if (appType === self.appType) throw new Error('La app remota P2P no es compatible.');
+      if (self.appType === 'sa' && appType !== 'mini') throw new Error('SA sólo puede vincular Mini.');
+      if (self.appType === 'mini' && appType !== 'sa') throw new Error('Mini sólo puede vincular SA.');
+    } else {
+      if (appType !== self.appType) throw new Error('La app remota P2P no es compatible.');
+    }
     if (!nonce || nonce.length > 128) throw new Error('Nonce remoto inválido.');
     return { deviceId, appType, displayName: displayName.slice(0, 80) || appType, nonce };
   }
 
-  function assertDescriptor(descriptor, self, initiator) {
+  function assertDescriptor(descriptor, self, initiator, { allowSameApp = false } = {}) {
     if (!descriptor || descriptor.v !== 1 || descriptor.room !== 'pair-' + descriptor.code) throw new Error('Descriptor de emparejamiento inválido.');
     core.normalizeCode(descriptor.code);
     core.normalizePairKey(descriptor.key);
     if (!/^[a-f0-9]{64}$/i.test(String(descriptor.proof || ''))) throw new Error('Prueba de emparejamiento inválida.');
     core.assertPairSessionActive(descriptor.expiresAt);
-    if (descriptor.issuerApp && descriptor.issuerApp !== 'sa') throw new Error('SA debe ser el emisor del emparejamiento.');
-    if (initiator && descriptor.issuerId && descriptor.issuerId !== self.deviceId) throw new Error('El descriptor no pertenece a este SA.');
+    if (!allowSameApp) {
+      if (descriptor.issuerApp && descriptor.issuerApp !== 'sa') throw new Error('SA debe ser el emisor del emparejamiento.');
+      if (initiator && descriptor.issuerId && descriptor.issuerId !== self.deviceId) throw new Error('El descriptor no pertenece a este SA.');
+    } else {
+      if (descriptor.issuerApp && descriptor.issuerApp !== self.appType) throw new Error('Emisor de emparejamiento inválido.');
+      if (initiator && descriptor.issuerId && descriptor.issuerId !== self.deviceId) throw new Error('El descriptor no pertenece a este dispositivo.');
+    }
   }
 
   function expectedPeerApp(appType) {
     return appType === 'sa' ? 'mini' : 'sa';
   }
 
-  function attachPairing(channel, { self, descriptor, initiator, store, onCandidate, onLinked, onRejected, onError }) {
+  function attachPairing(channel, { self, descriptor, initiator, store, onCandidate, onLinked, onRejected, onError, allowSameApp = false }) {
     const local = normalizeIdentity(self);
     let finished = false;
-    try { assertDescriptor(descriptor, local, initiator); }
+    try { assertDescriptor(descriptor, local, initiator, { allowSameApp }); }
     catch (error) {
       core.revokeChannel(channel, error);
       onError?.(error);
@@ -109,7 +119,7 @@
       try {
         core.assertPairSessionActive(descriptor.expiresAt);
         if (msg.type === 'pair-hello') {
-          const incoming = validateHello(msg.data, local);
+          const incoming = validateHello(msg.data, local, { allowSameApp });
           if (remote && (remote.deviceId !== incoming.deviceId || remote.appType !== incoming.appType || remote.nonce !== incoming.nonce)) {
             throw new Error('La identidad P2P cambió durante el emparejamiento.');
           }
@@ -128,7 +138,8 @@
           if (descriptor.issuerId && !initiator && descriptor.issuerId !== remote.deviceId) {
             throw new Error('El dispositivo del QR no coincide con el emisor conectado.');
           }
-          if (remote.appType !== expectedPeerApp(local.appType)) throw new Error('La app remota P2P no es compatible.');
+          if (!allowSameApp && remote.appType !== expectedPeerApp(local.appType)) throw new Error('La app remota P2P no es compatible.');
+          if (allowSameApp && remote.appType !== local.appType) throw new Error('La app remota P2P no es compatible.');
           if (!helloEchoed) { helloEchoed = true; sendHello(); }
           if (!candidateShown) {
             candidateShown = true;
@@ -161,8 +172,9 @@
           if (msg.data.mac !== expectedMac) throw new Error('Enlace P2P no autenticado.');
           const peer = await store.savePeer({
             peerId: remote.deviceId, peerApp: remote.appType, displayName: remote.displayName,
+            purpose: allowSameApp ? 'backup' : undefined,
             linkToken: token, linkedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString()
-          });
+          }, { allowSameApp });
            const mac = await core.makePairLinkMac(
              'pair-linked', descriptor.proof, sessionId, msg.data.initiatorId, msg.data.receiverId, token
            );
@@ -191,8 +203,9 @@
           if (msg.data.mac !== expected) throw new Error('ACK de vínculo no autenticado.');
           const peer = await store.savePeer({
             peerId: remote.deviceId, peerApp: remote.appType, displayName: remote.displayName,
+            purpose: allowSameApp ? 'backup' : undefined,
             linkToken, linkedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString()
-          });
+          }, { allowSameApp });
           core.markChannelAuthenticated(channel);
           onLinked?.(peer);
           finished = true;
@@ -209,11 +222,16 @@
     };
   }
 
-  function validateTrustedPeer(self, peer) {
+  function validateTrustedPeer(self, peer, { allowSameApp = false } = {}) {
     if (!peer || typeof peer !== 'object') throw new Error('Peer vinculado inválido.');
     const peerId = core.validateDeviceId(peer.peerId, 'Peer vinculado inválido.');
     if (peerId === self.deviceId) throw new Error('Peer vinculado inválido.');
-    if (peer.peerApp !== expectedPeerApp(self.appType)) throw new Error('La app remota P2P no es compatible.');
+    if (!allowSameApp) {
+      if (peer.peerApp !== expectedPeerApp(self.appType)) throw new Error('La app remota P2P no es compatible.');
+    } else {
+      if (peer.peerApp !== self.appType) throw new Error('La app remota P2P no es compatible.');
+      if (peer.purpose !== 'backup') throw new Error('Peer same-app requiere propósito de respaldo.');
+    }
     core.validateLinkToken(peer.linkToken);
     return { ...peer, peerId };
   }
@@ -226,10 +244,10 @@
     return core.hmacHex(token, 'trusted-ok:v1:' + senderId + ':' + receiverId + ':' + nonce);
   }
 
-  function attachTrusted(channel, { self, peer, store, onAuthenticated, onError }) {
+  function attachTrusted(channel, { self, peer, store, onAuthenticated, onError, allowSameApp = false }) {
     const local = normalizeIdentity(self);
     let trustedPeer;
-    try { trustedPeer = validateTrustedPeer(local, peer); }
+    try { trustedPeer = validateTrustedPeer(local, peer, { allowSameApp }); }
     catch (error) {
       core.revokeChannel(channel, error);
       onError?.(error);
@@ -264,7 +282,7 @@
       if (done || completing || !helloVerified || !okVerified) return;
       completing = true;
       try {
-        if (store?.savePeer) await store.savePeer({ ...trustedPeer, lastSeenAt: new Date().toISOString() });
+        if (store?.savePeer) await store.savePeer({ ...trustedPeer, lastSeenAt: new Date().toISOString() }, { allowSameApp });
         core.markChannelAuthenticated(channel);
         onAuthenticated?.();
         done = true;
@@ -312,6 +330,6 @@
     return { detach: () => channel.removeEventListener('message', handler), isAuthenticated: () => core.isChannelAuthenticated(channel) };
   }
 
-  root.SaMiniP2PPairing = { attachPairing, attachTrusted };
+  root.SaMiniP2PPairing = { attachPairing, attachTrusted, validateHello, assertDescriptor, validateTrustedPeer };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.SaMiniP2PPairing;
 })(typeof window !== 'undefined' ? window : globalThis);

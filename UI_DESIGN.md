@@ -223,7 +223,18 @@ Cuando una acción cambia de una vista compacta a otra más grande o pequeña de
 
 ---
 
-### 5.10 Ingeniería de animación y fluidez
+### 5.10 Respaldos P2P y transferencia same-app (F3.P2P-3)
+
+- **Franja de capacidades**: `Backup` pasa de Próximamente a `is-ready`, con interacción hacia el hub de respaldos P2P (`data-open-backup-hub`). La capacidad genérica `Archivos` permanece `is-disabled` / Próximamente.
+- **Aislamiento same-app**: el emparejamiento Mini ↔ Mini se habilita exclusivamente mediante opt-in explícito (`allowSameApp: true`) para transferencias de respaldo. Los peers same-app nunca entran a listas de roster ni asistencia, ni activan listeners pasivos de esos contratos.
+- **Staging efímero en memoria**: máximo 3 respaldos pendientes en total en este Mini receptor, deduplicados por `transferId` y SHA-256 antes del límite. Ninguna transferencia escribe en base de datos ni IndexedDB antes de confirmación explícita del usuario.
+- **Restauración Mini ↔ Mini**: sólo los respaldos propios de Mini (`mini-backup/v1`) habilitan la acción `Revisar`. Esta acción valida UTF-8 y JSON, puebla el textarea del modal nativo existente (`modal-restore-backup`), marca el contexto con el `transferId` y lo abre para inspección; el respaldo permanece en staging durante la revisión o cancelación, y sólo se elimina tras el éxito de `doRestoreBackup()` confirmado explícitamente por el usuario.
+- **Cross-app SA ↔ Mini**: los respaldos de SA recibidos por Mini (`sa-backup/v1`) son exclusivamente de descarga local; nunca se ofrece ni ejecuta revisión o restauración sobre datos de otra app.
+- **Iconografía y accesibilidad**: todos los estados y acciones usan `IconSet`/SVG vectoriales (`backup`, `inbox`, `restore`, `close`, `check`), targets táctiles >= 44x44px y cero emojis/símbolos Unicode como iconografía interactiva.
+
+---
+
+### 5.11 Ingeniería de animación y fluidez
 
 Mini usa el mismo principio de motion de SA, adaptado a hardware móvil y uso táctil. El movimiento debe aclarar continuidad, jerarquía y resultado; nunca retrasar una acción.
 

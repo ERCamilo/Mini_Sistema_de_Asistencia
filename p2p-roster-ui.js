@@ -557,6 +557,11 @@
       const nextIntent = pendingPairIntent;
       pendingPairIntent = null;
       if (!nextIntent || nextIntent === 'home') return renderHome();
+      if (typeof nextIntent === 'object') {
+        if (nextIntent.type === 'scan') return renderQrScanner(nextIntent.options);
+        if (nextIntent.type === 'manual') return renderManualPair(nextIntent.options);
+        if (nextIntent.type === 'pair' && nextIntent.descriptor) return startPairing(nextIntent.descriptor, nextIntent.options);
+      }
       if (nextIntent === 'scan') return renderQrScanner();
       if (nextIntent === 'manual') return renderManualPair();
       if (nextIntent && nextIntent.type === 'pair' && nextIntent.descriptor) return startPairing(nextIntent.descriptor);
@@ -567,6 +572,7 @@
   let activeChannel = null;
   let pendingRoster = null;
   let activeAttendanceResponderDetach = null;
+  let activeBackupReceiverDetach = null;
   let activeQrStream = null;
   let activeQrScanTimer = null;
   let activeQrScanGeneration = 0;
@@ -758,6 +764,10 @@
       try { activeAttendanceResponderDetach(); } catch (_) {}
       activeAttendanceResponderDetach = null;
     }
+    if (activeBackupReceiverDetach) {
+      try { activeBackupReceiverDetach(); } catch (_) {}
+      activeBackupReceiverDetach = null;
+    }
     try { activeSession?.close?.(); } catch (_) {}
     activeSession = null;
     activeChannel = null;
@@ -907,8 +917,9 @@
     return uiButton(label, attrs, 'secondary', iconName);
   }
 
-  function capability(iconName, title, detail, stateClass = '') {
-    return `<div class="mini-p2p-capability ${stateClass}"><span class="mini-p2p-capability-icon">${vectorIcon(iconName, 16)}</span><span class="mini-p2p-capability-copy"><strong>${esc(title)}</strong><small>${esc(detail)}</small></span></div>`;
+  function capability(iconName, title, detail, stateClass = '', extraAttrs = '') {
+    const attrs = extraAttrs ? (' ' + extraAttrs) : '';
+    return `<div class="mini-p2p-capability ${stateClass}"${attrs}><span class="mini-p2p-capability-icon">${vectorIcon(iconName, 16)}</span><span class="mini-p2p-capability-copy"><strong>${esc(title)}</strong><small>${esc(detail)}</small></span></div>`;
   }
 
   function peerSortScore(peer) {
@@ -974,19 +985,33 @@
     }).join('') : '<div class="mini-p2p-empty">Aún no hay SA vinculados. Escanea el QR de SA para agregar el primero.</div>';
 
     const stagedEntries = getAllStaged();
-    const stagedCount = stagedEntries.length;
-    const stagedCards = stagedEntries.map(staged => {
+    const stagedBackups = root.SaMiniP2PBackup?.backupStagedStore?.listStaged() || [];
+    const totalStagedCount = stagedEntries.length + stagedBackups.length;
+    const rosterCards = stagedEntries.map(staged => {
       const stagedName = String(staged.peerName || (staged.peer ? peerName(staged.peer) : 'SA'));
       const stagedWhen = formatPeerDate(staged.receivedAt);
       const stagedEmployees = Number(staged.employeeCount || 0);
       const stagedPeerId = String(staged.peer?.peerId || staged.peerId || '');
       return `<div class="mini-p2p-staged-card" data-staged-peer="${esc(stagedPeerId)}"><span class="mini-p2p-staged-icon">${vectorIcon('users', 17)}</span><div class="mini-p2p-staged-copy"><strong>Roster de ${esc(stagedName)} listo para revisar</strong><span>${esc(stagedEmployees)} empleados · recibido ${esc(stagedWhen)}. Aún no se ha aplicado nada.</span></div><div class="mini-p2p-staged-actions">${uiButton('Revisar', 'data-review-staged="' + esc(stagedPeerId) + '" aria-label="Revisar roster de ' + esc(stagedName) + '"', 'primary', 'chevronRight')}${uiButton('Descartar', 'data-discard-staged="' + esc(stagedPeerId) + '" aria-label="Descartar roster de ' + esc(stagedName) + '"', 'secondary', 'close')}</div></div>`;
-    }).join('');
-    const pendingSection = stagedCount > 0 ? `
+    });
+    const backupCards = stagedBackups.map(staged => {
+      const isMini = staged.schema === 'mini-backup/v1';
+      const stagedWhen = formatPeerDate(staged.receivedAt);
+      const stagedSize = root.SaMiniP2PBackup ? root.SaMiniP2PBackup.formatBackupSize(staged.size) : (staged.size + ' B');
+      const actionBtn = isMini
+        ? uiButton('Revisar', 'data-review-backup="' + esc(staged.transferId) + '" aria-label="Revisar respaldo de ' + esc(staged.sourcePeerName) + '"', 'primary', 'chevronRight')
+        : uiButton('Descargar', 'data-download-backup="' + esc(staged.transferId) + '" aria-label="Descargar respaldo de ' + esc(staged.sourcePeerName) + '"', 'primary', 'restore');
+      const note = isMini
+        ? `${esc(stagedSize)} · recibido ${esc(stagedWhen)}. Aún no se ha aplicado nada.`
+        : `${esc(stagedSize)} · recibido ${esc(stagedWhen)}. Sólo descarga; no se importa.`;
+      return `<div class="mini-p2p-staged-card" data-staged-backup="${esc(staged.transferId)}"><span class="mini-p2p-staged-icon">${vectorIcon('backup', 17)}</span><div class="mini-p2p-staged-copy"><strong>Respaldo de ${esc(staged.sourcePeerName)} listo</strong><span>${note}</span></div><div class="mini-p2p-staged-actions">${actionBtn}${uiButton('Descartar', 'data-discard-backup="' + esc(staged.transferId) + '" aria-label="Descartar respaldo de ' + esc(staged.sourcePeerName) + '"', 'secondary', 'close')}</div></div>`;
+    });
+    const stagedCards = [...rosterCards, ...backupCards].join('');
+    const pendingSection = totalStagedCount > 0 ? `
       <section class="mini-p2p-activity" aria-labelledby="mini-p2p-pending-title">
         <div class="mini-p2p-activity-head">
           <div><h3 id="mini-p2p-pending-title">Pendientes por revisar</h3><div class="mini-p2p-subtitle">Datos recibidos que requieren una decisión</div></div>
-          ${countBadge(stagedCount, 'pendientes')}
+          ${countBadge(totalStagedCount, 'pendientes')}
         </div>
         ${stagedCards}
       </section>` : '';
@@ -997,7 +1022,7 @@
         <div class="mini-p2p-capabilities">
           ${capability('users', 'Personal', 'Recibir de SA', 'is-ready')}
           ${capability('attendance', 'Asistencia', 'Responder a SA', 'is-ready')}
-          ${capability('backup', 'Backup', 'Próximamente', 'is-disabled')}
+          ${capability('backup', 'Backup', 'Respaldos P2P', 'is-ready', 'data-open-backup-hub')}
           ${capability('restore', 'Archivos', 'Próximamente', 'is-disabled')}
         </div>
       </section>
@@ -1011,10 +1036,13 @@
       <div class="mini-p2p-actions">
         ${uiButton('Escanear QR de SA', 'data-scan-pair', 'primary', 'camera')}
         ${uiButton('Usar código + clave', 'data-manual-pair', 'secondary', 'hash')}
+        ${uiButton('Respaldos P2P', 'data-open-backup-hub-btn', 'secondary', 'backup')}
       </div>
       <p class="mini-p2p-footnote">El QR evita escribir código y clave. Vincular sólo crea una relación segura; recibir datos nunca los incorpora automáticamente.</p>`; });
     body().querySelector('[data-scan-pair]').addEventListener('click', () => renderQrScanner());
     body().querySelector('[data-manual-pair]').addEventListener('click', () => renderManualPair());
+    body().querySelectorAll('[data-open-backup-hub]').forEach(el => el.addEventListener('click', () => renderBackupHub()));
+    body().querySelector('[data-open-backup-hub-btn]')?.addEventListener('click', () => renderBackupHub());
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
@@ -1027,6 +1055,37 @@
       try { if (!peerId || String(pendingRoster?.peer?.peerId || pendingRoster?.peerId || '') === peerId) pendingRoster = null; } catch (_) {}
       try { activityStore?.markStagedReviewed?.(peerId || current?.peerId); } catch (_) {}
       try { await refreshMiniP2PHeader(); } catch (_) {}
+      renderHome();
+    }));
+    body().querySelectorAll('[data-review-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const transferId = btn.dataset.reviewBackup;
+      const staged = root.SaMiniP2PBackup?.backupStagedStore?.getStaged(transferId);
+      if (!staged) return renderHome();
+      try {
+        root.SaMiniP2PBackup.reviewStagedBackupInMini(staged);
+        closeTransferModal();
+      } catch (err) {
+        toast('Error al revisar respaldo: ' + err.message);
+      }
+    }));
+    body().querySelectorAll('[data-download-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const transferId = btn.dataset.downloadBackup;
+      const staged = root.SaMiniP2PBackup?.backupStagedStore?.getStaged(transferId);
+      if (!staged) return renderHome();
+      try {
+        root.SaMiniP2PBackup.downloadBackupBytes(staged);
+        root.SaMiniP2PBackup.backupStagedStore.removeStaged(transferId);
+        await refreshMiniP2PHeader();
+        toast('Respaldo descargado.');
+        renderHome();
+      } catch (err) {
+        toast('Error al descargar respaldo: ' + err.message);
+      }
+    }));
+    body().querySelectorAll('[data-discard-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const transferId = btn.dataset.discardBackup;
+      root.SaMiniP2PBackup?.backupStagedStore?.removeStaged(transferId);
+      await refreshMiniP2PHeader();
       renderHome();
     }));
     body().querySelectorAll('[data-unlink]').forEach(btn => btn.addEventListener('click', async () => {
@@ -1109,7 +1168,7 @@
     });
   }
 
-  async function descriptorFromScannedQr(rawValue) {
+  async function descriptorFromScannedQr(rawValue, options = {}) {
     const raw = String(rawValue || '').trim();
     if (!raw) throw new Error('El QR no contiene datos de vinculación.');
     let encoded = null;
@@ -1119,26 +1178,32 @@
     } catch (_) {}
     if (!encoded && raw.startsWith('#')) encoded = core.parsePairHash(raw);
     if (!encoded && /^[A-Za-z0-9_-]+$/.test(raw)) encoded = raw;
-    if (!encoded) throw new Error('Este QR no es un vínculo válido de SA.');
-    return core.decodePairDescriptor(encoded);
+    if (!encoded) throw new Error(options.allowSameApp ? 'Este QR no es un vínculo válido de respaldo.' : 'Este QR no es un vínculo válido de SA.');
+    return core.decodePairDescriptor(encoded, { allowSameApp: options.allowSameApp === true });
   }
 
-  async function renderQrScanner() {
-    if (!(await ensureMiniAliasChosen('scan'))) return;
+  async function renderQrScanner(options = {}) {
+    const allowSameApp = options.allowSameApp === true;
+    if (allowSameApp ? !(await ensureMiniAliasChosen({ type: 'scan', options })) : !(await ensureMiniAliasChosen('scan'))) return;
     cleanupSession();
     shell();
+    const title = allowSameApp ? 'Escanear QR de respaldo' : 'Escanear QR de SA';
+    const desc = allowSameApp
+      ? 'Apunta la cámara al QR que muestra el otro dispositivo. Mini leerá el código y la clave automáticamente.'
+      : 'Apunta la cámara al QR que aparece en SA. Mini leerá el código y la clave automáticamente.';
+    const searchStatus = allowSameApp ? 'Cámara activa. Buscando QR de respaldo…' : 'Cámara activa. Buscando QR de SA…';
     morphShell(() => { body().innerHTML = `
       <div class="mini-p2p-step">
         ${backButton()}
-        <div><h3>Escanear QR de SA</h3><p>Apunta la cámara al QR que aparece en SA. Mini leerá el código y la clave automáticamente.</p></div>
+        <div><h3>${title}</h3><p>${desc}</p></div>
         <div class="mini-p2p-scanner"><video data-qr-video playsinline muted></video><div class="mini-p2p-scanner-frame" aria-hidden="true"></div></div>
         <div class="mini-p2p-status" data-qr-status role="status" aria-live="polite">Preparando cámara…</div>
         <div class="mini-p2p-actions">${secondary('Usar código + clave','data-manual-fallback','hash')}</div>
       </div>`; });
 
-    const back = () => { cleanupQrScanner(); renderHome(); };
+    const back = () => { cleanupQrScanner(); if (allowSameApp) renderBackupHub(); else renderHome(); };
     body().querySelector('[data-back]')?.addEventListener('click', back);
-    body().querySelector('[data-manual-fallback]')?.addEventListener('click', () => { cleanupQrScanner(); renderManualPair(); });
+    body().querySelector('[data-manual-fallback]')?.addEventListener('click', () => { cleanupQrScanner(); renderManualPair({ allowSameApp }); });
     const status = body().querySelector('[data-qr-status]');
     const video = body().querySelector('[data-qr-video]');
     const mediaDevices = root.navigator?.mediaDevices;
@@ -1168,7 +1233,7 @@
       activeQrStream = stream;
       video.srcObject = stream;
       await video.play?.();
-      if (status) status.textContent = 'Cámara activa. Buscando QR de SA…';
+      if (status) status.textContent = searchStatus;
 
       const scan = async () => {
         if (generation !== activeQrScanGeneration || !activeQrStream) return;
@@ -1177,9 +1242,9 @@
           const rawValue = results?.find(item => typeof item?.rawValue === 'string' && item.rawValue.trim())?.rawValue;
           if (rawValue) {
             if (status) status.textContent = 'QR detectado. Verificando vínculo…';
-            const descriptor = await descriptorFromScannedQr(rawValue);
+            const descriptor = await descriptorFromScannedQr(rawValue, { allowSameApp });
             cleanupQrScanner();
-            await startPairing(descriptor);
+            await startPairing(descriptor, { allowSameApp });
             return;
           }
         } catch (error) {
@@ -1201,19 +1266,25 @@
     }
   }
 
-  async function renderManualPair() {
-    if (!(await ensureMiniAliasChosen('manual'))) return;
+  async function renderManualPair(options = {}) {
+    const allowSameApp = options.allowSameApp === true;
+    if (allowSameApp ? !(await ensureMiniAliasChosen({ type: 'manual', options })) : !(await ensureMiniAliasChosen('manual'))) return;
     cleanupSession();
+    const title = allowSameApp ? 'Vincular para respaldo' : 'Vincular con SA';
+    const desc = allowSameApp
+      ? 'Escribe el código de 6 dígitos y la clave que muestra el otro dispositivo. Si escaneaste el QR, este paso se completa automáticamente.'
+      : 'Escribe el código de 6 dígitos y la clave que muestra SA. Si escaneaste el QR, este paso se completa automáticamente.';
+    const btnLabel = allowSameApp ? 'Conectar' : 'Conectar con SA';
     morphShell(() => { body().innerHTML = `
       <div class="mini-p2p-step">
         ${backButton()}
-        <div><h3>Vincular con SA</h3><p>Escribe el código de 6 dígitos y la clave que muestra SA. Si escaneaste el QR, este paso se completa automáticamente.</p></div>
+        <div><h3>${title}</h3><p>${desc}</p></div>
         <div class="mini-p2p-field"><label for="mini-p2p-manual-code">Código</label><input id="mini-p2p-manual-code" class="mini-p2p-code" data-code inputmode="numeric" maxlength="7" placeholder="583 214"></div>
         <div class="mini-p2p-field"><label for="mini-p2p-manual-key">Clave</label><input id="mini-p2p-manual-key" class="mini-p2p-code" data-key maxlength="11" placeholder="ABCDE-23456" autocapitalize="characters"></div>
-        <div class="mini-p2p-actions">${primary('Conectar con SA','data-connect','link')}</div>
+        <div class="mini-p2p-actions">${primary(btnLabel,'data-connect','link')}</div>
         <div class="mini-p2p-status" data-pair-status hidden></div>
       </div>`; });
-    body().querySelector('[data-back]').addEventListener('click', renderHome);
+    body().querySelector('[data-back]').addEventListener('click', () => { if (allowSameApp) renderBackupHub(); else renderHome(); });
     const connectButton = body().querySelector('[data-connect]');
     connectButton.addEventListener('click', async () => {
       if (connectButton.disabled) return;
@@ -1222,38 +1293,40 @@
       connectButton.textContent = 'Conectando…';
       try {
         const descriptor = await core.pairDescriptorFromManual(body().querySelector('[data-code]').value, body().querySelector('[data-key]').value);
-        await startPairing(descriptor);
+        await startPairing(descriptor, { allowSameApp });
       } catch (error) {
         const box = body()?.querySelector('[data-pair-status]');
         if (box) { box.hidden = false; box.classList?.add?.('is-error'); box.textContent = error.message; }
         if (connectButton.isConnected) {
           connectButton.disabled = false;
           connectButton.removeAttribute('aria-busy');
-          connectButton.textContent = 'Conectar con SA';
+          connectButton.textContent = btnLabel;
         }
       }
     });
   }
 
-  async function startPairing(descriptor) {
+  async function startPairing(descriptor, options = {}) {
+    const allowSameApp = options.allowSameApp === true;
     try {
       const gateSelf = await identityStore.getSelf();
       if (!isValidChosenMiniAlias(gateSelf?.displayName)) {
-        await renderMiniAliasSetup({ type: 'pair', descriptor });
+        await renderMiniAliasSetup({ type: 'pair', descriptor, options });
         return;
       }
     } catch (_) {
-      await renderMiniAliasSetup({ type: 'pair', descriptor });
+      await renderMiniAliasSetup({ type: 'pair', descriptor, options });
       return;
     }
     cleanupSession();
     shell();
     if (descriptor.expiresAt !== undefined && Number(descriptor.expiresAt) <= Date.now()) throw new Error('La sesión de emparejamiento expiró.');
+    const partnerLabel = descriptor.issuerName || (allowSameApp ? 'dispositivo' : 'SA');
     if (!body().querySelector('[data-pair-status]')) {
-      morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div><h3>Vincular con ${esc(descriptor.issuerName || 'SA')}</h3><p>Conectando mediante el vínculo seguro.</p></div><div class="mini-p2p-status" data-pair-status>Buscando SA…</div><div class="mini-p2p-actions">${secondary('Cancelar','data-cancel')}</div></div>`; });
-      body().querySelector('[data-cancel]').addEventListener('click', renderHome);
+      morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div><h3>Vincular con ${esc(partnerLabel)}</h3><p>Conectando mediante el vínculo seguro.</p></div><div class="mini-p2p-status" data-pair-status>Buscando ${esc(partnerLabel)}…</div><div class="mini-p2p-actions">${secondary('Cancelar','data-cancel')}</div></div>`; });
+      body().querySelector('[data-cancel]').addEventListener('click', () => { if (allowSameApp) renderBackupHub(); else renderHome(); });
     } else {
-      body().querySelector('[data-pair-status]').textContent = 'Buscando SA…';
+      body().querySelector('[data-pair-status]').textContent = `Buscando ${partnerLabel}…`;
     }
     const self = await identityStore.getSelf();
     const signaling = new core.SignalingClient({
@@ -1271,7 +1344,7 @@
         if (error) {
           box.textContent='Error: '+error.message;
           const retry=body()?.querySelector('[data-connect]');
-          if (retry) { retry.disabled=false; retry.removeAttribute('aria-busy'); retry.textContent='Conectar con SA'; }
+          if (retry) { retry.disabled=false; retry.removeAttribute('aria-busy'); retry.textContent=allowSameApp ? 'Conectar' : 'Conectar con SA'; }
         } else if (status === 'connected') box.textContent='Canal conectado. Verificando identidad…';
         else if (status === 'connecting' || status === 'new') box.textContent='Negociando conexión…';
       },
@@ -1279,13 +1352,18 @@
         activeChannel = channel;
         pairing.attachPairing(channel, {
           self, descriptor, initiator: false, store: identityStore,
+          allowSameApp,
           onCandidate: ({ remote, sas, accept, reject }) => renderPairConfirmation(remote, sas, accept, reject),
           onLinked: peer => {
-            armRosterReceiver(channel, peer);
-            armAttendanceResponder(channel, peer, self);
-            renderLinkedWaiting(peer);
+            if (peer.peerApp === 'sa') {
+              armRosterReceiver(channel, peer);
+              armAttendanceResponder(channel, peer, self);
+            } else {
+              activeBackupReceiverDetach = armBackupReceiver(channel, peer);
+            }
+            renderLinkedWaiting(peer, { allowSameApp });
           },
-          onRejected: () => renderError('SA rechazó el vínculo.'),
+          onRejected: () => renderError((allowSameApp ? 'El dispositivo' : 'SA') + ' rechazó el vínculo.'),
           onError: renderError
         });
       }
@@ -1297,16 +1375,19 @@
     if (!box) return;
     box.innerHTML = `<div class="mini-p2p-step"><div><strong>${esc(remote.displayName)}</strong> quiere vincularse.</div><span>Confirma que ambos dispositivos muestran el mismo código:</span><strong class="mini-p2p-sas">${esc(sas)}</strong><div class="mini-p2p-actions">${uiButton('Rechazar','data-reject','secondary')}${uiButton('Confirmar vínculo','data-accept','primary','link')}</div></div>`;
     box.querySelector('[data-reject]').addEventListener('click', reject);
-    box.querySelector('[data-accept]').addEventListener('click', async () => { box.textContent='Esperando confirmación de SA…'; await accept(); });
+    box.querySelector('[data-accept]').addEventListener('click', async () => { box.textContent='Esperando confirmación…'; await accept(); });
   }
 
-  function renderLinkedWaiting(peer) {
-    morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',18)}</span><div class="mini-p2p-result-copy"><h3>SA vinculado</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p></div></div><div class="mini-p2p-status" data-receive-state>Esperando roster en esta conexión…</div><div class="mini-p2p-actions">${secondary('Terminar','data-finish')}</div></div>`; });
-    body().querySelector('[data-finish]').addEventListener('click', renderHome);
+  function renderLinkedWaiting(peer, options = {}) {
+    const isMini = peer?.peerApp === 'mini' || options.allowSameApp === true;
+    const title = isMini ? 'Dispositivo vinculado para respaldos' : 'SA vinculado';
+    const waitCopy = isMini ? 'Esperando transferencias en esta conexión…' : 'Esperando roster en esta conexión…';
+    morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',18)}</span><div class="mini-p2p-result-copy"><h3>${title}</h3><p><strong>${esc(peerName(peer))}</strong> quedó reconocido por este Mini.</p></div></div><div class="mini-p2p-status" data-receive-state>${waitCopy}</div><div class="mini-p2p-actions">${secondary('Terminar','data-finish')}</div></div>`; });
+    body().querySelector('[data-finish]').addEventListener('click', () => { if (isMini) renderBackupHub(); else renderHome(); });
     try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
     try {
       const peerId = String(peer?.peerId || '').trim();
-      signalTerminalSuccess(peerId ? ('pair-linked:' + peerId) : 'pair-linked', { title: 'SA vinculado', detail: peerName(peer) + ' quedó vinculado.' });
+      signalTerminalSuccess(peerId ? ('pair-linked:' + peerId) : 'pair-linked', { title, detail: peerName(peer) + ' quedó vinculado.' });
       recordP2PActivity('peer-linked', peer, peerName(peer) + ' quedó vinculado a este Mini.', peerId ? ('peer-linked:' + peerId) : '');
     } catch (_) {}
   }
@@ -1494,7 +1575,7 @@
       onComplete:result=>{
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
-        stageReceivedRoster(result,peer,channel,{ background });
+        stageReceivedRoster(result, peer, channel, { background });
       }
     });
     channel.addEventListener('message',event=>{
@@ -1514,6 +1595,67 @@
       }
       receiver(event);
     });
+  }
+
+  const backupReceiverCleanups = new WeakMap();
+
+  function armBackupReceiver(channel, peer, options = {}) {
+    if (!channel) return () => {};
+    if (backupReceiverCleanups.has(channel)) {
+      try { backupReceiverCleanups.get(channel)(); } catch (_) {}
+    }
+
+    const background = options.background === true;
+    const receiver = core.createTransferReceiver({
+      channel,
+      onProgress: progress => {
+        activeTransferPeerId = peer?.peerId || null;
+        refreshMiniP2PHeader().catch(() => {});
+        if (background) return;
+        const box = body()?.querySelector('[data-receive-state]') || body()?.querySelector('[data-wait-status]');
+        if (box) box.textContent = 'Recibiendo respaldo… ' + Math.round(progress * 100) + '%';
+      },
+      onError: error => {
+        activeTransferPeerId = null;
+        refreshMiniP2PHeader().catch(() => {});
+        if (!background) renderError(error);
+      },
+      onComplete: result => {
+        activeTransferPeerId = null;
+        refreshMiniP2PHeader().catch(() => {});
+        stageReceivedBackup(result, peer, channel, { background });
+      }
+    });
+
+    function handleBackupMessage(event) {
+      const control = core.parseControl(event.data);
+      if (control) return;
+      if (typeof event.data === 'string') {
+        try {
+          const parsed = JSON.parse(event.data);
+          if (parsed && (parsed.type === 'presence-ping/v1' || parsed.type === 'presence-pong/v1')) {
+            return;
+          }
+          if (parsed && parsed.protocol === core.TRANSFER_PROTOCOL && parsed.type === 'start') {
+            activeTransferPeerId = peer?.peerId || null;
+            refreshMiniP2PHeader().catch(() => {});
+          }
+        } catch (_) {}
+      }
+      receiver(event);
+    }
+
+    channel.addEventListener('message', handleBackupMessage);
+
+    const detach = () => {
+      try { channel.removeEventListener('message', handleBackupMessage); } catch (_) {}
+      if (backupReceiverCleanups.get(channel) === detach) {
+        backupReceiverCleanups.delete(channel);
+      }
+    };
+
+    backupReceiverCleanups.set(channel, detach);
+    return detach;
   }
 
   function isTransferModalOpen() {
@@ -1555,9 +1697,14 @@
     } catch (_) { return []; }
   }
   function getStagedPendingCount() {
-    try { return getAllStaged().length; } catch (_) { return 0; }
+    try {
+      const rosterCount = getAllStaged().length;
+      const backupCount = root.SaMiniP2PBackup?.backupStagedStore?.listStaged().length || 0;
+      return rosterCount + backupCount;
+    } catch (_) { return 0; }
   }
   function armPassiveChannel(channel, peer, self) {
+    if (!peer || peer.peerApp !== 'sa') return () => {};
     armRosterReceiver(channel, peer);
     const detach = armAttendanceResponder(channel, peer, self, {});
     sendAttendanceReady(channel);
@@ -1758,6 +1905,475 @@
     }
   }
 
+  async function stageReceivedBackup(result, peer, channel, options = {}) {
+    const background = options.background === true;
+    const bridge = root.SaMiniP2PBackup;
+    if (!bridge || !bridge.backupStagedStore) {
+      const err = new Error('Módulo de respaldos no disponible.');
+      try { bridge?.sendBackupRejectedAck?.(channel, { transferId: result.transferId, reason: err.message, schema: result.schema }); } catch (_) {}
+      core.revokeChannel(channel, err);
+      if (!background) renderError(err);
+      return;
+    }
+
+    try {
+      if (result.kind !== 'backup') {
+        throw new Error('Tipo P2P no permitido en respaldo.');
+      }
+      if (peer?.peerApp === 'mini' && result.schema !== 'mini-backup/v1') {
+        throw new Error('Esquema de respaldo no coincide con el peer Mini.');
+      }
+      if (peer?.peerApp === 'sa' && result.schema !== 'sa-backup/v1') {
+        throw new Error('Esquema de respaldo no coincide con el peer SA.');
+      }
+      if (result.schema !== 'mini-backup/v1' && result.schema !== 'sa-backup/v1') {
+        throw new Error('Tipo o esquema de respaldo no permitido.');
+      }
+      const stagedRecord = bridge.backupStagedStore.stageBackup({
+        transferId: result.transferId,
+        sha256: result.sha256,
+        kind: 'backup',
+        schema: result.schema,
+        bytes: result.bytes,
+        sourceApp: peer?.peerApp || (result.schema === 'mini-backup/v1' ? 'mini' : 'sa'),
+        sourcePeerId: peer?.peerId || '',
+        sourcePeerName: peer ? peerName(peer) : (result.schema === 'mini-backup/v1' ? 'Mini' : 'SA'),
+        receivedAt: new Date().toISOString()
+      });
+
+      bridge.sendBackupStagedAck(channel, {
+        transferId: result.transferId,
+        sha256: result.sha256,
+        schema: result.schema
+      });
+
+      const display = peer ? peerName(peer) : (result.schema === 'mini-backup/v1' ? 'Mini' : 'SA');
+      const digest = String(result.sha256 || '').toLowerCase().trim();
+      try {
+        recordP2PActivity('backup-staged', peer, 'Respaldo de ' + display + ' listo.', digest ? ('backup-staged:' + digest) : ('backup-staged:' + String(result.transferId || '')));
+      } catch (_) {}
+      try {
+        signalTerminalSuccess(digest ? ('backup-received:' + digest) : ('backup-received:' + String(result.transferId || '')), {
+          title: 'Respaldo recibido',
+          detail: 'Respaldo de ' + display + ' verificado.'
+        });
+      } catch (_) {}
+
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+
+      if (!background && isTransferModalOpen()) {
+        const box = body()?.querySelector('[data-receive-state]') || body()?.querySelector('[data-wait-status]');
+        if (box) {
+          box.classList.remove('is-error');
+          box.classList.add('is-success');
+          box.innerHTML = statusMessage('check', 'Respaldo recibido y verificado', `Respaldo de ${display}. Aún no se ha aplicado nada.`);
+          const actionsBox = body()?.querySelector('.mini-p2p-actions');
+          if (actionsBox) {
+            const isMini = result.schema === 'mini-backup/v1';
+            const actionBtn = isMini
+              ? uiButton('Revisar respaldo', 'data-review-backup-now="' + esc(result.transferId) + '"', 'primary', 'chevronRight')
+              : uiButton('Descargar respaldo', 'data-download-backup-now="' + esc(result.transferId) + '"', 'primary', 'restore');
+            actionsBox.innerHTML = `${actionBtn}${uiButton('Ir al inicio', 'data-go-home', 'secondary', 'chevronLeft')}`;
+            actionsBox.querySelector('[data-go-home]')?.addEventListener('click', renderHome);
+            actionsBox.querySelector('[data-review-backup-now]')?.addEventListener('click', () => {
+              try {
+                bridge.reviewStagedBackupInMini(stagedRecord);
+                closeTransferModal();
+              } catch (e) {
+                toast('Error al revisar: ' + e.message);
+              }
+            });
+            actionsBox.querySelector('[data-download-backup-now]')?.addEventListener('click', () => {
+              try {
+                bridge.downloadBackupBytes(stagedRecord);
+                bridge.backupStagedStore.removeStaged(result.transferId);
+                refreshMiniP2PHeader().catch(() => {});
+                toast('Respaldo descargado.');
+                renderHome();
+              } catch (e) {
+                toast('Error al descargar: ' + e.message);
+              }
+            });
+          }
+        } else {
+          renderHome();
+        }
+      } else {
+        toast('Respaldo de ' + display + ' listo en Respaldos P2P.');
+      }
+    } catch (error) {
+      const reason = boundedUserSafeError(error);
+      try {
+        bridge.sendBackupRejectedAck(channel, {
+          transferId: result.transferId,
+          reason,
+          schema: result.schema
+        });
+      } catch (_) {}
+      core.revokeChannel(channel, error);
+      if (!background) renderError(reason);
+    }
+  }
+
+  async function renderBackupHub() {
+    cleanupSession();
+    shell();
+    const self = await identityStore.getSelf();
+    const allPeers = await identityStore.listPeers();
+    const stagedBackups = root.SaMiniP2PBackup?.backupStagedStore?.listStaged() || [];
+
+    const stagedCards = stagedBackups.map(staged => {
+      const isMini = staged.schema === 'mini-backup/v1';
+      const stagedWhen = formatPeerDate(staged.receivedAt);
+      const stagedSize = root.SaMiniP2PBackup ? root.SaMiniP2PBackup.formatBackupSize(staged.size) : (staged.size + ' B');
+      const actionBtn = isMini
+        ? uiButton('Revisar', 'data-review-backup="' + esc(staged.transferId) + '" aria-label="Revisar respaldo de ' + esc(staged.sourcePeerName) + '"', 'primary', 'chevronRight')
+        : uiButton('Descargar', 'data-download-backup="' + esc(staged.transferId) + '" aria-label="Descargar respaldo de ' + esc(staged.sourcePeerName) + '"', 'primary', 'restore');
+      const note = isMini
+        ? `${esc(stagedSize)} · recibido ${esc(stagedWhen)}. Aún no se ha aplicado nada.`
+        : `${esc(stagedSize)} · recibido ${esc(stagedWhen)}. Sólo descarga; no se importa.`;
+      return `<div class="mini-p2p-staged-card" data-staged-backup="${esc(staged.transferId)}"><span class="mini-p2p-staged-icon">${vectorIcon('backup', 17)}</span><div class="mini-p2p-staged-copy"><strong>Respaldo de ${esc(staged.sourcePeerName)} listo</strong><span>${note}</span></div><div class="mini-p2p-staged-actions">${actionBtn}${uiButton('Descartar', 'data-discard-backup="' + esc(staged.transferId) + '" aria-label="Descartar respaldo de ' + esc(staged.sourcePeerName) + '"', 'secondary', 'close')}</div></div>`;
+    }).join('');
+
+    const pendingSection = stagedBackups.length > 0 ? `
+      <section class="mini-p2p-activity" aria-labelledby="mini-backup-pending-title">
+        <div class="mini-p2p-activity-head">
+          <div><h3 id="mini-backup-pending-title">Respaldos pendientes</h3><div class="mini-p2p-subtitle">Copias recibidas que requieren una decisión</div></div>
+          ${countBadge(stagedBackups.length, 'pendientes')}
+        </div>
+        ${stagedCards}
+      </section>` : '';
+
+    const peerRows = allPeers.length ? allPeers.map(peer => {
+      const isMini = peer.peerApp === 'mini';
+      const alias = aliasStore.getAlias(peer.peerId);
+      const original = peerOriginalName(peer);
+      const originalLine = alias ? ` · Original: ${esc(original)}` : '';
+      const typeLabel = isMini ? 'Mini' : 'SA';
+      const avatarIcon = isMini ? 'package' : 'hardHat';
+      return `
+        <div class="mini-p2p-peer-row">
+          <span class="mini-p2p-peer-avatar">${vectorIcon(avatarIcon, 17)}</span>
+          <div class="mini-p2p-peer-copy">
+            <div class="mini-p2p-peer-title-line">
+              <strong>${esc(peerName(peer))}</strong>
+              <span class="mini-p2p-peer-pill is-online">${typeLabel}</span>
+            </div>
+            <div class="mini-p2p-peer-meta">${originalLine}</div>
+          </div>
+          <div class="mini-p2p-device-actions">
+            ${uiButton('Enviar', `data-send-backup="${esc(peer.peerId)}" aria-label="Enviar respaldo a ${esc(peerName(peer))}"`, 'primary', 'backup')}
+            ${uiButton('Esperar', `data-wait-backup="${esc(peer.peerId)}" aria-label="Esperar respaldo de ${esc(peerName(peer))}"`, 'secondary', 'inbox')}
+            <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink-backup="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
+          </div>
+        </div>`;
+    }).join('') : '<div class="mini-p2p-empty">Aún no hay dispositivos vinculados. Vincula otro Mini para respaldos o usa un SA ya vinculado.</div>';
+
+    morphShell(() => {
+      body().innerHTML = `
+        <div class="mini-p2p-home">
+          <div class="mini-p2p-header-line">
+            ${backButton('Inicio')}
+            <div><h2>Respaldos P2P</h2><p>Transfiere copias de seguridad de forma directa y segura.</p></div>
+          </div>
+          ${pendingSection}
+          <section class="mini-p2p-devices" aria-labelledby="mini-backup-devices-title">
+            <div class="mini-p2p-section-head">
+              <div><h3 id="mini-backup-devices-title">Dispositivos vinculados</h3><div class="mini-p2p-subtitle">Envía o espera respaldos con estos dispositivos</div></div>
+              ${countBadge(allPeers.length, 'dispositivos')}
+            </div>
+            <div class="mini-p2p-peer-list">${peerRows}</div>
+          </section>
+          <div class="mini-p2p-actions">
+            ${uiButton('Vincular otro Mini', 'data-backup-pair-mini', 'primary', 'link')}
+          </div>
+        </div>`;
+    });
+
+    body().querySelector('[data-back]').addEventListener('click', renderHome);
+    body().querySelector('[data-backup-pair-mini]').addEventListener('click', renderBackupPairing);
+    body().querySelectorAll('[data-send-backup]').forEach(btn => btn.addEventListener('click', () => sendBackupToPeer(btn.dataset.sendBackup)));
+    body().querySelectorAll('[data-wait-backup]').forEach(btn => btn.addEventListener('click', () => waitBackupTransfer(btn.dataset.waitBackup)));
+    body().querySelectorAll('[data-review-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const transferId = btn.dataset.reviewBackup;
+      const staged = root.SaMiniP2PBackup?.backupStagedStore?.getStaged(transferId);
+      if (!staged) return renderBackupHub();
+      try {
+        root.SaMiniP2PBackup.reviewStagedBackupInMini(staged);
+        closeTransferModal();
+      } catch (err) {
+        toast('Error al revisar respaldo: ' + err.message);
+      }
+    }));
+    body().querySelectorAll('[data-download-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const transferId = btn.dataset.downloadBackup;
+      const staged = root.SaMiniP2PBackup?.backupStagedStore?.getStaged(transferId);
+      if (!staged) return renderBackupHub();
+      try {
+        root.SaMiniP2PBackup.downloadBackupBytes(staged);
+        root.SaMiniP2PBackup.backupStagedStore.removeStaged(transferId);
+        await refreshMiniP2PHeader();
+        toast('Respaldo descargado.');
+        renderBackupHub();
+      } catch (err) {
+        toast('Error al descargar respaldo: ' + err.message);
+      }
+    }));
+    body().querySelectorAll('[data-discard-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const transferId = btn.dataset.discardBackup;
+      root.SaMiniP2PBackup?.backupStagedStore?.removeStaged(transferId);
+      await refreshMiniP2PHeader();
+      renderBackupHub();
+    }));
+    body().querySelectorAll('[data-unlink-backup]').forEach(btn => btn.addEventListener('click', async () => {
+      const peerId = btn.dataset.unlinkBackup;
+      const peer = await identityStore.getPeer(peerId);
+      const name = peer ? peerName(peer) : 'este dispositivo';
+      if (typeof root.showConfirm !== 'function') { toast('Confirmación no disponible en este entorno.'); return; }
+      const confirmed = await root.showConfirm(`¿Desvincular a ${name}?`, { title: 'Desvincular dispositivo', confirmText: 'Desvincular', danger: true });
+      if (!confirmed) return;
+      peerRecentLastSeen.delete(peerId);
+      detachPresence(peerId, { persist: false });
+      await identityStore.removePeer(peerId);
+      aliasStore.removeAlias(peerId);
+      try { stopPeerListener(peerId); } catch (_) {}
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      renderBackupHub();
+    }));
+  }
+
+  async function renderBackupPairing() {
+    cleanupSession();
+    shell();
+    morphShell(() => {
+      body().innerHTML = `
+        <div class="mini-p2p-step">
+          ${backButton('Respaldos')}
+          <div><h3>Vincular otro Mini</h3><p>Conecta dos dispositivos Mini para transferir copias de seguridad.</p></div>
+          <div class="mini-p2p-actions">
+            ${uiButton('Escanear QR de otro Mini', 'data-scan-backup-pair', 'primary', 'camera')}
+            ${uiButton('Ingresar código + clave', 'data-manual-backup-pair', 'secondary', 'hash')}
+            ${uiButton('Mostrar mi código para vincular', 'data-share-backup-pair', 'secondary', 'link')}
+          </div>
+          <p class="mini-p2p-footnote">El emparejamiento entre Minis es exclusivo para respaldos. No comparte listas de personal ni asistencia operativa.</p>
+        </div>`;
+    });
+    body().querySelector('[data-back]').addEventListener('click', renderBackupHub);
+    body().querySelector('[data-scan-backup-pair]').addEventListener('click', () => renderQrScanner({ allowSameApp: true }));
+    body().querySelector('[data-manual-backup-pair]').addEventListener('click', () => renderManualPair({ allowSameApp: true }));
+    body().querySelector('[data-share-backup-pair]').addEventListener('click', renderBackupPairShare);
+  }
+
+  async function renderBackupPairShare() {
+    cleanupSession();
+    shell();
+    const self = await identityStore.getSelf();
+    const descriptor = await core.makePairDescriptor(self);
+
+    morphShell(() => {
+      body().innerHTML = `
+        <div class="mini-p2p-step">
+          ${backButton('Vincular')}
+          <div><h3>Código de vinculación</h3><p>En el otro Mini, pulsa “Ingresar código + clave” e introduce estos datos:</p></div>
+          <div class="mini-p2p-field"><label>Código</label><div class="mini-p2p-code">${esc(descriptor.code)}</div></div>
+          <div class="mini-p2p-field"><label>Clave</label><div class="mini-p2p-code">${esc(descriptor.key)}</div></div>
+          <div class="mini-p2p-status" data-pair-status>Esperando conexión del otro Mini…</div>
+          <div class="mini-p2p-actions">${secondary('Cancelar', 'data-cancel-share')}</div>
+        </div>`;
+    });
+
+    const handleCancel = () => { cleanupSession(); renderBackupPairing(); };
+    body().querySelector('[data-back]').addEventListener('click', handleCancel);
+    body().querySelector('[data-cancel-share]').addEventListener('click', handleCancel);
+
+    const signaling = new core.SignalingClient({
+      room: descriptor.room,
+      peerId: self.deviceId,
+      proof: descriptor.proof,
+      expiresAt: descriptor.expiresAt
+    });
+
+    activeSession = await core.createRtcSession({
+      signaling, initiator: true,
+      expiresAt: descriptor.expiresAt,
+      onState: (status, error) => {
+        const box = body()?.querySelector('[data-pair-status]');
+        if (!box) return;
+        if (error) box.textContent = 'Error: ' + error.message;
+        else if (status === 'connected') box.textContent = 'Canal conectado. Verificando identidad…';
+        else if (status === 'connecting') box.textContent = 'Conectando con el otro Mini…';
+      },
+      onChannel: channel => {
+        activeChannel = channel;
+        pairing.attachPairing(channel, {
+          self, descriptor, initiator: true, store: identityStore,
+          allowSameApp: true,
+          onCandidate: ({ remote, sas, accept, reject }) => renderPairConfirmation(remote, sas, accept, reject),
+          onLinked: peer => {
+            activeBackupReceiverDetach = armBackupReceiver(channel, peer);
+            renderLinkedWaiting(peer, { allowSameApp: true });
+          },
+          onRejected: () => renderError('El otro Mini rechazó el vínculo.'),
+          onError: renderError
+        });
+      }
+    });
+  }
+
+  async function sendBackupToPeer(peerId, customPayload = null) {
+    cleanupSession();
+    shell();
+    const self = await identityStore.getSelf();
+    const peer = await identityStore.getPeer(peerId);
+    if (!peer) throw new Error('Dispositivo vinculado no encontrado.');
+    const partnerName = peerName(peer);
+    const title = `Enviar respaldo a ${partnerName}`;
+
+    morphShell(() => {
+      body().innerHTML = `
+        <div class="mini-p2p-step">
+          ${backButton('Respaldos')}
+          <div class="mini-p2p-mode-chip">${vectorIcon('backup', 15)}<span>Respaldo P2P</span></div>
+          <div><h3>${esc(title)}</h3><p>Transfiriendo datos de este Mini de forma directa y cifrada.</p></div>
+          <div class="mini-p2p-status" data-backup-send-status>Conectando con ${esc(partnerName)}…</div>
+          <div class="mini-p2p-actions">${secondary('Cancelar', 'data-cancel-send')}</div>
+        </div>`;
+    });
+
+    const handleCancel = () => { cleanupSession(); renderBackupHub(); };
+    body().querySelector('[data-back]').addEventListener('click', handleCancel);
+    body().querySelector('[data-cancel-send]').addEventListener('click', handleCancel);
+
+    const payload = customPayload || await root.SaMiniP2PBackup.createMiniBackupPayload();
+
+    const route = await core.deriveTrustedRoute(peer.linkToken);
+    const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
+
+    activeSession = await core.createRtcSession({
+      signaling, initiator: true,
+      onState: (status, error) => {
+        const liveBox = body()?.querySelector('[data-backup-send-status]');
+        if (!liveBox) return;
+        if (error) {
+          liveBox.classList.add('is-error');
+          liveBox.textContent = 'Error de conexión: ' + (error.message || error);
+        } else if (status === 'connected') {
+          liveBox.textContent = 'Canal conectado. Verificando identidad…';
+        } else if (status === 'connecting') {
+          liveBox.textContent = 'Conectando con ' + partnerName + '…';
+        }
+      },
+      onChannel: channel => {
+        activeChannel = channel;
+        pairing.attachTrusted(channel, {
+          self, peer, store: identityStore,
+          allowSameApp: peer.peerApp === self.appType,
+          onAuthenticated: async () => {
+            const liveBox = body()?.querySelector('[data-backup-send-status]');
+            if (liveBox) liveBox.textContent = 'Autenticado. Enviando respaldo…';
+
+            try {
+              const { transfer, ack } = await (root.SaMiniP2PBackup?.sendBackupOnChannel || bridge?.sendBackupOnChannel)(channel, {
+                bytes: payload.bytes,
+                schema: 'mini-backup/v1',
+                onProgress: progress => {
+                  const curBox = body()?.querySelector('[data-backup-send-status]');
+                  if (curBox) curBox.textContent = 'Enviando respaldo… ' + Math.round(progress * 100) + '%';
+                }
+              });
+
+              if (liveBox) {
+                liveBox.classList.remove('is-error');
+                liveBox.classList.add('is-success');
+                liveBox.innerHTML = statusMessage('check', 'Respaldo recibido por ' + partnerName, 'Transferencia completada y verificada.');
+              }
+              recordP2PActivity('backup-sent', peer, 'Respaldo enviado a ' + partnerName + '.', 'backup-sent:' + payload.sha256);
+              signalTerminalSuccess('backup-sent:' + payload.sha256, { title: 'Respaldo enviado', detail: 'Transferencia a ' + partnerName + ' confirmada.' });
+            } catch (err) {
+              if (liveBox) {
+                liveBox.classList.add('is-error');
+                liveBox.textContent = 'Error al enviar respaldo: ' + (err.message || err);
+              }
+            }
+          },
+          onError: err => {
+            const liveBox = body()?.querySelector('[data-backup-send-status]');
+            if (liveBox) {
+              liveBox.classList.add('is-error');
+              liveBox.textContent = 'Error de autenticación: ' + (err.message || err);
+            }
+          }
+        });
+      }
+    });
+  }
+
+  async function waitBackupTransfer(peerId) {
+    cleanupSession();
+    shell();
+    const self = await identityStore.getSelf();
+    const peer = await identityStore.getPeer(peerId);
+    if (!peer) throw new Error('Dispositivo vinculado no encontrado.');
+    const partnerName = peerName(peer);
+    const title = `Esperar respaldo de ${partnerName}`;
+
+    morphShell(() => {
+      body().innerHTML = `
+        <div class="mini-p2p-step">
+          ${backButton('Respaldos')}
+          <div class="mini-p2p-mode-chip">${vectorIcon('backup', 15)}<span>Respaldo P2P</span></div>
+          <div><h3>${esc(title)}</h3><p>Ahora en el otro dispositivo selecciona este Mini y pulsa “Enviar respaldo”.</p></div>
+          <div class="mini-p2p-status" data-wait-status>Esperando conexión autenticada…</div>
+          <div class="mini-p2p-actions">${secondary('Cancelar espera', 'data-cancel')}</div>
+        </div>`;
+    });
+
+    const handleCancel = () => { cleanupSession(); renderBackupHub(); };
+    body().querySelector('[data-back]').addEventListener('click', handleCancel);
+    body().querySelector('[data-cancel]').addEventListener('click', handleCancel);
+
+    const route = await core.deriveTrustedRoute(peer.linkToken);
+    const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
+
+    activeSession = await core.createRtcSession({
+      signaling, initiator: false,
+      onState: (status, error) => {
+        const box = body()?.querySelector('[data-wait-status]');
+        if (!box) return;
+        if (error) {
+          box.classList.add('is-error');
+          box.textContent = 'Error: ' + error.message;
+        } else if (status === 'connected') {
+          box.textContent = 'Canal conectado. Verificando identidad…';
+        } else if (status === 'connecting') {
+          box.textContent = 'Conectando con ' + partnerName + '…';
+        }
+      },
+      onChannel: channel => {
+        activeChannel = channel;
+        pairing.attachTrusted(channel, {
+          self, peer, store: identityStore,
+          allowSameApp: peer.peerApp === self.appType,
+          onAuthenticated: () => {
+            const box = body()?.querySelector('[data-wait-status]');
+            activeBackupReceiverDetach = armBackupReceiver(channel, peer, { background: false });
+            if (box) {
+              box.classList.remove('is-error');
+              box.innerHTML = statusMessage('check', partnerName + ' autenticado', 'Esperando transmisión del respaldo…');
+            }
+          },
+          onError: error => {
+            const box = body()?.querySelector('[data-wait-status]');
+            if (box) {
+              box.classList.add('is-error');
+              box.textContent = 'Error de autenticación: ' + (error.message || error);
+            }
+          }
+        });
+      }
+    });
+  }
+
   function hasOwn(value,key){return Object.prototype.hasOwnProperty.call(value||{},key);}
 
   function rosterTuple(projectId,employeeId){return JSON.stringify([String(projectId||''),String(employeeId||'')]);}
@@ -1898,10 +2514,14 @@
   async function openP2PPairingScanner(){await renderQrScanner();}
   root.openP2PTransferModal=openP2PTransferModal;
   root.openP2PPairingScanner=openP2PPairingScanner;
+  root.openP2PBackupHub=renderBackupHub;
   root.closeP2PTransferModal=()=>closeTransferModal();
   root.waitTrustedTransfer=waitTrustedTransfer;
   root.waitTrustedRoster=waitTrustedRoster;
   root.waitTrustedAttendance=waitTrustedAttendance;
+  root.waitBackupTransfer=waitBackupTransfer;
+  root.sendBackupToPeer=sendBackupToPeer;
+  root.armBackupReceiver=armBackupReceiver;
   root.refreshMiniP2PHeader=refreshMiniP2PHeader;
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};

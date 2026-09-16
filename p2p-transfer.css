@@ -306,4 +306,7 @@
 .mini-p2p-peer-pill.is-online { background: color-mix(in srgb, var(--success-color) 16%, transparent); color: var(--success-color); }
 .mini-p2p-peer-pill.is-transferring { background: color-mix(in srgb, var(--accent-color) 16%, transparent); color: var(--accent-color); }
 .mini-p2p-peer-pill.is-offline { background: color-mix(in srgb, var(--text-muted) 16%, transparent); color: var(--text-muted); }
+.mini-p2p-capability[data-open-backup-hub] { cursor: pointer; transition: background 160ms ease, border-color 160ms ease; }
+.mini-p2p-capability[data-open-backup-hub]:hover { background: color-mix(in srgb, var(--accent-color) 10%, var(--input-bg)); border-color: var(--accent-color); }
+.mini-p2p-capability[data-open-backup-hub]:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .header-p2p-ring { transition: none; } .header-p2p-link[data-p2p-state="transferring"] .header-p2p-ring { animation: none; transform: none; } }
