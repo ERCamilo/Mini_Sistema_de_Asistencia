@@ -573,6 +573,7 @@
   let pendingRoster = null;
   let activeAttendanceResponderDetach = null;
   let activeBackupReceiverDetach = null;
+  let activePairConfirmation = null;
   let activeQrStream = null;
   let activeQrScanTimer = null;
   let activeQrScanGeneration = 0;
@@ -759,6 +760,7 @@
 
   function cleanupSession() {
     cleanupQrScanner();
+    activePairConfirmation = null;
     activeManualPeerId = null;
     if (activeAttendanceResponderDetach) {
       try { activeAttendanceResponderDetach(); } catch (_) {}
@@ -1183,6 +1185,34 @@
     return core.decodePairDescriptor(encoded, { allowSameApp: options.allowSameApp === true });
   }
 
+  function renderQr(url) {
+    try {
+      const qrFn = root.qrcode || (typeof window !== 'undefined' ? window.qrcode : null);
+      if (typeof qrFn !== 'function') {
+        return '<div class="mini-p2p-qr-warning">QR no disponible. Usa código + clave.</div>';
+      }
+      const qr = qrFn(0, 'M');
+      qr.addData(url);
+      qr.make();
+      if (typeof qr.createSvgTag === 'function') {
+        const svg = qr.createSvgTag({
+          cellSize: 4,
+          margin: 16,
+          scalable: true,
+          alt: 'Código QR de vinculación para respaldo'
+        });
+        return `<div class="mini-p2p-qr-card" data-qr-card>${svg}</div>`;
+      }
+      if (typeof qr.createDataURL === 'function') {
+        const dataUrl = qr.createDataURL(4, 2);
+        return `<div class="mini-p2p-qr-card" data-qr-card><img class="mini-p2p-qr-image" src="${esc(dataUrl)}" width="240" height="240" alt="Código QR de vinculación para respaldo"></div>`;
+      }
+      return '<div class="mini-p2p-qr-warning">QR no disponible. Usa código + clave.</div>';
+    } catch (_) {
+      return '<div class="mini-p2p-qr-warning">No se pudo generar QR. Usa código + clave.</div>';
+    }
+  }
+
   async function renderQrScanner(options = {}) {
     const allowSameApp = options.allowSameApp === true;
     if (allowSameApp ? !(await ensureMiniAliasChosen({ type: 'scan', options })) : !(await ensureMiniAliasChosen('scan'))) return;
@@ -1323,11 +1353,14 @@
     shell();
     if (descriptor.expiresAt !== undefined && Number(descriptor.expiresAt) <= Date.now()) throw new Error('La sesión de emparejamiento expiró.');
     const partnerLabel = descriptor.issuerName || (allowSameApp ? 'dispositivo' : 'SA');
-    if (!body().querySelector('[data-pair-status]')) {
+    const pairStatusBox = body().querySelector('[data-pair-status]');
+    if (!pairStatusBox) {
       morphShell(() => { body().innerHTML = `<div class="mini-p2p-step"><div><h3>Vincular con ${esc(partnerLabel)}</h3><p>Conectando mediante el vínculo seguro.</p></div><div class="mini-p2p-status" data-pair-status>Buscando ${esc(partnerLabel)}…</div><div class="mini-p2p-actions">${secondary('Cancelar','data-cancel')}</div></div>`; });
       body().querySelector('[data-cancel]').addEventListener('click', () => { if (allowSameApp) renderBackupHub(); else renderHome(); });
     } else {
-      body().querySelector('[data-pair-status]').textContent = `Buscando ${partnerLabel}…`;
+      pairStatusBox.hidden = false;
+      pairStatusBox.classList?.remove?.('is-error');
+      pairStatusBox.textContent = `Buscando ${partnerLabel}…`;
     }
     const self = await identityStore.getSelf();
     const signaling = new core.SignalingClient({
@@ -1340,14 +1373,23 @@
       signaling, initiator: false,
       expiresAt: descriptor.expiresAt,
       onState: (status, error) => {
-        const box=body()?.querySelector('[data-pair-status]');
+        const box = body()?.querySelector('[data-pair-status]');
         if (!box) return;
+        box.hidden = false;
         if (error) {
-          box.textContent='Error: '+error.message;
-          const retry=body()?.querySelector('[data-connect]');
-          if (retry) { retry.disabled=false; retry.removeAttribute('aria-busy'); retry.textContent=allowSameApp ? 'Conectar' : 'Conectar con SA'; }
-        } else if (status === 'connected') box.textContent='Canal conectado. Verificando identidad…';
-        else if (status === 'connecting' || status === 'new') box.textContent='Negociando conexión…';
+          activePairConfirmation = null;
+          box.removeAttribute('data-pair-state');
+          box.classList?.add?.('is-error');
+          box.textContent = 'Error: ' + error.message;
+          const retry = body()?.querySelector('[data-connect]');
+          if (retry) { retry.disabled = false; retry.removeAttribute('aria-busy'); retry.textContent = allowSameApp ? 'Conectar' : 'Conectar con SA'; }
+          return;
+        }
+        if (activePairConfirmation || box.getAttribute('data-pair-state') || box.querySelector('[data-accept]')) {
+          return;
+        }
+        if (status === 'connected') box.textContent = 'Canal conectado. Verificando identidad…';
+        else if (status === 'connecting' || status === 'new') box.textContent = 'Negociando conexión…';
       },
       onChannel: channel => {
         activeChannel = channel;
@@ -1372,14 +1414,40 @@
   }
 
   function renderPairConfirmation(remote, sas, accept, reject) {
-    const box=body()?.querySelector('[data-pair-status]');
+    const box = body()?.querySelector('[data-pair-status]');
     if (!box) return;
+    box.hidden = false;
+    box.classList?.remove?.('is-error');
+    if (
+      activePairConfirmation
+      && activePairConfirmation.sas === sas
+      && activePairConfirmation.remote?.deviceId === remote?.deviceId
+      && box.getAttribute('data-pair-state')
+    ) {
+      return;
+    }
+    activePairConfirmation = { remote, sas, accept, reject, accepted: false };
+    box.setAttribute('data-pair-state', 'confirming');
     box.innerHTML = `<div class="mini-p2p-step"><div><strong>${esc(remote.displayName)}</strong> quiere vincularse.</div><span>Confirma que ambos dispositivos muestran el mismo código:</span><strong class="mini-p2p-sas">${esc(sas)}</strong><div class="mini-p2p-actions">${uiButton('Rechazar','data-reject','secondary')}${uiButton('Confirmar vínculo','data-accept','primary','link')}</div></div>`;
-    box.querySelector('[data-reject]').addEventListener('click', reject);
-    box.querySelector('[data-accept]').addEventListener('click', async () => { box.textContent='Esperando confirmación…'; await accept(); });
+    box.querySelector('[data-reject]')?.addEventListener('click', () => {
+      activePairConfirmation = null;
+      box.removeAttribute('data-pair-state');
+      reject();
+    });
+    box.querySelector('[data-accept]')?.addEventListener('click', async () => {
+      if (activePairConfirmation) activePairConfirmation.accepted = true;
+      box.setAttribute('data-pair-state', 'accepted');
+      box.textContent = 'Esperando confirmación…';
+      try {
+        await accept();
+      } catch (err) {
+        renderError(err);
+      }
+    });
   }
 
   function renderLinkedWaiting(peer, options = {}) {
+    activePairConfirmation = null;
     const isMini = peer?.peerApp === 'mini' || options.allowSameApp === true;
     const title = isMini ? 'Dispositivo vinculado para respaldos' : 'SA vinculado';
     const waitCopy = isMini ? 'Esperando transferencias en esta conexión…' : 'Esperando roster en esta conexión…';
@@ -1394,9 +1462,15 @@
   }
 
   function renderError(error) {
+    activePairConfirmation = null;
     const message=error?.message || String(error || 'Error P2P');
     const box=body()?.querySelector('[data-pair-status]') || body()?.querySelector('[data-receive-state]') || body()?.querySelector('[data-wait-status]');
-    if (box) { box.classList?.add?.('is-error'); box.innerHTML = `<strong>Error:</strong> ${esc(message)}`; }
+    if (box) {
+      box.hidden = false;
+      box.removeAttribute?.('data-pair-state');
+      box.classList?.add?.('is-error');
+      box.innerHTML = `<strong>Error:</strong> ${esc(message)}`;
+    }
     else toast('Error P2P: '+message);
   }
 
@@ -2170,14 +2244,23 @@
     shell();
     const self = await identityStore.getSelf();
     const descriptor = await core.makePairDescriptor(self);
+    const pairUrl = core.buildPairUrl(descriptor, (typeof root !== 'undefined' && root.location?.href) ? root.location.href : 'https://mini.invalid/');
 
     morphShell(() => {
       body().innerHTML = `
         <div class="mini-p2p-step">
           ${backButton('Vincular')}
-          <div><h3>Código de vinculación</h3><p>En el otro Mini, pulsa “Ingresar código + clave” e introduce estos datos:</p></div>
-          <div class="mini-p2p-field"><label>Código</label><div class="mini-p2p-code">${esc(descriptor.code)}</div></div>
-          <div class="mini-p2p-field"><label>Clave</label><div class="mini-p2p-code">${esc(descriptor.key)}</div></div>
+          <div><h3>Código de vinculación</h3><p>En el otro Mini, escanea este QR o introduce el código y la clave manualmente:</p></div>
+          <div class="mini-p2p-pair-grid">
+            <div class="mini-p2p-qr-block" data-qr-block>
+              <span class="mini-p2p-qr-label">QR de vinculación</span>
+              ${renderQr(pairUrl)}
+            </div>
+            <div class="mini-p2p-code-panel">
+              <div class="mini-p2p-field"><label>Código</label><div class="mini-p2p-code">${esc(descriptor.code)}</div></div>
+              <div class="mini-p2p-field"><label>Clave</label><div class="mini-p2p-code">${esc(descriptor.key)}</div></div>
+            </div>
+          </div>
           <div class="mini-p2p-status" data-pair-status>Esperando conexión del otro Mini…</div>
           <div class="mini-p2p-actions">${secondary('Cancelar', 'data-cancel-share')}</div>
         </div>`;
@@ -2200,8 +2283,18 @@
       onState: (status, error) => {
         const box = body()?.querySelector('[data-pair-status]');
         if (!box) return;
-        if (error) box.textContent = 'Error: ' + error.message;
-        else if (status === 'connected') box.textContent = 'Canal conectado. Verificando identidad…';
+        box.hidden = false;
+        if (error) {
+          activePairConfirmation = null;
+          box.removeAttribute('data-pair-state');
+          box.classList?.add?.('is-error');
+          box.textContent = 'Error: ' + error.message;
+          return;
+        }
+        if (activePairConfirmation || box.getAttribute('data-pair-state') || box.querySelector('[data-accept]')) {
+          return;
+        }
+        if (status === 'connected') box.textContent = 'Canal conectado. Verificando identidad…';
         else if (status === 'connecting') box.textContent = 'Conectando con el otro Mini…';
       },
       onChannel: channel => {
@@ -2527,6 +2620,10 @@
   root.waitBackupTransfer=waitBackupTransfer;
   root.sendBackupToPeer=sendBackupToPeer;
   root.armBackupReceiver=armBackupReceiver;
+  root.startPairing=startPairing;
+  root.renderBackupPairShare=renderBackupPairShare;
+  root.renderPairConfirmation=renderPairConfirmation;
+  root.renderQr=renderQr;
   root.refreshMiniP2PHeader=refreshMiniP2PHeader;
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};

@@ -1041,6 +1041,11 @@
             z-index: 250;
         }
 
+        /* Confirmation dialogs must stay above feature overlays such as P2P. */
+        #modal-confirm {
+            z-index: 11000;
+        }
+
         .modal-content {
             background: var(--card-bg);
             border-top-left-radius: 28px;
@@ -3307,6 +3312,7 @@
     <script src="./p2p-activity-store.js"></script>
     <script src="./sa-roster-version-guard.js"></script>
     <script src="./p2p-backup-bridge.js"></script>
+    <script src="./vendor/qrcode.js"></script>
     <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
