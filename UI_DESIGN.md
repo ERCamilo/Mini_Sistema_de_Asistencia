@@ -411,3 +411,44 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
   - Tarjetas/filas compactas por par vinculado, ordenadas prioritariamente: (1) En línea con pendientes, (2) En línea, (3) Desconectado visto recientemente, (4) Desconectado antiguo.
   - Jerarquía visual: alias/nombre humano primario; tipo de dispositivo cuando se conoce; píldora de estado (`Conectado`, `En transferencia`, `Conectando…`, `Desconectado`); marca de tiempo relativa ("hace Xm", "hace Xh", "ayer") cuando está desconectado; e insignia de pendientes de revisión si aplica.
   - Prohibido exponer identificadores técnicos o IDs criptográficos como etiquetas primarias. Prohibido mostrar registros de actividad pasiva en la pantalla principal.
+
+---
+
+### 8.7 Endurecimiento de superficies P2P v1 y no-alcance genérico (F3.P2P-4)
+
+- **Matriz de capacidades v1 en portada**:
+  - La franja compacta `.mini-p2p-capabilities` presenta exactamente 4 superficies:
+    1. `Personal`: activo (`is-ready`), transporte de roster `sa-roster/v1`.
+    2. `Asistencia`: activo (`is-ready`), transporte de asistencia `attendance-submission/v1`.
+    3. `Backup`: activo (`is-ready`, `data-open-backup-hub`), hub dedicado de respaldos P2P.
+    4. `Archivos`: visible, deshabilitado (`is-disabled`, `aria-disabled="true"`), con etiqueta `Próximamente`.
+  - La capacidad `Archivos` no tiene listener, no abre selector de archivos y tiene `pointer-events: none` y `cursor: not-allowed` en CSS.
+
+- **Endurecimiento genérico y rechazo fail-closed (AC-6)**:
+  - Todo intercambio de archivos genéricos, documentos de oficina, fotos, PDFs o binarios arbitrarios permanece estrictamente **FUERA DE ALCANCE** (out of scope).
+  - Cualquier intento de transferir o iniciar un payload con `kind` no autorizado o esquema no permitido se rechaza fail-closed de forma inmediata, provocando la revocación del DataChannel WebRTC y dejando cero mutaciones durables.
+  - Ninguna superficie P2P incluye selectores de archivos genéricos (`<input type="file">` o `showOpenFilePicker()`).
+
+- **Preservación obligatoria de fallbacks manuales (AC-8)**:
+  - Las vías manuales de intercambio y recuperación permanecen intactas, funcionales y accesibles:
+    1. Importación manual de roster vía JSON/texto (`modal-import-employees`, `employeeRepository.importSaRoster`).
+    2. Exportación/envío de asistencia por WhatsApp (`shareToWhatsApp`) y copia al portapapeles.
+    3. Respaldo y restauración nativa de Mini (`modal-restore-backup`, `loadBackupFile`, `doRestoreBackup`).
+  - La ausencia o desactivación de la capa P2P no degrada ni bloquea ninguna de las operaciones manuales del sistema.
+
+- **Staging efímero y regla de cero auto-escritura (AC-4, AC-7)**:
+  - La recepción de un paquete P2P (roster o respaldo) nunca equivale a su aplicación o importación.
+  - Los datos recibidos se conservan en staging efímero en memoria (máximo 3 respaldos concurrentes).
+  - Roster requiere previsualización de diferencias, resolución de conflictos y pulsación explícita de `Aplicar`.
+  - Respaldo Mini ↔ Mini requiere revisión en el modal nativo existente y pulsación explícita de `doRestoreBackup()`.
+  - Respaldo SA ↔ Mini ofrece exclusivamente guardado/descarga local del archivo crudo sin conversión.
+
+- **Aislamiento estricto de pares same-app (Mini ↔ Mini)**:
+  - El emparejamiento entre dos dispositivos Mini sólo es posible mediante el flujo dedicado `Vincular para respaldo` con opt-in explícito (`allowSameApp: true`).
+  - Los dispositivos same-app quedan completamente excluidos de la lista principal de SA en Transferencias y jamás se enrutan a escuchas de roster o asistencia.
+
+- **Cumplimiento de estándares de diseño Mini**:
+  - Objetivos táctiles mínimos de **44 × 44 px** en todos los botones e interactivos (tarjetas de capacidad a 62px de alto).
+  - Iconografía 100% vectorial mediante `IconSet`/SVG Lucide (`data-icon-vector`); prohibidos los emojis o caracteres Unicode decorativos como iconos de control.
+  - Superficies con rellenos sólidos semánticos y tokens CSS de alto contraste; prohibidos los estilos de contorno transparente con texto coloreado.
+  - Portada limpia sin registros pasivos permanentes de actividad; los eventos informativos se registran internamente.

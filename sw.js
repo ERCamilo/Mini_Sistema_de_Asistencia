@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.13.0-20260916-053124-873';
+const CACHE_VERSION = 'asistencia-v2.13.0-20260917-003018-062';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [

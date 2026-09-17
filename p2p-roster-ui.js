@@ -919,7 +919,8 @@
 
   function capability(iconName, title, detail, stateClass = '', extraAttrs = '') {
     const attrs = extraAttrs ? (' ' + extraAttrs) : '';
-    return `<div class="mini-p2p-capability ${stateClass}"${attrs}><span class="mini-p2p-capability-icon">${vectorIcon(iconName, 16)}</span><span class="mini-p2p-capability-copy"><strong>${esc(title)}</strong><small>${esc(detail)}</small></span></div>`;
+    const disabledAria = stateClass.includes('is-disabled') ? ' aria-disabled="true"' : '';
+    return `<div class="mini-p2p-capability ${stateClass}"${attrs}${disabledAria}><span class="mini-p2p-capability-icon">${vectorIcon(iconName, 16)}</span><span class="mini-p2p-capability-copy"><strong>${esc(title)}</strong><small>${esc(detail)}</small></span></div>`;
   }
 
   function peerSortScore(peer) {
@@ -2273,7 +2274,11 @@
             if (liveBox) liveBox.textContent = 'Autenticado. Enviando respaldo…';
 
             try {
-              const { transfer, ack } = await (root.SaMiniP2PBackup?.sendBackupOnChannel || bridge?.sendBackupOnChannel)(channel, {
+              const bridge = root.SaMiniP2PBackup;
+              if (!bridge || typeof bridge.sendBackupOnChannel !== 'function') {
+                throw new Error('Módulo de respaldos P2P no disponible.');
+              }
+              const { transfer, ack } = await bridge.sendBackupOnChannel(channel, {
                 bytes: payload.bytes,
                 schema: 'mini-backup/v1',
                 onProgress: progress => {

@@ -47,7 +47,12 @@
   padding: 9px; border: 1px solid var(--border-color); border-radius: 12px;
   background: var(--input-bg); color: var(--text-color);
 }
-.mini-p2p-capability.is-disabled { opacity: .55; }
+.mini-p2p-capability.is-disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  pointer-events: none;
+  user-select: none;
+}
 .mini-p2p-capability.is-ready { border-color: color-mix(in srgb, var(--success-color) 60%, var(--border-color)); }
 .mini-p2p-capability-icon {
   width: 30px; height: 30px; flex: none; display: grid; place-items: center;
