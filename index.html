@@ -6692,8 +6692,11 @@
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
                 const hasSettings = parsed.settings && typeof parsed.settings === 'object' && Object.keys(parsed.settings).length > 0;
-                const hasCtx = Array.isArray(parsed.workContexts) && parsed.workContexts.length > 0;
-                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasCtx ? ', ' + parsed.workContexts.length + ' obras' : '') + (hasSettings ? ' + ajustes.' : '.');
+                const workContextList = Array.isArray(parsed.workContexts)
+                    ? parsed.workContexts
+                    : (parsed.workContexts && Array.isArray(parsed.workContexts.contexts) ? parsed.workContexts.contexts : []);
+                const hasCtx = workContextList.length > 0;
+                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasCtx ? ', ' + workContextList.length + ' obras' : '') + (hasSettings ? ' + ajustes.' : '.');
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
             } catch (err) {
@@ -6719,7 +6722,22 @@
                 if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) throw new Error('Los ajustes no son válidos');
                 if (parsed.requests !== undefined && !Array.isArray(parsed.requests)) throw new Error('Las solicitudes no son válidas');
                 if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) throw new Error('Las plantillas no son válidas');
-                if (parsed.workContexts !== undefined && !Array.isArray(parsed.workContexts)) throw new Error('Las obras y cuadrillas no son válidas');
+                let workContextsSnapshot = null;
+                if (parsed.workContexts !== undefined) {
+                    if (Array.isArray(parsed.workContexts)) {
+                        workContextsSnapshot = { schemaVersion: 1, contexts: parsed.workContexts, activeContextId: null };
+                    } else if (parsed.workContexts && typeof parsed.workContexts === 'object' && !Array.isArray(parsed.workContexts) && Array.isArray(parsed.workContexts.contexts)) {
+                        const activeId = parsed.workContexts.activeContextId;
+                        if (activeId !== undefined && activeId !== null && typeof activeId !== 'string') throw new Error('Las obras y cuadrillas no son válidas');
+                        workContextsSnapshot = {
+                            schemaVersion: Number.isSafeInteger(parsed.workContexts.schemaVersion) ? parsed.workContexts.schemaVersion : 1,
+                            contexts: parsed.workContexts.contexts,
+                            activeContextId: activeId ?? null
+                        };
+                    } else {
+                        throw new Error('Las obras y cuadrillas no son válidas');
+                    }
+                }
                 const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
                 imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
                 const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
@@ -6728,8 +6746,8 @@
                 fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
                     users = state.users; attendanceData = state.attendance; requests = state.requests; requestTemplates = state.templates;
                     BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
-                    if (Array.isArray(parsed.workContexts) && window.workContextManager) {
-                        window.workContextManager.importSnapshot(parsed.workContexts);
+                    if (workContextsSnapshot && window.workContextManager) {
+                        window.workContextManager.importSnapshot(workContextsSnapshot);
                     }
                     applyRestoredSettings();
                 }, saveData);
