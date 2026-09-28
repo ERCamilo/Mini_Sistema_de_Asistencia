@@ -223,7 +223,18 @@ Cuando una acción cambia de una vista compacta a otra más grande o pequeña de
 
 ---
 
-### 5.10 Ingeniería de animación y fluidez
+### 5.10 Respaldos P2P y transferencia same-app (F3.P2P-3)
+
+- **Franja de capacidades**: `Backup` pasa de Próximamente a `is-ready`, con interacción hacia el hub de respaldos P2P (`data-open-backup-hub`). La capacidad genérica `Archivos` permanece `is-disabled` / Próximamente.
+- **Aislamiento same-app**: el emparejamiento Mini ↔ Mini se habilita exclusivamente mediante opt-in explícito (`allowSameApp: true`) para transferencias de respaldo. Los peers same-app nunca entran a listas de roster ni asistencia, ni activan listeners pasivos de esos contratos.
+- **Staging efímero en memoria**: máximo 3 respaldos pendientes en total en este Mini receptor, deduplicados por `transferId` y SHA-256 antes del límite. Ninguna transferencia escribe en base de datos ni IndexedDB antes de confirmación explícita del usuario.
+- **Restauración Mini ↔ Mini**: sólo los respaldos propios de Mini (`mini-backup/v1`) habilitan la acción `Revisar`. Esta acción valida UTF-8 y JSON, puebla el textarea del modal nativo existente (`modal-restore-backup`), marca el contexto con el `transferId` y lo abre para inspección; el respaldo permanece en staging durante la revisión o cancelación, y sólo se elimina tras el éxito de `doRestoreBackup()` confirmado explícitamente por el usuario.
+- **Cross-app SA ↔ Mini**: los respaldos de SA recibidos por Mini (`sa-backup/v1`) son exclusivamente de descarga local; nunca se ofrece ni ejecuta revisión o restauración sobre datos de otra app.
+- **Iconografía y accesibilidad**: todos los estados y acciones usan `IconSet`/SVG vectoriales (`backup`, `inbox`, `restore`, `close`, `check`), targets táctiles >= 44x44px y cero emojis/símbolos Unicode como iconografía interactiva.
+
+---
+
+### 5.11 Ingeniería de animación y fluidez
 
 Mini usa el mismo principio de motion de SA, adaptado a hardware móvil y uso táctil. El movimiento debe aclarar continuidad, jerarquía y resultado; nunca retrasar una acción.
 
@@ -400,3 +411,50 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
   - Tarjetas/filas compactas por par vinculado, ordenadas prioritariamente: (1) En línea con pendientes, (2) En línea, (3) Desconectado visto recientemente, (4) Desconectado antiguo.
   - Jerarquía visual: alias/nombre humano primario; tipo de dispositivo cuando se conoce; píldora de estado (`Conectado`, `En transferencia`, `Conectando…`, `Desconectado`); marca de tiempo relativa ("hace Xm", "hace Xh", "ayer") cuando está desconectado; e insignia de pendientes de revisión si aplica.
   - Prohibido exponer identificadores técnicos o IDs criptográficos como etiquetas primarias. Prohibido mostrar registros de actividad pasiva en la pantalla principal.
+
+---
+
+### 8.7 Endurecimiento de superficies P2P v1 y no-alcance genérico (F3.P2P-4)
+
+- **Matriz de capacidades v1 en portada**:
+  - La franja compacta `.mini-p2p-capabilities` presenta exactamente 4 superficies:
+    1. `Personal`: activo (`is-ready`), transporte de roster `sa-roster/v1`.
+    2. `Asistencia`: activo (`is-ready`), transporte de asistencia `attendance-submission/v1`.
+    3. `Backup`: activo (`is-ready`, `data-open-backup-hub`), hub dedicado de respaldos P2P.
+    4. `Archivos`: visible, deshabilitado (`is-disabled`, `aria-disabled="true"`), con etiqueta `Próximamente`.
+  - La capacidad `Archivos` no tiene listener, no abre selector de archivos y tiene `pointer-events: none` y `cursor: not-allowed` en CSS.
+
+- **Endurecimiento genérico y rechazo fail-closed (AC-6)**:
+  - Todo intercambio de archivos genéricos, documentos de oficina, fotos, PDFs o binarios arbitrarios permanece estrictamente **FUERA DE ALCANCE** (out of scope).
+  - Cualquier intento de transferir o iniciar un payload con `kind` no autorizado o esquema no permitido se rechaza fail-closed de forma inmediata, provocando la revocación del DataChannel WebRTC y dejando cero mutaciones durables.
+  - Ninguna superficie P2P incluye selectores de archivos genéricos (`<input type="file">` o `showOpenFilePicker()`).
+
+- **Preservación obligatoria de fallbacks manuales (AC-8)**:
+  - Las vías manuales de intercambio y recuperación permanecen intactas, funcionales y accesibles:
+    1. Importación manual de roster vía JSON/texto (`modal-import-employees`, `employeeRepository.importSaRoster`).
+    2. Exportación/envío de asistencia por WhatsApp (`shareToWhatsApp`) y copia al portapapeles.
+    3. Respaldo y restauración nativa de Mini (`modal-restore-backup`, `loadBackupFile`, `doRestoreBackup`).
+  - La ausencia o desactivación de la capa P2P no degrada ni bloquea ninguna de las operaciones manuales del sistema.
+
+- **Staging efímero y regla de cero auto-escritura (AC-4, AC-7)**:
+  - La recepción de un paquete P2P (roster o respaldo) nunca equivale a su aplicación o importación.
+  - Los datos recibidos se conservan en staging efímero en memoria (máximo 3 respaldos concurrentes).
+  - Roster requiere previsualización de diferencias, resolución de conflictos y pulsación explícita de `Aplicar`.
+  - Respaldo Mini ↔ Mini requiere revisión en el modal nativo existente y pulsación explícita de `doRestoreBackup()`.
+  - Respaldo SA ↔ Mini ofrece exclusivamente guardado/descarga local del archivo crudo sin conversión.
+
+- **Aislamiento estricto de pares same-app (Mini ↔ Mini)**:
+  - El emparejamiento entre dos dispositivos Mini sólo es posible mediante el flujo dedicado `Vincular para respaldo` con opt-in explícito (`allowSameApp: true`).
+  - Los dispositivos same-app quedan completamente excluidos de la lista principal de SA en Transferencias y jamás se enrutan a escuchas de roster o asistencia.
+
+- **Cumplimiento de estándares de diseño Mini**:
+  - Objetivos táctiles mínimos de **44 × 44 px** en todos los botones e interactivos (tarjetas de capacidad a 62px de alto).
+  - Iconografía 100% vectorial mediante `IconSet`/SVG Lucide (`data-icon-vector`); prohibidos los emojis o caracteres Unicode decorativos como iconos de control.
+  - Superficies con rellenos sólidos semánticos y tokens CSS de alto contraste; prohibidos los estilos de contorno transparente con texto coloreado.
+  - Portada limpia sin registros pasivos permanentes de actividad; los eventos informativos se registran internamente.
+
+### 8.8 Avisos físicos (MiniNotice), bienvenida y botón atrás
+
+- **MiniNotice** (`src/mini-notice.ts`, `mini-notice.css`): aviso tipo píldora que se expande a tarjeta con filtro SVG *gooey* y resorte (rebote .25, 600 ms), para procesos P2P en curso: oferta entrante (Aceptar/Rechazar), esperando, progreso (anillo), éxito (check dibujado) y error. Relleno invertido al tema (`--text-color` / tinta `--bg-color`), tono por estado con `--accent-color`, `--success-color`, `--danger-color`, `--extra-color`. Los avisos con acciones no se cierran solos ni con gesto; éxito 4 s, error 7 s. `showToast` sigue siendo el aviso breve para confirmaciones simples.
+- **Bienvenida obligatoria** (`src/mini-welcome.ts`): si el dispositivo no tiene nombre propio, al iniciar se muestra una pantalla que no se puede cerrar hasta guardar un nombre válido (mismas reglas que el alias P2P).
+- **Botón atrás** (`src/back-navigation.ts`): cierra la capa superior en el mismo orden que `Escape` (confirmación, conflicto de número, paso P2P, modal grande, menú, modal, pestaña secundaria → Asistencia). En la raíz, atrás sale de la app. La bienvenida bloquea el atrás.

@@ -1,0 +1,144 @@
+/* Mini notices: physics-based pill -> card (Sileo-like), theme tokens only.
+   The shape is inverted against the theme (fill = --text-color, ink = --bg-color)
+   so it stands out on any of the 4 themes. */
+
+:root {
+  --mini-notice-spring: linear(0, 0.007 1.2%, 0.026 2.4%, 0.06 3.8%, 0.108 5.3%, 0.214 8%, 0.467 13.7%,
+    0.631 17.7%, 0.771 21.8%, 0.874 25.8%, 0.952 30.1%, 1.01 35.7%, 1.034 41.6%, 1.038 45%,
+    1.035 50.1%, 1.012 64.2%, 1.003 73%, 1);
+}
+
+.mini-notice-viewport {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.mini-notice {
+  position: relative;
+  pointer-events: auto;
+  touch-action: pan-x;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  color: var(--bg-color);
+  --notice-tone: var(--accent-color);
+}
+.mini-notice[data-ready="true"] {
+  opacity: 1;
+  transform: none;
+  transition: opacity 400ms var(--mini-notice-spring), transform 400ms var(--mini-notice-spring);
+}
+.mini-notice[data-exiting="true"] {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+  pointer-events: none;
+}
+.mini-notice[data-state="success"] { --notice-tone: var(--success-color); }
+.mini-notice[data-state="error"] { --notice-tone: var(--danger-color); }
+.mini-notice[data-state="info"] { --notice-tone: var(--extra-color); }
+
+.mini-notice-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.mini-notice-pill,
+.mini-notice-body { fill: var(--text-color); }
+
+.mini-notice-header {
+  position: relative;
+  z-index: 2;
+  display: block;
+  height: 40px;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+}
+.mini-notice-header:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 20px; }
+.mini-notice-stack { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; }
+.mini-notice-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 8px;
+  white-space: nowrap;
+  animation: mini-notice-header-in 600ms var(--mini-notice-spring) both;
+}
+.mini-notice-inner.is-leaving {
+  position: absolute;
+  animation: mini-notice-header-out 420ms ease forwards;
+}
+.mini-notice-badge {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: var(--notice-tone);
+  background: color-mix(in srgb, var(--notice-tone) 22%, transparent);
+  flex-shrink: 0;
+}
+.mini-notice-title { font-size: 0.85rem; font-weight: 700; color: var(--notice-tone); }
+
+.mini-notice-content {
+  position: relative;
+  z-index: 2;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 10px 16px 14px;
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.mini-notice[data-expanded="false"] .mini-notice-content { pointer-events: none; }
+.mini-notice-description { margin: 0; font-size: 0.86rem; line-height: 1.35; color: var(--bg-color); opacity: 0.78; }
+.mini-notice-actions { display: flex; gap: 8px; margin-top: 12px; }
+.mini-notice-actions[hidden] { display: none; }
+.mini-notice-button {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 0;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--bg-color);
+  background: color-mix(in srgb, var(--bg-color) 10%, transparent);
+  transition: transform 120ms ease, background-color 150ms ease;
+}
+.mini-notice-button:active { transform: scale(0.97); }
+.mini-notice-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.mini-notice-button.is-primary { color: var(--text-color); background: var(--notice-tone); }
+.mini-notice-button.is-danger { color: var(--danger-color); background: color-mix(in srgb, var(--danger-color) 14%, transparent); }
+
+.mini-notice-spin { transform-origin: 12px 12px; animation: mini-notice-spin 0.9s linear infinite; }
+.mini-notice-ring { transition: stroke-dashoffset 260ms ease; }
+.mini-notice-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: mini-notice-draw 420ms 120ms ease-out forwards; }
+.mini-notice-bob { animation: mini-notice-bob 1.4s ease-in-out infinite; }
+
+@keyframes mini-notice-spin { to { transform: rotate(360deg); } }
+@keyframes mini-notice-draw { to { stroke-dashoffset: 0; } }
+@keyframes mini-notice-bob { 0%, 100% { transform: translateY(-1px); } 50% { transform: translateY(2px); } }
+@keyframes mini-notice-header-in { from { opacity: 0; filter: blur(6px); } to { opacity: 1; filter: blur(0); } }
+@keyframes mini-notice-header-out { from { opacity: 1; filter: blur(0); } to { opacity: 0; filter: blur(6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mini-notice,
+  .mini-notice * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .mini-notice-draw { stroke-dashoffset: 0; }
+}
