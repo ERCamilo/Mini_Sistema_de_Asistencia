@@ -74,16 +74,39 @@ interface AttendanceCoordinatorOptions {
       status: 'present' | 'absent' | 'pending',
       hours: number = 8
     ): { status: 'saved' | 'deleted'; record?: any; tombstone?: any; outboxRecord?: any } {
-      const repoResult = repository.setRecord(employee.id, date, status, hours);
-
       if (status !== 'present') {
+        const repoResult = repository.setRecord(employee.id, date, status, hours);
         return {
           status: 'deleted',
           tombstone: repoResult.tombstone
         };
       }
 
-      // Enqueue to offline outbox as immutable v1 envelope
+      // All-or-nothing: the growing outbox write goes first, then the repository.
+      // If the repository write fails (e.g. storage quota), restoring the previous
+      // outbox is a shrinking write, so nothing is left half-saved.
+      const currentOutbox = loadOutbox();
+      const outboxRecord = buildOutboxRecord(employee, hours);
+      persistOutbox([...currentOutbox, outboxRecord]);
+
+      let repoResult;
+      try {
+        repoResult = repository.setRecord(employee.id, date, status, hours);
+      } catch (error) {
+        persistOutbox(currentOutbox);
+        throw error;
+      }
+
+      return {
+        status: 'saved',
+        record: repoResult.record,
+        outboxRecord
+      };
+    }
+
+    function buildOutboxRecord(employee: AttendanceEmployeeInput, hours: number) {
+      // Same normalization as AttendanceRepository.setRecord.
+      const normalizedHours = parseFloat(String(hours)) || 8;
       sequence += 1;
       const eventId = uuidFn();
       const timestamp = nowFn();
@@ -102,26 +125,17 @@ interface AttendanceCoordinatorOptions {
             number: String(employee.number || ''),
             name: String(employee.name || ''),
             status: 'present',
-            hours: typeof repoResult.record?.hours === 'number' ? repoResult.record.hours : hours
+            hours: normalizedHours
           }
         ]
       };
 
-      const outboxRecord = {
+      return {
         eventId,
         envelope,
         state: 'pending',
         attempts: 0,
         nextAttemptAt: Date.now()
-      };
-
-      const currentOutbox = loadOutbox();
-      persistOutbox([...currentOutbox, outboxRecord]);
-
-      return {
-        status: 'saved',
-        record: repoResult.record,
-        outboxRecord
       };
     }
 

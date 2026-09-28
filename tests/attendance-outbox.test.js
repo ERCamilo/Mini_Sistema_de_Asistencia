@@ -112,3 +112,51 @@ test('outbox state transitions: acknowledgeEvent and markEventFailed', () => {
   coordinator.acknowledgeEvent('event-1');
   assert.equal(coordinator.getAllOutbox()[0].state, 'ack');
 });
+
+function createQuotaStorage(failingKey, initialState = {}) {
+  const storage = createMemoryStorage(initialState);
+  const setItem = storage.setItem;
+  storage.failNext = false;
+  storage.setItem = (key, value) => {
+    if (storage.failNext && key === failingKey) {
+      const error = new Error('The quota has been exceeded.');
+      error.name = 'QuotaExceededError';
+      throw error;
+    }
+    setItem(key, value);
+  };
+  return storage;
+}
+
+test('present attendance is not half-saved when the outbox write hits the quota', () => {
+  const storage = createQuotaStorage('mini-sa-outbox-v1');
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+  const coordinator = AttendanceCoordinator.createAttendanceCoordinator({ repository: repo, storage });
+  storage.failNext = true;
+
+  assert.throws(
+    () => coordinator.recordAttendance({ id: 'u1', name: 'Ana', number: '1' }, '2026-09-28', 'present', 8),
+    { name: 'QuotaExceededError' }
+  );
+  assert.equal(repo.getRecord('u1', '2026-09-28'), null);
+  assert.equal(coordinator.getAllOutbox().length, 0);
+});
+
+test('outbox is restored when the attendance write hits the quota', () => {
+  const storage = createQuotaStorage('attendance', {
+    attendance: JSON.stringify({ '2026-09-27': { u1: { status: 'present', hours: 8 } } })
+  });
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+  const coordinator = AttendanceCoordinator.createAttendanceCoordinator({ repository: repo, storage });
+  coordinator.recordAttendance({ id: 'u1', name: 'Ana', number: '1' }, '2026-09-27', 'present', 4);
+  assert.equal(coordinator.getAllOutbox().length, 1);
+  storage.failNext = true;
+
+  assert.throws(
+    () => coordinator.recordAttendance({ id: 'u1', name: 'Ana', number: '1' }, '2026-09-28', 'present', 8),
+    { name: 'QuotaExceededError' }
+  );
+  assert.equal(repo.getRecord('u1', '2026-09-28'), null);
+  assert.equal(repo.getRecord('u1', '2026-09-27').hours, 4);
+  assert.equal(coordinator.getAllOutbox().length, 1);
+});
