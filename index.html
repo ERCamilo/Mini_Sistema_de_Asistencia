@@ -3312,6 +3312,7 @@
     <script src="./p2p-peer-alias-store.js"></script>
     <script src="./p2p-activity-store.js"></script>
     <script src="./sa-roster-version-guard.js"></script>
+    <script src="./mini-backup-summary.js"></script>
     <script src="./p2p-backup-bridge.js"></script>
     <script src="./vendor/qrcode.js"></script>
     <script src="./p2p-roster-ui.js"></script>
@@ -6634,7 +6635,8 @@
 
         const BACKUP_SETTINGS_KEYS = ['appTheme', 'iconStyle', 'checkMode', 'reminderConfig', 'expectedHoursPerDay'];
 
-        function downloadJSON() {
+        // Single source of truth for Mini backups (file download and P2P send).
+        function buildMiniBackupData() {
             const settings = {};
             BACKUP_SETTINGS_KEYS.forEach(k => {
                 const v = localStorage.getItem(k);
@@ -6643,7 +6645,12 @@
             normalizeRequestState();
             const requestExport = fieldRequestsRepository.exportCollections(requests, requestTemplates);
             const workContexts = window.workContextManager ? window.workContextManager.exportSnapshot() : [];
-            const data = { schemaVersion: 1, exportedAt: new Date().toISOString(), users, attendance: attendanceData, requests: requestExport.requests, templates: requestExport.templates, workContexts, settings };
+            return { schemaVersion: 1, exportedAt: new Date().toISOString(), users: employeeRepository.getAll(), attendance: attendanceRepository.getAll(), requests: requestExport.requests, templates: requestExport.templates, workContexts, settings };
+        }
+        window.buildMiniBackupData = buildMiniBackupData;
+
+        function downloadJSON() {
+            const data = buildMiniBackupData();
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -6707,10 +6714,9 @@
             }
             try {
                 const parsed = JSON.parse(raw);
-                const hasUsers = Array.isArray(parsed.users) && parsed.users.length > 0;
-                const hasAtt = parsed.attendance && typeof parsed.attendance === 'object';
-                const hasReqs = Array.isArray(parsed.requests) && parsed.requests.length > 0;
-                if (!hasUsers && !hasAtt && !hasReqs) throw new Error('No se encontraron datos válidos.');
+                const summary = window.MiniBackupSummary.summarize(parsed);
+                if (summary.isEmpty) throw new Error('El respaldo no tiene empleados ni asistencia. Restaurarlo borraría tus datos.');
+                const hasReqs = summary.requests > 0;
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
                 const hasSettings = parsed.settings && typeof parsed.settings === 'object' && Object.keys(parsed.settings).length > 0;
@@ -6718,7 +6724,7 @@
                     ? parsed.workContexts
                     : (parsed.workContexts && Array.isArray(parsed.workContexts.contexts) ? parsed.workContexts.contexts : []);
                 const hasCtx = workContextList.length > 0;
-                msg.innerHTML = '&#x2705; ' + (parsed.users ? parsed.users.length : 0) + ' empleados, ' + Object.keys(parsed.attendance || {}).length + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasCtx ? ', ' + workContextList.length + ' obras' : '') + (hasSettings ? ' + ajustes.' : '.');
+                msg.innerHTML = '&#x2705; ' + summary.employees + ' empleados, ' + summary.attendanceDays + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasCtx ? ', ' + workContextList.length + ' obras' : '') + (hasSettings ? ' + ajustes.' : '.');
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
             } catch (err) {

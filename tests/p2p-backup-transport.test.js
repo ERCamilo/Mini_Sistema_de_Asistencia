@@ -830,37 +830,51 @@ test('10. ACKs autenticados: backup-staged y backup-rejected', () => {
 });
 
 // 11. Generación nativa de datos y payload de respaldo de Mini
-test('11. createMiniBackupData y createMiniBackupPayload generan forma canónica de respaldo de Mini', async () => {
-  globalThis.users = [{ id: 'e1', name: 'Ana' }];
-  globalThis.attendanceData = { '2026-09-15': {} };
-  globalThis.requests = [];
-  globalThis.requestTemplates = [];
+// index.html keeps `users`/`attendanceData` in `let` bindings (never on window),
+// so the bridge must read them through the app's buildMiniBackupData provider.
+test('11. createMiniBackupData usa el proveedor de la app y no globals sueltos', async () => {
+  globalThis.users = [{ id: 'stale', name: 'No debe usarse' }];
+  globalThis.buildMiniBackupData = () => ({
+    schemaVersion: 1,
+    exportedAt: '2026-09-28T00:00:00.000Z',
+    users: [{ id: 'e1', name: 'Ana' }],
+    attendance: { '2026-09-15': { e1: { status: 'present', hours: 8 } } },
+    requests: [],
+    templates: [],
+    workContexts: [],
+    settings: {}
+  });
 
   try {
     const data = BackupBridge.createMiniBackupData();
     assert.equal(data.schemaVersion, 1);
-    assert.ok(data.exportedAt);
     assert.deepEqual(data.users, [{ id: 'e1', name: 'Ana' }]);
-    assert.ok(typeof data.attendance === 'object');
-    assert.ok(Array.isArray(data.requests));
-    assert.ok(Array.isArray(data.templates));
+    assert.equal(data.attendance['2026-09-15'].e1.hours, 8);
 
     const payload = await BackupBridge.createMiniBackupPayload(data);
     assert.ok(payload.bytes instanceof Uint8Array);
-    assert.ok(payload.bytes.length > 0);
     assert.equal(payload.size, payload.bytes.length);
     assert.ok(/^[0-9a-f]{64}$/.test(payload.sha256));
-
-    // Verify round-trip parsing of the payload JSON
     const parsedBack = JSON.parse(new TextDecoder().decode(payload.bytes));
-    assert.equal(parsedBack.schemaVersion, 1);
     assert.deepEqual(parsedBack.users, data.users);
   } finally {
     delete globalThis.users;
-    delete globalThis.attendanceData;
-    delete globalThis.requests;
-    delete globalThis.requestTemplates;
+    delete globalThis.buildMiniBackupData;
   }
+});
+
+test('11b. sin proveedor de datos el respaldo falla cerrado en vez de enviarse vacío', () => {
+  assert.throws(() => BackupBridge.createMiniBackupData(), /datos de este Mini/);
+});
+
+test('11c. un respaldo sin empleados, asistencia ni solicitudes no se envía ni se revisa', async () => {
+  const empty = { schemaVersion: 1, users: [], attendance: {}, requests: [], templates: [], settings: { appTheme: 'dark' } };
+  await assert.rejects(() => BackupBridge.createMiniBackupPayload(empty), /no tiene empleados ni asistencia/);
+  const staged = {
+    transferId: 't-empty', sha256: 'a'.repeat(64), kind: 'backup', schema: 'mini-backup/v1',
+    bytes: new TextEncoder().encode(JSON.stringify(empty)), sourceApp: 'mini'
+  };
+  assert.throws(() => BackupBridge.reviewStagedBackupInMini(staged), /no tiene empleados ni asistencia/);
 });
 
 // 12. Receptor dedicado de backup, allowSameApp dinámico por peerApp === self.appType, y respaldo SA download-only

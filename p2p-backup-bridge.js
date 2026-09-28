@@ -102,39 +102,30 @@
 
   const backupStagedStore = createBackupStagingStore();
 
+  function backupSummaryApi() {
+    if (root.MiniBackupSummary) return root.MiniBackupSummary;
+    if (typeof require === 'function') return require('./mini-backup-summary.js');
+    throw new Error('MiniBackupSummary no está disponible.');
+  }
+
+  function assertBackupHasData(parsed) {
+    if (backupSummaryApi().summarize(parsed).isEmpty) {
+      throw new Error('El respaldo no tiene empleados ni asistencia. No se envía ni se restaura para no borrar datos.');
+    }
+  }
+
+  // index.html keeps its state in `let` bindings, which are not window
+  // properties, so the data must come from the app's own backup builder.
   function createMiniBackupData() {
-    const settings = {};
-    if (typeof root.localStorage !== 'undefined') {
-      BACKUP_SETTINGS_KEYS.forEach(k => {
-        const v = root.localStorage.getItem(k);
-        if (v !== null) settings[k] = v;
-      });
+    if (typeof root.buildMiniBackupData !== 'function') {
+      throw new Error('No se pudieron leer los datos de este Mini para el respaldo.');
     }
-    if (typeof root.normalizeRequestState === 'function') {
-      try { root.normalizeRequestState(); } catch (_) {}
-    }
-    const requestExport = (root.fieldRequestsRepository && typeof root.fieldRequestsRepository.exportCollections === 'function')
-      ? root.fieldRequestsRepository.exportCollections(root.requests || [], root.requestTemplates || [])
-      : { requests: root.requests || [], templates: root.requestTemplates || [] };
-
-    const workContexts = (root.workContextManager && typeof root.workContextManager.exportSnapshot === 'function')
-      ? root.workContextManager.exportSnapshot()
-      : [];
-
-    return {
-      schemaVersion: 1,
-      exportedAt: new Date().toISOString(),
-      users: Array.isArray(root.users) ? root.users : [],
-      attendance: (root.attendanceData && typeof root.attendanceData === 'object') ? root.attendanceData : {},
-      requests: Array.isArray(requestExport.requests) ? requestExport.requests : [],
-      templates: Array.isArray(requestExport.templates) ? requestExport.templates : [],
-      workContexts,
-      settings
-    };
+    return root.buildMiniBackupData();
   }
 
   async function createMiniBackupPayload(customData = null) {
     const data = customData || createMiniBackupData();
+    assertBackupHasData(data);
     const json = JSON.stringify(data, null, 2);
     const bytes = new TextEncoder().encode(json);
     const core = root.SaMiniP2P;
@@ -162,12 +153,7 @@
       throw new Error('El respaldo no contiene JSON válido.');
     }
 
-    const hasUsers = Array.isArray(parsed.users) && parsed.users.length > 0;
-    const hasAtt = parsed.attendance && typeof parsed.attendance === 'object';
-    const hasReqs = Array.isArray(parsed.requests) && parsed.requests.length > 0;
-    if (!hasUsers && !hasAtt && !hasReqs) {
-      throw new Error('No se encontraron datos válidos en el respaldo.');
-    }
+    assertBackupHasData(parsed);
 
     // Poblar el modal nativo de restauración existente sin duplicar lógica
     if (typeof root.document !== 'undefined') {
