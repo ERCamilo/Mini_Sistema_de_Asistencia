@@ -2338,7 +2338,7 @@
 
     <div class="top-nav">
         <div class="app-title" id="section-title">Asistencia</div>
-        <button type="button" class="header-p2p-link" id="btn-attendance-link" data-p2p-state="unlinked" data-p2p-header-state="unlinked" onclick="openP2PPairingScanner()" aria-label="SA no vinculado. Vincular" title="SA no vinculado">
+        <button type="button" class="header-p2p-link" id="btn-attendance-link" data-p2p-state="unlinked" data-p2p-header-state="unlinked" onclick="openP2PTransferModal()" aria-label="SA no vinculado. Abrir Transferencias para vincular SA u otro Mini" title="SA no vinculado">
             <span class="header-p2p-ring" aria-hidden="true">
                 <img class="header-p2p-app-icon" src="./sa-app-icon.svg" alt="" decoding="async">
                 <span class="header-p2p-state-dot"></span>
@@ -3316,6 +3316,7 @@
     <script src="./mini-notice.js"></script>
     <script src="./p2p-backup-consent.js"></script>
     <script src="./mini-backup-summary.js"></script>
+    <script src="./mini-backup-review.js"></script>
     <script src="./p2p-backup-bridge.js"></script>
     <script src="./vendor/qrcode.js"></script>
     <script src="./back-navigation.js"></script>
@@ -6782,6 +6783,66 @@
             }
         }
 
+        // Validates and atomically restores a parsed Mini backup (file textarea or P2P review).
+        function applyBackupRestore(parsed) {
+            if (parsed.users !== undefined && !Array.isArray(parsed.users)) throw new Error('La lista de empleados no es válida');
+            if (parsed.attendance !== undefined && (!parsed.attendance || typeof parsed.attendance !== 'object' || Array.isArray(parsed.attendance))) throw new Error('La asistencia no es válida');
+            if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) throw new Error('Los ajustes no son válidos');
+            if (parsed.requests !== undefined && !Array.isArray(parsed.requests)) throw new Error('Las solicitudes no son válidas');
+            if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) throw new Error('Las plantillas no son válidas');
+            let workContextsSnapshot = null;
+            if (parsed.workContexts !== undefined) {
+                if (Array.isArray(parsed.workContexts)) {
+                    workContextsSnapshot = { schemaVersion: 1, contexts: parsed.workContexts, activeContextId: null };
+                } else if (parsed.workContexts && typeof parsed.workContexts === 'object' && !Array.isArray(parsed.workContexts) && Array.isArray(parsed.workContexts.contexts)) {
+                    const activeId = parsed.workContexts.activeContextId;
+                    if (activeId !== undefined && activeId !== null && typeof activeId !== 'string') throw new Error('Las obras y cuadrillas no son válidas');
+                    workContextsSnapshot = {
+                        schemaVersion: Number.isSafeInteger(parsed.workContexts.schemaVersion) ? parsed.workContexts.schemaVersion : 1,
+                        contexts: parsed.workContexts.contexts,
+                        activeContextId: activeId ?? null
+                    };
+                } else {
+                    throw new Error('Las obras y cuadrillas no son válidas');
+                }
+            }
+            const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
+            imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
+            const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
+            const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings };
+            const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) } };
+            fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
+                users = state.users; attendanceRepository.importBatch(state.attendance, 'replace'); attendanceData = attendanceRepository.getAll(); requests = state.requests; requestTemplates = state.templates;
+                BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
+                if (workContextsSnapshot && window.workContextManager) {
+                    window.workContextManager.importSnapshot(workContextsSnapshot);
+                }
+                applyRestoredSettings();
+            }, saveData);
+        }
+
+        function clearStagedBackup(stagedTransferId) {
+            if (!stagedTransferId) return;
+            try {
+                if (window.SaMiniP2PBackup?.backupStagedStore?.removeStaged) {
+                    window.SaMiniP2PBackup.backupStagedStore.removeStaged(stagedTransferId);
+                }
+                if (typeof window.refreshMiniP2PHeader === 'function') {
+                    window.refreshMiniP2PHeader().catch(() => {});
+                }
+            } catch (_) {}
+        }
+
+        // Used by the P2P backup review screen (cards instead of raw JSON).
+        window.restoreMiniBackupData = (parsed, options = {}) => {
+            if (window.MiniBackupSummary.summarize(parsed).isEmpty) {
+                throw new Error('El respaldo no tiene empleados ni asistencia. Restaurarlo borraría tus datos.');
+            }
+            applyBackupRestore(parsed);
+            clearStagedBackup(options.stagedTransferId);
+            renderList(); renderEmployeesList(); renderRequestsDashboard(); renderWorkContextBar();
+        };
+
         window.doRestoreBackup = () => {
             const btn = document.getElementById('btn-do-restore');
             if (btn.getAttribute('data-ready') !== 'yes') return;
@@ -6791,49 +6852,9 @@
             const stagedTransferId = (ta && ta.dataset && ta.dataset.transferId) || (modal && modal.dataset && modal.dataset.transferId);
             try {
                 const parsed = JSON.parse(raw);
-                if (parsed.users !== undefined && !Array.isArray(parsed.users)) throw new Error('La lista de empleados no es válida');
-                if (parsed.attendance !== undefined && (!parsed.attendance || typeof parsed.attendance !== 'object' || Array.isArray(parsed.attendance))) throw new Error('La asistencia no es válida');
-                if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) throw new Error('Los ajustes no son válidos');
-                if (parsed.requests !== undefined && !Array.isArray(parsed.requests)) throw new Error('Las solicitudes no son válidas');
-                if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) throw new Error('Las plantillas no son válidas');
-                let workContextsSnapshot = null;
-                if (parsed.workContexts !== undefined) {
-                    if (Array.isArray(parsed.workContexts)) {
-                        workContextsSnapshot = { schemaVersion: 1, contexts: parsed.workContexts, activeContextId: null };
-                    } else if (parsed.workContexts && typeof parsed.workContexts === 'object' && !Array.isArray(parsed.workContexts) && Array.isArray(parsed.workContexts.contexts)) {
-                        const activeId = parsed.workContexts.activeContextId;
-                        if (activeId !== undefined && activeId !== null && typeof activeId !== 'string') throw new Error('Las obras y cuadrillas no son válidas');
-                        workContextsSnapshot = {
-                            schemaVersion: Number.isSafeInteger(parsed.workContexts.schemaVersion) ? parsed.workContexts.schemaVersion : 1,
-                            contexts: parsed.workContexts.contexts,
-                            activeContextId: activeId ?? null
-                        };
-                    } else {
-                        throw new Error('Las obras y cuadrillas no son válidas');
-                    }
-                }
-                const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
-                imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
-                const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
-                const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings };
-                const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) } };
-                fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
-                    users = state.users; attendanceRepository.importBatch(state.attendance, 'replace'); attendanceData = attendanceRepository.getAll(); requests = state.requests; requestTemplates = state.templates;
-                    BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
-                    if (workContextsSnapshot && window.workContextManager) {
-                        window.workContextManager.importSnapshot(workContextsSnapshot);
-                    }
-                    applyRestoredSettings();
-                }, saveData);
+                applyBackupRestore(parsed);
                 if (stagedTransferId) {
-                    try {
-                        if (window.SaMiniP2PBackup?.backupStagedStore?.removeStaged) {
-                            window.SaMiniP2PBackup.backupStagedStore.removeStaged(stagedTransferId);
-                        }
-                        if (typeof window.refreshMiniP2PHeader === 'function') {
-                            window.refreshMiniP2PHeader().catch(() => {});
-                        }
-                    } catch (_) {}
+                    clearStagedBackup(stagedTransferId);
                     if (ta && ta.dataset) delete ta.dataset.transferId;
                     if (modal && modal.dataset) delete modal.dataset.transferId;
                 }

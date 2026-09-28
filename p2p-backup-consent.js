@@ -12,6 +12,10 @@
         root.P2PBackupConsent = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createP2PBackupConsentModule() {
     const DEFAULT_TIMEOUT_MS = 90000;
+    // The trusted handshake finishes at different moments on each phone (each side
+    // writes IndexedDB first), so an offer sent right after authenticating can reach a
+    // peer that is not listening yet. The sender repeats it; the receiver dedupes.
+    const DEFAULT_RESEND_MS = 2000;
     function createOfferId() {
         if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
             return crypto.randomUUID();
@@ -28,15 +32,24 @@
     }
     function requestConsent(channel, core, offer, options = {}) {
         return new Promise(resolve => {
-            var _a;
+            var _a, _b;
             let settled = false;
             const finish = (result) => {
                 if (settled)
                     return;
                 settled = true;
                 clearTimeout(timer);
+                clearInterval(resend);
                 channel.removeEventListener('message', onMessage);
                 resolve(result);
+            };
+            const sendOffer = () => {
+                try {
+                    core.sendControl(channel, 'backup-offer', offer);
+                }
+                catch {
+                    finish('closed');
+                }
             };
             const onMessage = (event) => {
                 const control = safeParse(core, event.data);
@@ -45,23 +58,25 @@
                 finish(control.data.accepted === true ? 'accepted' : 'declined');
             };
             const timer = setTimeout(() => finish('timeout'), (_a = options.timeoutMs) !== null && _a !== void 0 ? _a : DEFAULT_TIMEOUT_MS);
+            const resend = setInterval(() => { if (!settled)
+                sendOffer(); }, (_b = options.resendMs) !== null && _b !== void 0 ? _b : DEFAULT_RESEND_MS);
             channel.addEventListener('message', onMessage);
-            try {
-                core.sendControl(channel, 'backup-offer', offer);
-            }
-            catch {
-                finish('closed');
-            }
+            sendOffer();
         });
     }
-    function listenForOffers(channel, core, onOffer) {
-        const onMessage = (event) => {
-            const control = safeParse(core, event.data);
-            if (!control || control.type !== 'backup-offer')
+    // Listen from the moment the channel opens; hold offers until release() (called
+    // once the channel is authenticated). Each offerId is delivered only once.
+    function bufferOffers(channel, core) {
+        const seen = new Set();
+        const queued = [];
+        let handler = null;
+        const deliver = (offer) => {
+            if (!handler) {
+                queued.push(offer);
                 return;
-            const offer = control.data;
+            }
             let answered = false;
-            const respond = (accepted) => {
+            handler(offer, accepted => {
                 if (answered)
                     return;
                 answered = true;
@@ -71,11 +86,36 @@
                 catch (error) {
                     console.warn('No se pudo responder la oferta de respaldo.', error);
                 }
-            };
-            onOffer(offer, respond);
+            });
+        };
+        const onMessage = (event) => {
+            const control = safeParse(core, event.data);
+            if (!control || control.type !== 'backup-offer')
+                return;
+            const offer = control.data;
+            if (seen.has(offer.offerId))
+                return;
+            seen.add(offer.offerId);
+            deliver(offer);
         };
         channel.addEventListener('message', onMessage);
-        return () => channel.removeEventListener('message', onMessage);
+        return {
+            release(onOffer) {
+                handler = onOffer;
+                for (const offer of queued.splice(0))
+                    deliver(offer);
+            },
+            detach() {
+                handler = null;
+                queued.length = 0;
+                channel.removeEventListener('message', onMessage);
+            }
+        };
+    }
+    function listenForOffers(channel, core, onOffer) {
+        const inbox = bufferOffers(channel, core);
+        inbox.release(onOffer);
+        return inbox.detach;
     }
     function matchesOffer(offer, transfer) {
         return !!offer && transfer.schema === offer.schema && transfer.size === offer.size;
@@ -84,6 +124,7 @@
         DEFAULT_TIMEOUT_MS,
         createOfferId,
         requestConsent,
+        bufferOffers,
         listenForOffers,
         matchesOffer
     };

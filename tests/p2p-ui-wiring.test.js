@@ -871,7 +871,7 @@ test('attendance response completion makes later RTC close truthful instead of r
 
 test('attendance header exposes direct vector-only pairing access and data management uses the same icon language',()=>{
   const html=read('index.html'), ui=read('p2p-roster-ui.js'), design=read('UI_DESIGN.md');
-  assert.match(html, /id="btn-attendance-link"[\s\S]*onclick="openP2PPairingScanner\(\)"[\s\S]*data-icon="link"[\s\S]*data-icon-vector/);
+  assert.match(html, /id="btn-attendance-link"[\s\S]*onclick="openP2PTransferModal\(\)"[\s\S]*data-icon="link"[\s\S]*data-icon-vector/);
   assert.match(html, /GESTIÓN DE DATOS[\s\S]*openP2PTransferModal\(\)[\s\S]*data-icon="link"[\s\S]*data-icon-vector/);
   assert.doesNotMatch(html, /openP2PTransferModal\(\)[\s\S]{0,160}<span[^>]*>⇄<\/span>/);
   assert.match(html, /el\.hasAttribute\('data-icon-vector'\)[\s\S]*IconSet\.iconSvg/);
@@ -880,4 +880,12 @@ test('attendance header exposes direct vector-only pairing access and data manag
   assert.match(ui, /async function openP2PPairingScanner\(\)\{await renderQrScanner\(\);\}/);
   assert.ok(design.includes('Sin emoticones como iconografía de interfaz'));
   assert.ok(design.includes('data-icon-vector'));
+});
+
+test('confirm dialogs stack above the P2P overlay, notices and welcome gate', () => {
+  const html = read('index.html');
+  const css = read('p2p-transfer.css');
+  const confirmZ = Number(/#modal-confirm\s*\{\s*z-index:\s*(\d+)/.exec(html)[1]);
+  const overlayZ = Number(/\.mini-p2p-overlay\s*\{[^}]*z-index:\s*(\d+)/.exec(css)[1]);
+  assert.ok(confirmZ > overlayZ, `confirm ${confirmZ} must be above P2P overlay ${overlayZ}`);
 });

@@ -133,7 +133,8 @@
     return { data, json, bytes, sha256, size: bytes.byteLength };
   }
 
-  function reviewStagedBackupInMini(stagedEntry) {
+  // Validates a staged Mini backup and returns its parsed data (no UI).
+  function parseStagedMiniBackup(stagedEntry) {
     if (!stagedEntry) throw new Error('Respaldo no encontrado.');
     if (stagedEntry.schema !== 'mini-backup/v1' || stagedEntry.sourceApp !== 'mini') {
       throw new Error('Mini sólo puede revisar y restaurar respaldos propios de Mini (mini-backup/v1). Los respaldos de SA son de sólo descarga.');
@@ -154,6 +155,11 @@
     }
 
     assertBackupHasData(parsed);
+    return { parsed, text };
+  }
+
+  function reviewStagedBackupInMini(stagedEntry) {
+    const { parsed, text } = parseStagedMiniBackup(stagedEntry);
 
     // Poblar el modal nativo de restauración existente sin duplicar lógica
     if (typeof root.document !== 'undefined') {
@@ -422,6 +428,7 @@
     createMiniBackupData,
     createMiniBackupPayload,
     reviewStagedBackupInMini,
+    parseStagedMiniBackup,
     downloadBackupBytes,
     isSameAppPeer,
     formatBackupSize,
