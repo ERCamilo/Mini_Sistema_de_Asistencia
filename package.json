@@ -1,6 +1,6 @@
 {
   "name": "asistencia-mini",
-  "version": "2.13.1",
+  "version": "2.13.2",
   "private": true,
   "scripts": {
     "build": "node scripts/stamp-build.mjs && tsc",

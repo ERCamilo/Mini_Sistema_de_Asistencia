@@ -1042,6 +1042,19 @@
             z-index: 250;
         }
 
+        /* Archivar meses antiguos */
+        .archive-keep-label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin: 4px 0 8px; }
+        .archive-keep-pills { margin-bottom: 14px; }
+        .archive-summary { display: grid; gap: 10px; margin-bottom: 14px; }
+        .archive-months { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+        .archive-months li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); }
+        .archive-months li strong { color: var(--text-color); font-size: 14px; }
+        .archive-months li span { color: var(--text-muted); font-size: 13px; }
+        .archive-total, .archive-empty { font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+        .archive-total strong, .archive-empty strong { color: var(--text-color); }
+        .archive-footnote { margin-top: 10px; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+        #btn-archive-run:disabled { opacity: .45; cursor: not-allowed; }
+
         /* Confirmation dialogs must stay above feature overlays such as P2P. */
         #modal-confirm {
             z-index: 11000;
@@ -2788,7 +2801,7 @@
                                 <div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando disponibilidad...</div>
                             </div>
                         </button>
-                        <button type="button" class="export-option" onclick="freeStorageSpace()">
+                        <button type="button" class="export-option" id="btn-free-storage" onclick="freeStorageSpace()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="trash"></span></span>
                             <div>
                                 <div style="font-weight: 600;">Liberar espacio</div>
@@ -2834,11 +2847,18 @@
                         <span class="ic" data-icon="backup"></span> Respaldos e Importación
                     </div>
                     <div class="export-options">
-                        <button type="button" class="export-option" onclick="downloadJSON()">
+                        <button type="button" class="export-option" id="btn-download-backup" onclick="downloadJSON()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
                             <div>
                                 <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
                                 <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados, asistencias, solicitudes y ajustes</div>
+                            </div>
+                        </button>
+                        <button type="button" class="export-option" id="btn-archive-months" onclick="openArchiveModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="package"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-color);">Archivar meses antiguos</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Guarda los meses viejos en un archivo y libera espacio</div>
                             </div>
                         </button>
                         <button type="button" class="export-option" onclick="openImportBackupModal()">
@@ -2982,6 +3002,26 @@
     </div>
 
     <!-- MODAL RESTAURAR RESPALDO -->
+    <!-- MODAL ARCHIVAR MESES ANTIGUOS -->
+    <div class="modal big" id="modal-archive-months">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title"><span class="ic" data-icon="package" data-icon-vector></span> Archivar meses antiguos</div>
+                <div class="modal-subtitle">Guarda los meses viejos en un archivo y los quita de este celular para liberar espacio.</div>
+            </div>
+            <div class="archive-keep-label">Mantener en el celular</div>
+            <div class="view-mode-pills archive-keep-pills">
+                <button type="button" class="view-btn" id="btn-archive-keep-3" onclick="setArchiveKeep(3)">3 meses</button>
+                <button type="button" class="view-btn" id="btn-archive-keep-6" onclick="setArchiveKeep(6)">6 meses</button>
+                <button type="button" class="view-btn" id="btn-archive-keep-12" onclick="setArchiveKeep(12)">12 meses</button>
+            </div>
+            <div id="archive-summary" class="archive-summary" aria-live="polite"></div>
+            <button type="button" class="btn-full btn-primary" id="btn-archive-run" onclick="runArchiveMonths()"><span class="ic" data-icon="package"></span> Guardar archivo y archivar</button>
+            <div class="archive-footnote">Podés volver a cargarlos cuando quieras desde <strong>Restaurar respaldo</strong>: se suman sin borrar nada.</div>
+        </div>
+    </div>
+
     <div class="modal big" id="modal-restore-backup">
         <div class="modal-content">
             <div class="modal-handle"></div>
@@ -3306,6 +3346,7 @@
 
     <script src="./local-date.js"></script>
     <script src="./storage-maintenance.js"></script>
+    <script src="./attendance-archive.js"></script>
     <script src="./icon-set.js"></script>
     <script src="./check-cycle.js"></script>
     <script src="./employee-number-rules.js"></script>
@@ -3843,6 +3884,87 @@
             }
         }
 
+        // --- ARCHIVAR MESES ANTIGUOS ---
+        let archiveKeepMonths = 3;
+
+        function monthLabel(month) {
+            const [y, m] = month.split('-').map(Number);
+            const label = new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+            return label.charAt(0).toUpperCase() + label.slice(1);
+        }
+
+        function currentArchivePlan() {
+            const all = attendanceRepository.getAll();
+            const plan = window.AttendanceArchive.planArchive(all, { keepMonths: archiveKeepMonths, today: window.LocalDate.toLocalDateKey() });
+            return { all, plan };
+        }
+
+        function renderArchivePlan() {
+            [3, 6, 12].forEach(n => document.getElementById('btn-archive-keep-' + n)?.classList.toggle('active', n === archiveKeepMonths));
+            const box = document.getElementById('archive-summary');
+            const run = document.getElementById('btn-archive-run');
+            if (!box || !run) return;
+            const { all, plan } = currentArchivePlan();
+            const since = monthLabel(plan.cutoff.slice(0, 7));
+            if (!plan.dates.length) {
+                box.innerHTML = '<div class="archive-empty">No hay asistencia anterior a <strong>' + since + '</strong>. No hace falta archivar.</div>';
+                run.disabled = true;
+                return;
+            }
+            const freed = window.AttendanceArchive.estimateFreedChars(plan, all);
+            const rows = plan.months.map(m => '<li><strong>' + monthLabel(m.month) + '</strong><span>' + m.days + ' días · ' + m.records + ' marcas</span></li>').join('');
+            box.innerHTML = '<ul class="archive-months">' + rows + '</ul>'
+                + '<div class="archive-total">Se archivan <strong>' + plan.dates.length + ' días</strong> (' + plan.records + ' marcas) y se liberan ~<strong>' + formatStorageKb(freed) + '</strong>. Se mantiene todo desde <strong>' + since + '</strong>.</div>';
+            run.disabled = false;
+        }
+
+        function downloadArchiveFile(file, plan) {
+            const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'archivo_asistencia_' + plan.from + '_a_' + plan.to + '.json';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+            return a.download;
+        }
+
+        window.openArchiveModal = () => {
+            archiveKeepMonths = 3;
+            renderArchivePlan();
+            openModal('modal-archive-months');
+        };
+
+        window.runArchiveMonths = async () => {
+            const { all, plan } = currentArchivePlan();
+            if (!plan.dates.length) return;
+            let sourceName = '';
+            try { sourceName = await window.MiniDeviceIdentity?.getName?.() || ''; } catch (_) {}
+            const file = window.AttendanceArchive.buildArchiveFile(plan, all, employeeRepository.getAll(), { sourceName });
+            const fileName = downloadArchiveFile(file, plan);
+            const confirmed = await showConfirm('Se descargó "' + fileName + '". Guardalo en un lugar seguro. ¿Quitar ' + plan.dates.length + ' días (' + monthLabel(plan.from.slice(0, 7)) + ' – ' + monthLabel(plan.to.slice(0, 7)) + ') de este celular?', { title: 'Confirmar archivado', confirmText: 'Archivar', danger: true });
+            if (!confirmed) return;
+            try {
+                attendanceRepository.removeDays(plan.dates);
+                attendanceData = attendanceRepository.getAll();
+                saveData();
+            } catch (error) {
+                console.error('No se pudo archivar.', error);
+                showToast('No se pudo archivar. Tus datos no cambiaron.');
+                return;
+            }
+            closeModal('modal-archive-months');
+            renderList();
+            const { label } = describeStorageUsage();
+            const hint = document.getElementById('storage-usage-hint');
+            if (hint) hint.textContent = label;
+            showToast('Listo: se archivaron ' + plan.dates.length + ' días. ' + label + '.');
+        };
+
+        window.setArchiveKeep = (months) => {
+            archiveKeepMonths = months;
+            renderArchivePlan();
+        };
+
         window.freeStorageSpace = () => {
             runStorageRepair({ announce: true });
             const hint = document.getElementById('storage-usage-hint');
@@ -4324,7 +4446,7 @@
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
             'modal-quick-actions', 'modal-hours', 'theme-menu',
             'modal-request-create', 'modal-request-answering', 'modal-request-review',
-            'modal-work-contexts'
+            'modal-work-contexts', 'modal-archive-months', 'modal-storage-help'
         ]);
         let activeBigModal = null;
 
@@ -6841,6 +6963,15 @@
             }
             try {
                 const parsed = JSON.parse(raw);
+                if (window.AttendanceArchive.isArchiveFile(parsed)) {
+                    const days = Object.keys(parsed.attendance).length;
+                    ta.style.borderColor = 'var(--success-color)';
+                    msg.style.color = 'var(--success-color)';
+                    msg.innerHTML = '&#x1F4E6; Meses archivados: ' + days + ' días (' + (parsed.range?.from || '?') + ' – ' + (parsed.range?.to || '?') + '). Se agregan sin borrar nada.';
+                    btn.style.opacity = '1'; btn.style.cursor = 'pointer';
+                    btn.setAttribute('data-ready', 'yes');
+                    return;
+                }
                 const summary = window.MiniBackupSummary.summarize(parsed);
                 if (summary.isEmpty) throw new Error('El respaldo no tiene empleados ni asistencia. Restaurarlo borraría tus datos.');
                 const hasReqs = summary.requests > 0;
@@ -6913,6 +7044,18 @@
             } catch (_) {}
         }
 
+        // An archive file ("Archivar meses antiguos") is merged back: it adds the
+        // archived months and missing employees, never replaces current data.
+        function mergeArchiveFile(parsed) {
+            const known = new Set(users.map(u => String(u.id)));
+            const missing = (Array.isArray(parsed.users) ? parsed.users : []).filter(u => u && u.id && !known.has(String(u.id)));
+            if (missing.length) users = users.concat(missing);
+            attendanceRepository.importBatch(parsed.attendance, 'merge');
+            attendanceData = attendanceRepository.getAll();
+            saveData();
+            return { days: Object.keys(parsed.attendance).length, employeesAdded: missing.length };
+        }
+
         // Used by the P2P backup review screen (cards instead of raw JSON).
         window.restoreMiniBackupData = (parsed, options = {}) => {
             if (window.MiniBackupSummary.summarize(parsed).isEmpty) {
@@ -6932,6 +7075,13 @@
             const stagedTransferId = (ta && ta.dataset && ta.dataset.transferId) || (modal && modal.dataset && modal.dataset.transferId);
             try {
                 const parsed = JSON.parse(raw);
+                if (window.AttendanceArchive.isArchiveFile(parsed)) {
+                    const merged = mergeArchiveFile(parsed);
+                    closeModal('modal-restore-backup');
+                    renderList(); renderEmployeesList();
+                    showToast('Se agregaron ' + merged.days + ' días archivados' + (merged.employeesAdded ? ' y ' + merged.employeesAdded + ' empleados' : '') + '.');
+                    return;
+                }
                 applyBackupRestore(parsed);
                 if (stagedTransferId) {
                     clearStagedBackup(stagedTransferId);

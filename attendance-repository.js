@@ -199,6 +199,21 @@
             }
             return result;
         }
+        // Archival removal ("Archivar meses antiguos"): whole days leave this device
+        // without tombstones, because the goal is to free space, not to sync deletions.
+        function removeDays(dates) {
+            const all = loadAttendance();
+            let removed = 0;
+            for (const date of dates) {
+                if (Object.prototype.hasOwnProperty.call(all, date)) {
+                    delete all[date];
+                    removed += 1;
+                }
+            }
+            if (removed)
+                persistAttendance(all);
+            return removed;
+        }
         function clearAll() {
             persistAttendance({});
         }
@@ -323,6 +338,7 @@
             deleteRecord,
             getAll,
             clearAll,
+            removeDays,
             importBatch,
             exportSnapshot,
             getTombstones,
