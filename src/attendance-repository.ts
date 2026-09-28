@@ -265,28 +265,7 @@ interface AttendanceRepositoryOptions {
       let updatedDays = 0;
       let totalRecords = 0;
 
-      if (mode === 'replace') {
-        // Generate tombstones for all existing records
-        const oldAttendance = loadAttendance();
-        const tombstones = loadTombstones();
-        const newTombstones: AttendanceTombstoneRecord[] = [];
-        for (const date in oldAttendance) {
-          if (Object.prototype.hasOwnProperty.call(oldAttendance, date)) {
-            for (const empId in oldAttendance[date]) {
-              if (Object.prototype.hasOwnProperty.call(oldAttendance[date], empId)) {
-                newTombstones.push({
-                  date,
-                  employeeId: empId,
-                  type: 'attendance',
-                  deletedAt: timestamp,
-                  schemaVersion: CURRENT_SCHEMA_VERSION
-                });
-              }
-            }
-          }
-        }
-        persistTombstones([...tombstones, ...newTombstones]);
-      }
+      const previous = mode === 'replace' ? loadAttendance() : null;
 
       for (const date in parsed) {
         if (Object.prototype.hasOwnProperty.call(parsed, date) && parsed[date] && typeof parsed[date] === 'object') {
@@ -335,7 +314,50 @@ interface AttendanceRepositoryOptions {
       }
 
       persistAttendance(current);
+      reconcileTombstones(current, previous, timestamp);
       return { updatedDays, totalRecords, attendance: current };
+    }
+
+    function tombstoneKey(date: string, employeeId: string): string {
+      return `${date}\u0000${employeeId}`;
+    }
+
+    // A tombstone marks a record that was deleted. Keep one per day+employee
+    // (the latest), drop the ones whose record exists again, and add tombstones
+    // only for records that `replace` really removed. Hydrating with the same
+    // data is therefore a no-op instead of growing storage on every launch.
+    function reconcileTombstones(
+      current: AttendanceDataStoreMap,
+      previous: AttendanceDataStoreMap | null,
+      timestamp: string
+    ): void {
+      const stored = loadTombstones();
+      const latest = new Map<string, AttendanceTombstoneRecord>();
+      for (const tombstone of stored) {
+        if (!tombstone || typeof tombstone.date !== 'string' || typeof tombstone.employeeId !== 'string') continue;
+        if (current[tombstone.date]?.[tombstone.employeeId]) continue;
+        const key = tombstoneKey(tombstone.date, tombstone.employeeId);
+        const known = latest.get(key);
+        if (!known || String(tombstone.deletedAt) > String(known.deletedAt)) latest.set(key, tombstone);
+      }
+      if (previous) {
+        for (const date of Object.keys(previous)) {
+          for (const employeeId of Object.keys(previous[date] || {})) {
+            if (current[date]?.[employeeId]) continue;
+            latest.set(tombstoneKey(date, employeeId), {
+              date,
+              employeeId,
+              type: 'attendance',
+              deletedAt: timestamp,
+              schemaVersion: CURRENT_SCHEMA_VERSION
+            });
+          }
+        }
+      }
+      const next = [...latest.values()];
+      if (next.length !== stored.length || next.some((tombstone, index) => tombstone !== stored[index])) {
+        persistTombstones(next);
+      }
     }
 
     function exportSnapshot(): {
