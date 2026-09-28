@@ -37,3 +37,8 @@ test('update-check requests (?__v=) are never answered from the service-worker c
   assert.match(fetchHandler, /searchParams\.has\('__v'\) && event\.request\.mode !== 'navigate'\) return;/);
   assert.doesNotMatch(fetchHandler, /ignoreSearch:\s*url\.searchParams/);
 });
+
+test('help videos bypass the service worker (range requests, not cached)', () => {
+  const fetchHandler = sw.slice(sw.indexOf("self.addEventListener('fetch'"));
+  assert.match(fetchHandler, /url\.pathname\.endsWith\('\.webm'\)\) return;/);
+});
