@@ -1,4 +1,4 @@
-// Tutorial: free up space by archiving old months (nothing is lost).
+// Tutorial: archive old months to a file (nothing is lost) to keep the phone light.
 import { seedEmployees } from './lib.mjs';
 
 // ~60 employees × every workday of the last 18 months: an almost-full Mini.
@@ -16,19 +16,17 @@ function seedFullDevice({ users, months }) {
   localStorage.setItem('attendance', JSON.stringify(attendance));
 }
 
-const usage = page => page.evaluate(() => describeStorageUsage().pct);
 const dayKeys = page => page.evaluate(() => Object.keys(attendanceRepository.getAll()).sort());
 
 export default {
   id: 'liberar-espacio',
-  title: 'Liberar espacio',
+  title: 'Archivar meses antiguos',
   seed: { fn: seedFullDevice, arg: { users: seedEmployees(60), months: 18 } },
   async steps({ page, say, tap, point, download, assert }) {
-    const before = await usage(page);
-    assert.ok(before >= 70, `seeded usage should be high (got ${before}%)`);
     const daysBefore = (await dayKeys(page)).length;
+    assert.ok(daysBefore > 300, `seeded history should be long (got ${daysBefore} days)`);
 
-    await say('Si Mini se llena, no puede guardar más asistencia. Así se libera espacio sin perder nada.', 400);
+    await say('Con los meses, Mini acumula mucha asistencia. Archivá los meses viejos en un archivo, sin perder nada.', 400);
     await say('1 · Abrí "Más".');
     await tap('#nav-more');
     await say('2 · Entrá a "Datos".');
@@ -48,15 +46,11 @@ export default {
     await say('7 · Con el archivo guardado, confirmá "Archivar".');
     await tap('#modal-confirm.active .btn-danger');
 
-    await say('8 · Volvé a "Ajustes" y tocá "Liberar espacio" para ver el uso.');
-    await tap('#btn-more-tab-settings');
-    await tap('#btn-free-storage');
-    const after = await usage(page);
     const remaining = await dayKeys(page);
     assert.equal(remaining.length + Object.keys(archive.attendance).length, daysBefore, 'no day lost: kept + archived = before');
     assert.ok(remaining[0] > archive.range.to, 'kept days are newer than archived ones');
-    assert.ok(after < 40, `usage must drop (got ${after}%)`);
-    assert.equal(await page.evaluate(() => localStorage.getItem('attendance_tombstones')), null, 'archiving creates no tombstones');
+    assert.ok(remaining.length < 90, `only ~3 months stay (got ${remaining.length} days)`);
+    assert.equal(await page.evaluate(() => attendanceRepository.getTombstones().length), 0, 'archiving creates no tombstones');
     assert.equal(await page.evaluate(() => users.length), 60, 'employees untouched');
     await say('¡Listo! Si algún día necesitás esos meses, restaurá el archivo desde "Datos".', 600);
   }

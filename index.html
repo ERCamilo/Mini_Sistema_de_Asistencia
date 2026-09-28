@@ -2845,7 +2845,7 @@
                             <span style="font-size: 24px;"><span class="ic" data-icon="play"></span></span>
                             <div>
                                 <div style="font-weight: 600;">Tutoriales</div>
-                                <div style="font-size: 12px; color: var(--text-muted);">Videos cortos: marcar asistencia, agregar empleados, liberar espacio</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Videos cortos: marcar asistencia, agregar empleados, archivar meses</div>
                             </div>
                         </button>
                         <button type="button" class="export-option" id="btn-free-storage" onclick="freeStorageSpace()">
@@ -3466,6 +3466,7 @@
     <script src="./field-requests-coordinator.js"></script>
     <script src="./field-requests-repository.js"></script>
     <script src="./employee-repository.js"></script>
+    <script src="./mini-data.js"></script>
     <script src="./attendance-repository.js"></script>
     <script src="./attendance-coordinator.js"></script>
     <script src="./attendance-export.js"></script>
@@ -3519,8 +3520,12 @@
                 users = nextUsers;
             }
         });
+        // Storage v2: starts on localStorage, switches to IndexedDB in bootStorage().
+        const attendanceStorage = window.MiniData.createSwitchableStorage(localStorage);
+        let miniDataV2Active = false;
+        const usingMiniDataV2 = () => miniDataV2Active;
         const attendanceRepository = window.AttendanceRepository.createAttendanceRepository({
-            storage: localStorage,
+            storage: attendanceStorage,
             onSnapshotChanged: (nextAttendance) => {
                 attendanceData = nextAttendance;
             }
@@ -4019,9 +4024,31 @@
             openModal('modal-tutorials');
         };
 
+        function markTutorialSeen(id) {
+            try { localStorage.setItem(window.Tutorials.SEEN_KEY, window.Tutorials.markSeen(localStorage.getItem(window.Tutorials.SEEN_KEY), id)); } catch (_) { /* best effort */ }
+        }
+
+        // New device: the welcome screen shows up and closes -> open the first tutorial once.
+        function watchFirstRunTutorial(attempt = 0, welcomeShown = false) {
+            const welcomeOpen = !!(window.MiniWelcome && window.MiniWelcome.isOpen());
+            if (welcomeOpen) { setTimeout(() => watchFirstRunTutorial(attempt + 1, true), 500); return; }
+            if (!welcomeShown) {
+                // The gate opens a moment after boot; stop looking after ~8 s.
+                if (attempt < 16) setTimeout(() => watchFirstRunTutorial(attempt + 1, false), 500);
+                return;
+            }
+            const id = window.Tutorials.firstRunTutorial({
+                welcomeShown,
+                seenRaw: localStorage.getItem(window.Tutorials.SEEN_KEY),
+                blocked: !!activeBigModal || !!document.querySelector('.modal.active')
+            });
+            if (id) setTimeout(() => window.openTutorial(id), 400);
+        }
+
         window.openTutorial = (id) => {
             const entry = window.Tutorials.find(id);
             if (!entry) return;
+            markTutorialSeen(id);
             document.getElementById('tutorials-title').textContent = entry.title;
             document.getElementById('tutorials-subtitle').textContent = entry.summary;
             document.getElementById('tutorials-list-view').hidden = true;
@@ -4180,6 +4207,57 @@
             if (hint) hint.textContent = describeStorageUsage().label;
         };
 
+        // --- STORAGE V2 BOOT (attendance in IndexedDB; see .sdd-review/mini-storage-v2) ---
+        // v1 attendance as the app would use it today: the IndexedDB snapshot when it
+        // is enabled and present, else localStorage.
+        async function readV1AttendanceSource() {
+            const tombstonesRaw = localStorage.getItem('attendance_tombstones');
+            if (window.MiniLocalDb.isEnabled(localStorage)) {
+                try {
+                    const snapshot = await localDb.readState();
+                    if (snapshot && snapshot.attendance && Object.keys(snapshot.attendance).length) {
+                        return { attendanceRaw: JSON.stringify(snapshot.attendance), tombstonesRaw };
+                    }
+                } catch (error) {
+                    console.warn('Mini: no se pudo leer el snapshot anterior; se usa localStorage.', error);
+                }
+            }
+            const attendanceRaw = localStorage.getItem('attendance') || localStorage.getItem('weeklyAttendance');
+            return { attendanceRaw, tombstonesRaw };
+        }
+        // --- END V1 SOURCE ---
+
+        let storageErrorShownAt = 0;
+        function reportStorageWriteError() {
+            if (Date.now() - storageErrorShownAt < 30000) return;
+            storageErrorShownAt = Date.now();
+            showToast('No se pudo guardar en el celular. Se reintenta con la próxima marca; si sigue, exportá un respaldo.');
+        }
+
+        async function bootStorage() {
+            if (!window.MiniData.isEnabled(localStorage) || !window.indexedDB) return;
+            try {
+                const backend = await window.MiniData.openIdbBackend(window.indexedDB);
+                const result = await window.MiniData.migrateFromV1({ backend, readSource: readV1AttendanceSource });
+                if (result.status === 'failed') {
+                    console.warn('Mini sigue con el almacenamiento anterior: ' + result.reason);
+                    return;
+                }
+                if (result.status === 'migrated') console.info('Mini pasó la asistencia a IndexedDB.', result);
+                const dayStorage = window.MiniData.createDayStorage({ backend, fallback: localStorage, onError: reportStorageWriteError });
+                await dayStorage.hydrate();
+                attendanceStorage.use(dayStorage);
+                miniDataV2Active = true;
+                window.MiniData.releaseV1(localStorage);
+                try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (_) { /* optional */ }
+            } catch (error) {
+                attendanceStorage.use(localStorage);
+                miniDataV2Active = false;
+                console.warn('Mini sigue con el almacenamiento anterior.', error);
+            }
+        }
+        // --- END STORAGE V2 BOOT ---
+
         function init() {
             const today = new Date();
             const day = today.getDay();
@@ -4208,6 +4286,7 @@
             initLocalPersistence();
             installBackNavigation();
             maybePromptStorageHelp();
+            watchFirstRunTutorial();
         }
 
         // --- SISTEMA DE TEMAS ---
@@ -4224,12 +4303,13 @@
 
         function loadData() {
             const u = localStorage.getItem('users');
-            const a = localStorage.getItem('attendance') || localStorage.getItem('weeklyAttendance');
+            // v2: attendance was already hydrated from IndexedDB by bootStorage().
+            const a = usingMiniDataV2() ? null : (localStorage.getItem('attendance') || localStorage.getItem('weeklyAttendance'));
             const t = localStorage.getItem('lastUpdateTimestamp');
             const requestState = fieldRequestsRepository.load();
 
             if (u) users = JSON.parse(u);
-            if (a) {
+            if (!usingMiniDataV2() && a) {
                 try {
                     const parsed = JSON.parse(a);
                     attendanceRepository.importBatch(parsed, 'replace');
@@ -4270,7 +4350,7 @@
 
         function writeLegacyMirror(snapshot) {
             localStorage.setItem('users', JSON.stringify(snapshot.users));
-            localStorage.setItem('attendance', JSON.stringify(snapshot.attendance));
+            if (!usingMiniDataV2()) localStorage.setItem('attendance', JSON.stringify(snapshot.attendance));
             localStorage.setItem('lastUpdateTimestamp', snapshot.lastUpdateTimestamp);
         }
 
@@ -4294,7 +4374,8 @@
 
         function applyLocalSnapshot(snapshot) {
             users = snapshot.users;
-            if (snapshot.attendance) {
+            // v2: IndexedDB per-day records are the source of truth; the snapshot copy is a backup.
+            if (snapshot.attendance && !usingMiniDataV2()) {
                 attendanceRepository.importBatch(snapshot.attendance, 'replace');
             }
             attendanceData = attendanceRepository.getAll();
@@ -7753,6 +7834,7 @@
                 lastActionTime = '';
 
                 // 3. Limpiar todas las llaves legacy en localStorage
+                ['attendance', 'attendance_tombstones'].forEach(k => attendanceStorage.removeItem(k));
                 ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
                 
                 // 4. Persistir snapshot completamente limpio (localStorage + IndexedDB)
@@ -7867,7 +7949,7 @@
                 });
         };
 
-        init();
+        bootStorage().finally(init);
     </script>
 </body>
 

@@ -59,9 +59,9 @@ interface TutorialsEntry {
     },
     {
       id: 'liberar-espacio',
-      title: 'Liberar espacio',
-      summary: 'Si Mini se llena, archivá los meses viejos sin perder nada.',
-      doneText: 'Ya podés seguir marcando asistencia.',
+      title: 'Archivar meses antiguos',
+      summary: 'Guardá los meses viejos en un archivo y sacalos del celular, sin perder nada.',
+      doneText: 'Los meses viejos quedaron en el archivo que guardaste.',
       tour: [
         { target: '#nav-more', title: 'Abrí "Más"', text: 'Acá están los ajustes y tus datos.' },
         { target: '#btn-more-tab-data', title: 'Pestaña Datos', text: 'Tocá "Datos" para ver respaldos y archivado.' },
@@ -69,9 +69,7 @@ interface TutorialsEntry {
         { target: '#btn-archive-months', title: 'Archivar meses antiguos', text: 'Tocá acá para sacar del celular los meses viejos.' },
         { target: '.archive-keep-pills', title: '¿Cuántos meses mantener?', text: 'Tocá 3, 6 o 12 meses. Recomendado: 3. Abajo ves qué meses se archivan.' },
         { target: '#btn-archive-run', spotlight: '#modal-archive-months.active .modal-content', title: 'Guardar y archivar', text: 'Tocá "Guardar archivo y archivar". Primero se descarga el archivo con esos meses.' },
-        { target: '#modal-confirm.active .btn-danger', spotlight: '#modal-confirm.active .modal-content', title: 'Confirmá', text: 'Cuando el archivo esté guardado, tocá "Archivar" para liberar el espacio.' },
-        { target: '#btn-more-tab-settings', title: 'Volvé a Ajustes', text: 'Revisemos cuánto espacio quedó.' },
-        { target: '#btn-free-storage', title: 'Liberar espacio', text: 'Tocá acá: limpia duplicados y te muestra el uso actual.' }
+        { target: '#modal-confirm.active .btn-danger', spotlight: '#modal-confirm.active .modal-content', title: 'Confirmá', text: 'Cuando el archivo esté guardado, tocá "Archivar".' }
       ]
     }
   ];
@@ -126,9 +124,32 @@ interface TutorialsEntry {
     return length ? { ok: true } : { ok: false, index: 0, expected: null, recorded: null };
   }
 
+  // First run: a device that just went through the welcome screen is new.
+  const FIRST_RUN_TUTORIAL = 'marcar-asistencia';
+  const SEEN_KEY = 'tutorialsSeen';
+
+  function parseSeen(raw: string | null): string[] {
+    try {
+      const parsed = JSON.parse(raw || '[]');
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function markSeen(raw: string | null, id: string): string {
+    const seen = parseSeen(raw);
+    return JSON.stringify(seen.includes(id) ? seen : [...seen, id]);
+  }
+
+  function firstRunTutorial(input: { welcomeShown: boolean; seenRaw: string | null; blocked: boolean }): string | null {
+    if (!input.welcomeShown || input.blocked) return null;
+    return parseSeen(input.seenRaw).includes(FIRST_RUN_TUTORIAL) ? null : FIRST_RUN_TUTORIAL;
+  }
+
   function offlineKey(id: string, recordedAt: string): string {
     return `${videoUrl(id)}?rec=${encodeURIComponent(recordedAt)}`;
   }
 
-  return { LIST, OFFLINE_CACHE, find, videoUrl, captionsUrl, stepNumber, spokenText, captionIndexAt, stepSegments, toVtt, compareScripts, offlineKey };
+  return { LIST, OFFLINE_CACHE, find, videoUrl, captionsUrl, stepNumber, spokenText, captionIndexAt, stepSegments, toVtt, compareScripts, offlineKey, FIRST_RUN_TUTORIAL, SEEN_KEY, parseSeen, markSeen, firstRunTutorial };
 });
