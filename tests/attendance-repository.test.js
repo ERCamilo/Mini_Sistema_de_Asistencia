@@ -188,3 +188,50 @@ test('exportSnapshot returns schemaVersion 1 with attendance and tombstones', ()
   assert.equal(snapshot.tombstones.length, 1);
   assert.equal(snapshot.tombstones[0].employeeId, 'u2');
 });
+
+test('replace with the same data (startup hydration) creates no tombstones', () => {
+  const attendance = {
+    '2026-09-01': { u1: { status: 'present', hours: 8 }, u2: { status: 'present', hours: 4 } }
+  };
+  const storage = createMemoryStorage({ attendance: JSON.stringify(attendance) });
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+
+  repo.importBatch(attendance, 'replace');
+  repo.importBatch(attendance, 'replace');
+  repo.importBatch(attendance, 'replace');
+
+  assert.equal(repo.getTombstones().length, 0);
+  assert.equal(repo.getRecord('u2', '2026-09-01').hours, 4);
+});
+
+test('replace tombstones only removed records, once per day+employee', () => {
+  const storage = createMemoryStorage({
+    attendance: JSON.stringify({ '2026-09-01': { u1: { status: 'present', hours: 8 }, u2: { status: 'present', hours: 8 } } })
+  });
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+  const keepU1 = { '2026-09-01': { u1: { status: 'present', hours: 8 } } };
+
+  repo.importBatch(keepU1, 'replace');
+  repo.importBatch(keepU1, 'replace');
+
+  const tombstones = repo.getTombstones();
+  assert.equal(tombstones.length, 1);
+  assert.equal(tombstones[0].employeeId, 'u2');
+});
+
+test('replace prunes duplicated and stale tombstones left by older versions', () => {
+  const stale = { date: '2026-09-01', employeeId: 'u1', type: 'attendance', deletedAt: '2026-09-02T00:00:00.000Z', schemaVersion: 1 };
+  const removed = { date: '2026-08-31', employeeId: 'u9', type: 'attendance', deletedAt: '2026-09-02T00:00:00.000Z', schemaVersion: 1 };
+  const attendance = { '2026-09-01': { u1: { status: 'present', hours: 8 } } };
+  const storage = createMemoryStorage({
+    attendance: JSON.stringify(attendance),
+    attendance_tombstones: JSON.stringify([stale, stale, stale, removed, { ...removed, deletedAt: '2026-09-03T00:00:00.000Z' }])
+  });
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+
+  repo.importBatch(attendance, 'replace');
+
+  const tombstones = repo.getTombstones();
+  assert.deepEqual(tombstones.map(t => `${t.date}:${t.employeeId}`), ['2026-08-31:u9']);
+  assert.equal(tombstones[0].deletedAt, '2026-09-03T00:00:00.000Z');
+});
