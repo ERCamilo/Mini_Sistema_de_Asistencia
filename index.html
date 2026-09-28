@@ -3628,8 +3628,33 @@
             } catch (e) { /* version visible es informativa, nunca bloquea la app */ }
         }
 
+        // Reads the build that is actually published, bypassing every cache.
+        async function fetchPublishedBuild() {
+            try {
+                const response = await fetch('./build-info.js?__v=' + Date.now(), { cache: 'no-store' });
+                if (!response.ok) return null;
+                const source = await response.text();
+                const buildId = /buildId:\s*"([^"]+)"/.exec(source);
+                const version = /version:\s*"([^"]+)"/.exec(source);
+                return buildId ? { buildId: buildId[1], version: version ? version[1] : '' } : null;
+            } catch (_) {
+                return null; // offline: nothing to compare against
+            }
+        }
+
         async function clearCacheAndReload() {
-            if (!await showConfirm('Esto limpia el caché y recarga para traer la última versión. Tus empleados y asistencia NO se borran. ¿Continuar?', { title: 'Buscar actualización', confirmText: 'Actualizar', danger: false })) return;
+            if (!await showConfirm('Esto busca la última versión publicada y la instala. Tus empleados y asistencia NO se borran. ¿Continuar?', { title: 'Buscar actualización', confirmText: 'Buscar', danger: false })) return;
+            const current = window.MINI_BUILD_INFO || {};
+            const published = await fetchPublishedBuild();
+            if (!published) {
+                showToast('Sin conexión: no se pudo consultar la versión publicada.');
+                return;
+            }
+            if (published.buildId === current.buildId) {
+                showToast('Ya tenés la última versión (v' + (current.version || published.version) + ').');
+                return;
+            }
+            showToast('Instalando la versión v' + published.version + '…');
             try {
                 if ('serviceWorker' in navigator) {
                     const regs = await navigator.serviceWorker.getRegistrations();
@@ -3639,8 +3664,13 @@
                     const keys = await caches.keys();
                     await Promise.all(keys.map(k => caches.delete(k)));
                 }
+                // Refresh the HTTP cache of every loaded script/style so the next load is fresh.
+                const assets = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href]')]
+                    .map(el => el.getAttribute('src') || el.getAttribute('href'))
+                    .filter(url => url && url.startsWith('./'));
+                await Promise.all(assets.map(url => fetch(url, { cache: 'reload' }).catch(() => null)));
             } catch (e) { /* sin caché disponible, igual recargamos */ }
-            location.reload();
+            location.replace('./?__v=' + encodeURIComponent(published.buildId));
         }
 
         function installPWA() {
@@ -3825,6 +3855,10 @@
             const diff = today.getDate() - day + (day === 0 ? -6 : 1);
             currentWeekStart = new Date(today.setDate(diff));
 
+            // Drop the one-time cache-busting query left by "Buscar actualización".
+            if (/[?&]__v=/.test(location.search)) {
+                try { history.replaceState(history.state, '', location.pathname + location.hash); } catch (_) {}
+            }
             initPWA();
             renderBuildInfo();
             runStorageRepair({ announce: false });
