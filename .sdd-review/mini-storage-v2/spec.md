@@ -99,3 +99,4 @@ Each producer is an independent observer. Nobody overwrites another source.
 3. Outbox coalescing + submission builder (reuses AttendanceExport contract).
 4. Migration + verification + grace-period rollback.
 5. Switch the UI boot to v2 behind a flag; remove v1 writes after bake time.
+
