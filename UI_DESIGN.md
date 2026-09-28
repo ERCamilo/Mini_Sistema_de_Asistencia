@@ -452,3 +452,9 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
   - Iconografía 100% vectorial mediante `IconSet`/SVG Lucide (`data-icon-vector`); prohibidos los emojis o caracteres Unicode decorativos como iconos de control.
   - Superficies con rellenos sólidos semánticos y tokens CSS de alto contraste; prohibidos los estilos de contorno transparente con texto coloreado.
   - Portada limpia sin registros pasivos permanentes de actividad; los eventos informativos se registran internamente.
+
+### 8.8 Avisos físicos (MiniNotice), bienvenida y botón atrás
+
+- **MiniNotice** (`src/mini-notice.ts`, `mini-notice.css`): aviso tipo píldora que se expande a tarjeta con filtro SVG *gooey* y resorte (rebote .25, 600 ms), para procesos P2P en curso: oferta entrante (Aceptar/Rechazar), esperando, progreso (anillo), éxito (check dibujado) y error. Relleno invertido al tema (`--text-color` / tinta `--bg-color`), tono por estado con `--accent-color`, `--success-color`, `--danger-color`, `--extra-color`. Los avisos con acciones no se cierran solos ni con gesto; éxito 4 s, error 7 s. `showToast` sigue siendo el aviso breve para confirmaciones simples.
+- **Bienvenida obligatoria** (`src/mini-welcome.ts`): si el dispositivo no tiene nombre propio, al iniciar se muestra una pantalla que no se puede cerrar hasta guardar un nombre válido (mismas reglas que el alias P2P).
+- **Botón atrás** (`src/back-navigation.ts`): cierra la capa superior en el mismo orden que `Escape` (confirmación, conflicto de número, paso P2P, modal grande, menú, modal, pestaña secundaria → Asistencia). En la raíz, atrás sale de la app. La bienvenida bloquea el atrás.

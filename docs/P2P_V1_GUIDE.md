@@ -41,6 +41,9 @@ La interfaz principal de Transferencias expone una franja compacta (`.mini-p2p-c
 3. **Envío**: Respuesta transmitida por el canal autenticado sin persistir datos intermedios en servidores externos.
 
 ### 2.5 Envío y Recepción de Respaldos
+
+> **Actualización (respaldo pasivo con consentimiento):** entre Minis vinculados, el receptor ya no necesita abrir el menú. Cada Mini mantiene una escucha pasiva **sólo de respaldos** por par Mini. El emisor envía primero una oferta autenticada `backup-offer {offerId, schema, size, senderName}`; el receptor ve un aviso *Respaldo entrante* con **Aceptar / Rechazar** y responde `backup-offer-reply {offerId, accepted}`. Sólo tras aceptar se transmiten bytes, y el receptor admite exactamente una transferencia cuyo `schema` y `size` coincidan con la oferta (si no, revoca el canal). La oferta vence a los 85 s sin decisión. SA todavía no implementa la oferta: con pares SA se mantiene el envío directo y el botón **Esperar**. Los respaldos vacíos (sin empleados, asistencia ni solicitudes) no se envían, revisan ni restauran.
+
 1. **Envío**: Desde el Hub de Respaldos, selección del par destinatario y pulsación de `Enviar respaldo`. Se empaquetan los datos nativos de Mini y se transfieren por WebRTC con acuse de recibo autenticado (`backup-staged` o `backup-rejected`).
 2. **Recepción**: Almacenamiento en staging de memoria; generación de notificación visual de respaldo listo.
 
