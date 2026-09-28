@@ -3318,6 +3318,7 @@
     <script src="./mini-backup-summary.js"></script>
     <script src="./p2p-backup-bridge.js"></script>
     <script src="./vendor/qrcode.js"></script>
+    <script src="./back-navigation.js"></script>
     <script src="./mini-welcome.js"></script>
     <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>
@@ -3792,6 +3793,7 @@
             updateUndoImportButton();
             renderWorkContextBar();
             initLocalPersistence();
+            installBackNavigation();
         }
 
         // --- SISTEMA DE TEMAS ---
@@ -4295,6 +4297,46 @@
             if (confirmEl.classList.contains('active')) return confirmEl;
             if (activeBigModal) return document.getElementById(activeBigModal);
             return document.querySelector('.modal.active');
+        }
+
+        // Android/browser back: close the top layer like a native app (same order as Escape).
+        function resolveBackLayer() {
+            if (window.MiniWelcome && window.MiniWelcome.isOpen()) return 'block';
+            if (document.getElementById('modal-confirm').classList.contains('active')) return () => closeModal('modal-confirm');
+            const conflictModal = document.getElementById('employee-number-conflict-modal');
+            if (conflictModal && conflictModal.classList.contains('active')) return () => closeModal('employee-number-conflict-modal');
+            const transfer = document.querySelector('.mini-p2p-overlay');
+            if (transfer) {
+                return () => {
+                    const stepBack = transfer.querySelector('[data-p2p-body] [data-back]');
+                    if (stepBack && !stepBack.disabled) stepBack.click();
+                    else if (typeof window.closeP2PTransferModal === 'function') window.closeP2PTransferModal();
+                };
+            }
+            if (activeBigModal) { const id = activeBigModal; return () => closeModal(id); }
+            if (document.body.classList.contains('add-menu-open')) return closeAddMenu;
+            const open = document.querySelector('.modal.active');
+            if (open) return () => closeModal(open.id);
+            if (currentView !== 'attendance') return () => switchView('attendance');
+            return null;
+        }
+
+        function installBackNavigation() {
+            const backNavigation = window.BackNavigation.createBackNavigation({
+                history: window.history,
+                addPopListener: listener => window.addEventListener('popstate', listener),
+                resolveLayer: resolveBackLayer
+            });
+            let queued = false;
+            const queueSync = () => {
+                if (queued) return;
+                queued = true;
+                setTimeout(() => { queued = false; backNavigation.sync(); }, 0);
+            };
+            // Layers appear as body children (P2P, welcome) or class changes (modals, tabs, menu).
+            new MutationObserver(queueSync).observe(document.body, { childList: true });
+            new MutationObserver(queueSync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+            queueSync();
         }
 
         function handleModalKeyboard(event) {
