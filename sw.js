@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.13.2-20260928-202055-194';
+const CACHE_VERSION = 'asistencia-v2.13.2-20260928-203626-924';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -19,6 +19,8 @@ const PRECACHE_ASSETS = [
   './local-date.js',
   './storage-maintenance.js',
   './attendance-archive.js',
+  './storage-help.js',
+  './guided-tour.js',
   './icon-set.js',
   './check-cycle.js',
   './local-db.js',
@@ -112,6 +114,9 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  // Help videos stream with range requests: let the browser handle them.
+  if (url.pathname.endsWith('.webm')) return;
 
   // Cache-busting requests (update check) must always reach the network.
   if (url.searchParams.has('__v') && event.request.mode !== 'navigate') return;
