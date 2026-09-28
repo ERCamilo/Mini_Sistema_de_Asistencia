@@ -40,6 +40,7 @@
 - **TDD:** antes de crear, mover o refactorizar una función, verificá que tenga test; si no, escribilo primero, correlo, hacé el cambio y volvé a correrlo.
 - `build-info.js` y el `CACHE_VERSION` de `sw.js` se sellan solos: el hook `.githooks/pre-commit` corre `scripts/stamp-build.mjs` en cada commit (`npm run build` hace lo mismo + `tsc`). No los edites a mano.
 - Hay tests que leen `index.html` y `sw.js` como texto (wiring/precache): si cambiás scripts o el precache, actualizá esos tests juntos.
+- **Tutoriales** (`docs/TUTORIALES.md`): si cambiás un flujo que tiene tutorial, corré `npm run test:e2e`; si falla porque un subtítulo cambió, regrabá con `TUTORIALS=<id> npm run tutorials` y commiteá `tutorials/<id>.*`. CI (`.github/workflows/ci.yml`) corre `npm test` y los tutoriales en cada PR.
 
 ## 6. Flujo de trabajo (SDD)
 - Para cambios no triviales, primero una especificación breve (propuesta/spec/diseño/tareas) en `.sdd-review/<cambio>/`.

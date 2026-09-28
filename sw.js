@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.13.2-20260928-203626-924';
+const CACHE_VERSION = 'asistencia-v2.13.3-20260928-211326-523';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -21,6 +21,12 @@ const PRECACHE_ASSETS = [
   './attendance-archive.js',
   './storage-help.js',
   './guided-tour.js',
+  './tutorials.js',
+  './tutorial-player.js',
+  // Tutorial captions: tiny, so the steps show even offline (videos are not precached).
+  './tutorials/marcar-asistencia.json',
+  './tutorials/agregar-empleado.json',
+  './tutorials/liberar-espacio.json',
   './icon-set.js',
   './check-cycle.js',
   './local-db.js',
@@ -75,12 +81,15 @@ self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
+// Tutorial videos the user saved for offline use survive app updates.
+const KEEP_CACHE_PREFIXES = ['mini-tutorials-'];
+
 // Activar: limpiar caches de versiones anteriores
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
-        keys.filter(k => k !== CACHE_VERSION).map(k => caches.delete(k))
+        keys.filter(k => k !== CACHE_VERSION && !KEEP_CACHE_PREFIXES.some(p => k.startsWith(p))).map(k => caches.delete(k))
       )
     )
   );
@@ -115,7 +124,7 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
 
-  // Help videos stream with range requests: let the browser handle them.
+  // Tutorial videos stream with range requests: let the browser handle them.
   if (url.pathname.endsWith('.webm')) return;
 
   // Cache-busting requests (update check) must always reach the network.

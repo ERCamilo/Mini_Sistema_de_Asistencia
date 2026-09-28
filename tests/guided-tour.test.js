@@ -35,19 +35,18 @@ test('a click inside the highlighted target advances; elsewhere it does not', ()
 });
 
 test('storage tour lights up the whole dialog on archive/confirm but only advances on the right button', () => {
-  const html = require('node:fs').readFileSync(require.resolve('../index.html'), 'utf8');
-  const tour = html.slice(html.indexOf('window.startStorageTour'), html.indexOf('// --- ARCHIVAR MESES ANTIGUOS ---'));
-  assert.match(tour, /target: '#modal-confirm\.active \.btn-danger', spotlight: '#modal-confirm\.active \.modal-content'/);
-  assert.match(tour, /target: '#btn-archive-run', spotlight: '#modal-archive-months\.active \.modal-content'/);
+  const tour = require('../tutorials.js').find('liberar-espacio').tour;
+  const byTarget = Object.fromEntries(tour.map(step => [step.target, step]));
+  assert.equal(byTarget['#modal-confirm.active .btn-danger'].spotlight, '#modal-confirm.active .modal-content');
+  assert.equal(byTarget['#btn-archive-run'].spotlight, '#modal-archive-months.active .modal-content');
   const src = require('node:fs').readFileSync(require.resolve('../src/guided-tour.ts'), 'utf8');
   assert.match(src, /step\.spotlight/);
 });
 
 test('choosing how many months to keep is its own step, before saving', () => {
-  const html = require('node:fs').readFileSync(require.resolve('../index.html'), 'utf8');
-  const tour = html.slice(html.indexOf('window.startStorageTour'), html.indexOf('// --- ARCHIVAR MESES ANTIGUOS ---'));
-  const keep = tour.indexOf("target: '.archive-keep-pills'");
-  assert.ok(keep > -1 && keep < tour.indexOf("target: '#btn-archive-run'"));
+  const targets = require('../tutorials.js').find('liberar-espacio').tour.map(step => step.target);
+  const keep = targets.indexOf('.archive-keep-pills');
+  assert.ok(keep > -1 && keep < targets.indexOf('#btn-archive-run'));
   const src = require('node:fs').readFileSync(require.resolve('../src/guided-tour.ts'), 'utf8');
   assert.match(src, /scrollIntoView\(\{ block: 'nearest'/);
 });

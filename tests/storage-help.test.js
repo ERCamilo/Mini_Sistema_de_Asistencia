@@ -24,17 +24,16 @@ test('the popup is checked at boot after the automatic repair and data load', ()
   assert.ok(init.indexOf('loadData();') < init.indexOf('maybePromptStorageHelp('));
 });
 
-test('popup shows usage, a lazy help video and "Hazlo conmigo"', () => {
+test('popup shows usage, the "liberar-espacio" tutorial player and "Hazlo conmigo"', () => {
   assert.match(html, /id="modal-storage-help"/);
-  assert.match(html, /id="storage-help-video"[^>]*preload="none"/);
-  assert.match(html, /onclick="startStorageTour\(\)"/);
-  assert.match(html, /const STORAGE_HELP_VIDEO = '\.\/help\/liberar-espacio\.webm';/);
+  assert.match(html, /<div id="storage-help-player"><\/div>/);
+  assert.match(html, /id="btn-storage-tour" onclick="startTutorialTour\('liberar-espacio'\)"/);
   const open = between('window.openStorageHelp', 'window.dismissStorageHelp');
-  assert.match(open, /setAttribute\('src', STORAGE_HELP_VIDEO\)/);
+  assert.match(open, /playTutorialIn\('storage-help-player', 'liberar-espacio'\)/);
   const sw = readFileSync(require.resolve('../sw.js'), 'utf8');
-  assert.doesNotMatch(sw, /liberar-espacio\.webm/, 'the video is lazy, never precached');
+  assert.doesNotMatch(sw, /'\.\/[^']*\.webm'/, 'videos are lazy, never precached');
 });
 
-test('Ajustes has a Help button that reopens the video anytime', () => {
-  assert.match(html, /id="btn-storage-help"[^>]*onclick="openStorageHelp\('help'\)"/);
+test('Ajustes has a "Tutoriales" button that reopens every video anytime', () => {
+  assert.match(html, /id="btn-tutorials" onclick="openTutorials\(\)"/);
 });
