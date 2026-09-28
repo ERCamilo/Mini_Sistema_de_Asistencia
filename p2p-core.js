@@ -897,6 +897,22 @@
         validated: false
       };
     }
+    if (type === 'backup-offer') {
+      exactKeys(data, ['offerId', 'schema', 'size', 'senderName'], 'Oferta de backup inválida.');
+      if (data.schema !== MINI_BACKUP_SCHEMA && data.schema !== SA_BACKUP_SCHEMA) throw new Error('Oferta de backup inválida.');
+      if (!Number.isSafeInteger(data.size) || data.size < 1 || data.size > MAX_BACKUP_BYTES) throw new Error('Oferta de backup inválida.');
+      return {
+        offerId: validateTransferId(data.offerId),
+        schema: data.schema,
+        size: data.size,
+        senderName: boundedString(data.senderName, 80, 'Oferta de backup inválida.')
+      };
+    }
+    if (type === 'backup-offer-reply') {
+      exactKeys(data, ['offerId', 'accepted'], 'Respuesta de oferta inválida.');
+      if (typeof data.accepted !== 'boolean') throw new Error('Respuesta de oferta inválida.');
+      return { offerId: validateTransferId(data.offerId), accepted: data.accepted };
+    }
     throw new Error('Tipo de control P2P desconocido.');
   }
 
