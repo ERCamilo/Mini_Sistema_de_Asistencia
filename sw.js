@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.13.0-20260928-191417-995';
+const CACHE_VERSION = 'asistencia-v2.13.1-20260928-200922-839';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -17,6 +17,7 @@ const PRECACHE_ASSETS = [
   './work-context.js',
   './bulk-actions.js',
   './local-date.js',
+  './storage-maintenance.js',
   './icon-set.js',
   './check-cycle.js',
   './local-db.js',
@@ -50,11 +51,23 @@ const PRECACHE_ASSETS = [
   './icon-512.png'
 ];
 
-// Instalar: precachear todos los assets
+// Fresh copy of an asset: skips the browser HTTP cache (GitHub Pages sends
+// max-age=600) and the CDN edge (unique query per version), so a new version
+// never precaches the previous version's files.
+function freshRequest(asset) {
+  const url = new URL(asset, self.location.href);
+  url.searchParams.set('__v', CACHE_VERSION);
+  return new Request(url.toString(), { cache: 'reload' });
+}
+
+// Instalar: precachear todos los assets (bytes frescos, clave sin query)
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_VERSION)
-      .then(cache => cache.addAll(PRECACHE_ASSETS))
+    caches.open(CACHE_VERSION).then(cache => Promise.all(PRECACHE_ASSETS.map(async asset => {
+      const response = await fetch(freshRequest(asset));
+      if (!response.ok) throw new Error('Precache failed: ' + asset + ' ' + response.status);
+      await cache.put(new Request(new URL(asset, self.location.href).toString()), response);
+    })))
   );
   self.skipWaiting();
 });
@@ -71,29 +84,40 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+// HTML: network-first so an online user always gets the latest version;
+// falls back to the cached page when offline or when the network is too slow.
+const NAVIGATION_TIMEOUT_MS = 4000;
+function networkFirstNavigation(request) {
+  const fromCache = () => caches.open(CACHE_VERSION)
+    .then(cache => cache.match(request, { ignoreSearch: true }))
+    .then(cached => cached || caches.match('./index.html'));
+  const network = fetch(new Request(request.url, { cache: 'no-cache', credentials: 'same-origin' }))
+    .then(response => {
+      if (response && response.status === 200) {
+        const copy = response.clone();
+        const key = new URL(request.url);
+        key.search = '';
+        caches.open(CACHE_VERSION).then(cache => cache.put(key.toString(), copy));
+      }
+      return response;
+    });
+  const timeout = new Promise(resolve => setTimeout(resolve, NAVIGATION_TIMEOUT_MS)).then(fromCache);
+  return Promise.race([network.catch(fromCache), timeout])
+    .then(response => response || network.catch(fromCache));
+}
+
 // Fetch: estrategia segun tipo de recurso
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // Para navegacion (HTML): stale-while-revalidate
-  // Sirve la version cacheada inmediatamente, pero actualiza en background
-  if (event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
-    event.respondWith(
-      caches.open(CACHE_VERSION).then(cache =>
-        cache.match(event.request).then(cached => {
-          const fetchPromise = fetch(event.request).then(response => {
-            if (response && response.status === 200) {
-              cache.put(event.request, response.clone());
-            }
-            return response;
-          }).catch(() => cached);
+  // Cache-busting requests (update check) must always reach the network.
+  if (url.searchParams.has('__v') && event.request.mode !== 'navigate') return;
 
-          return cached || fetchPromise;
-        })
-      )
-    );
+  // Para navegacion (HTML): network-first con respaldo offline
+  if (event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
+    event.respondWith(networkFirstNavigation(event.request));
     return;
   }
 

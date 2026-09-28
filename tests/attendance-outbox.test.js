@@ -160,3 +160,16 @@ test('outbox is restored when the attendance write hits the quota', () => {
   assert.equal(repo.getRecord('u1', '2026-09-27').hours, 4);
   assert.equal(coordinator.getAllOutbox().length, 1);
 });
+
+test('the outbox is capped so it can never fill the device storage again', () => {
+  const storage = createMemoryStorage();
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+  let n = 0;
+  const coordinator = AttendanceCoordinator.createAttendanceCoordinator({ repository: repo, storage, generateUuid: () => 'e' + (n += 1) });
+  for (let i = 0; i < 260; i += 1) {
+    coordinator.recordAttendance({ id: 'u1', name: 'Ana', number: '1' }, '2026-09-28', 'present', i % 2 ? 4 : 8);
+  }
+  const outbox = coordinator.getAllOutbox();
+  assert.equal(outbox.length, AttendanceCoordinator.MAX_OUTBOX_ITEMS);
+  assert.equal(outbox[outbox.length - 1].eventId, 'e260');
+});

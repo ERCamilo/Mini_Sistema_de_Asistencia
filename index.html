@@ -2788,6 +2788,13 @@
                                 <div style="font-size: 12px; color: var(--text-muted);" id="install-pwa-hint">Verificando disponibilidad...</div>
                             </div>
                         </button>
+                        <button type="button" class="export-option" onclick="freeStorageSpace()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="trash"></span></span>
+                            <div>
+                                <div style="font-weight: 600;">Liberar espacio</div>
+                                <div style="font-size: 12px; color: var(--text-muted);" id="storage-usage-hint">Borra copias duplicadas sin tocar tu asistencia</div>
+                            </div>
+                        </button>
                         <button type="button" class="export-option" onclick="clearCacheAndReload()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
                             <div>
@@ -3298,6 +3305,7 @@
     </nav>
 
     <script src="./local-date.js"></script>
+    <script src="./storage-maintenance.js"></script>
     <script src="./icon-set.js"></script>
     <script src="./check-cycle.js"></script>
     <script src="./employee-number-rules.js"></script>
@@ -3620,8 +3628,33 @@
             } catch (e) { /* version visible es informativa, nunca bloquea la app */ }
         }
 
+        // Reads the build that is actually published, bypassing every cache.
+        async function fetchPublishedBuild() {
+            try {
+                const response = await fetch('./build-info.js?__v=' + Date.now(), { cache: 'no-store' });
+                if (!response.ok) return null;
+                const source = await response.text();
+                const buildId = /buildId:\s*"([^"]+)"/.exec(source);
+                const version = /version:\s*"([^"]+)"/.exec(source);
+                return buildId ? { buildId: buildId[1], version: version ? version[1] : '' } : null;
+            } catch (_) {
+                return null; // offline: nothing to compare against
+            }
+        }
+
         async function clearCacheAndReload() {
-            if (!await showConfirm('Esto limpia el caché y recarga para traer la última versión. Tus empleados y asistencia NO se borran. ¿Continuar?', { title: 'Buscar actualización', confirmText: 'Actualizar', danger: false })) return;
+            if (!await showConfirm('Esto busca la última versión publicada y la instala. Tus empleados y asistencia NO se borran. ¿Continuar?', { title: 'Buscar actualización', confirmText: 'Buscar', danger: false })) return;
+            const current = window.MINI_BUILD_INFO || {};
+            const published = await fetchPublishedBuild();
+            if (!published) {
+                showToast('Sin conexión: no se pudo consultar la versión publicada.');
+                return;
+            }
+            if (published.buildId === current.buildId) {
+                showToast('Ya tenés la última versión (v' + (current.version || published.version) + ').');
+                return;
+            }
+            showToast('Instalando la versión v' + published.version + '…');
             try {
                 if ('serviceWorker' in navigator) {
                     const regs = await navigator.serviceWorker.getRegistrations();
@@ -3631,8 +3664,13 @@
                     const keys = await caches.keys();
                     await Promise.all(keys.map(k => caches.delete(k)));
                 }
+                // Refresh the HTTP cache of every loaded script/style so the next load is fresh.
+                const assets = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href]')]
+                    .map(el => el.getAttribute('src') || el.getAttribute('href'))
+                    .filter(url => url && url.startsWith('./'));
+                await Promise.all(assets.map(url => fetch(url, { cache: 'reload' }).catch(() => null)));
             } catch (e) { /* sin caché disponible, igual recargamos */ }
-            location.reload();
+            location.replace('./?__v=' + encodeURIComponent(published.buildId));
         }
 
         function installPWA() {
@@ -3773,14 +3811,57 @@
             return hour12 + ':' + String(m).padStart(2, '0') + ' ' + ampm;
         }
 
+        // Frees space left by older versions (duplicate copy, repeated tombstones,
+        // undrained outbox). Never touches employees or attendance records.
+        // Browsers measure localStorage in characters (~5 M per app); show it as MB/KB.
+        function formatStorageKb(chars) {
+            return Math.round(chars / 1024).toLocaleString('es-ES') + ' KB';
+        }
+
+        function describeStorageUsage() {
+            const usage = window.StorageMaintenance.measureStorage(localStorage);
+            const pct = Math.min(100, Math.round((usage.totalChars / usage.approxQuotaChars) * 100));
+            const usedMb = (usage.totalChars / 1048576).toLocaleString('es-ES', { maximumFractionDigits: 1 });
+            return { usage, pct, label: 'Uso: ' + pct + '% (' + usedMb + ' de ~5 MB)' };
+        }
+
+        function runStorageRepair({ announce }) {
+            try {
+                const report = window.StorageMaintenance.repairStorage(localStorage);
+                if (report.freedChars > 0) console.info('Mini liberó espacio de almacenamiento.', report);
+                if (announce) {
+                    const { label } = describeStorageUsage();
+                    showToast(report.freedChars > 0
+                        ? 'Se liberaron ' + formatStorageKb(report.freedChars) + '. ' + label + '.'
+                        : 'No había datos duplicados. ' + label + '.');
+                }
+                return report;
+            } catch (error) {
+                console.warn('No se pudo reparar el almacenamiento.', error);
+                if (announce) showToast('No se pudo liberar espacio. Exportá un respaldo y avisá a soporte.');
+                return null;
+            }
+        }
+
+        window.freeStorageSpace = () => {
+            runStorageRepair({ announce: true });
+            const hint = document.getElementById('storage-usage-hint');
+            if (hint) hint.textContent = describeStorageUsage().label;
+        };
+
         function init() {
             const today = new Date();
             const day = today.getDay();
             const diff = today.getDate() - day + (day === 0 ? -6 : 1);
             currentWeekStart = new Date(today.setDate(diff));
 
+            // Drop the one-time cache-busting query left by "Buscar actualización".
+            if (/[?&]__v=/.test(location.search)) {
+                try { history.replaceState(history.state, '', location.pathname + location.hash); } catch (_) {}
+            }
             initPWA();
             renderBuildInfo();
+            runStorageRepair({ announce: false });
             loadData();
             ({ users, pendingConflict: pendingEmployeeConflict } = initializeEmployeeNumberState(users));
             loadTheme();
@@ -3858,7 +3939,6 @@
         function writeLegacyMirror(snapshot) {
             localStorage.setItem('users', JSON.stringify(snapshot.users));
             localStorage.setItem('attendance', JSON.stringify(snapshot.attendance));
-            localStorage.setItem('weeklyAttendance', JSON.stringify(snapshot.attendance));
             localStorage.setItem('lastUpdateTimestamp', snapshot.lastUpdateTimestamp);
         }
 

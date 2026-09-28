@@ -88,7 +88,10 @@ type LocalDbMigrationResult =
 
   function readLegacySnapshot(storage: LocalDbStorage): LocalDbSnapshot {
     const parsedUsers = parseJson(storage.getItem('users'), 'users');
-    const parsedAttendance = parseJson(storage.getItem('weeklyAttendance'), 'weeklyAttendance');
+    // The attendance repository owns 'attendance'; 'weeklyAttendance' is an old
+    // duplicate that storage maintenance removes, so it is only a fallback.
+    const attendanceKey = storage.getItem('attendance') !== null ? 'attendance' : 'weeklyAttendance';
+    const parsedAttendance = parseJson(storage.getItem(attendanceKey), attendanceKey);
     const parsedRequests = parseJson(storage.getItem('requests'), 'requests');
     const parsedTemplates = parseJson(storage.getItem('requestTemplates'), 'requestTemplates');
     if (parsedUsers !== null && !Array.isArray(parsedUsers)) {
