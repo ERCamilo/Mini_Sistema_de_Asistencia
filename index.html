@@ -6766,7 +6766,7 @@
                 const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings };
                 const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) } };
                 fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
-                    users = state.users; attendanceData = state.attendance; requests = state.requests; requestTemplates = state.templates;
+                    users = state.users; attendanceRepository.importBatch(state.attendance, 'replace'); attendanceData = attendanceRepository.getAll(); requests = state.requests; requestTemplates = state.templates;
                     BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
                     if (workContextsSnapshot && window.workContextManager) {
                         window.workContextManager.importSnapshot(workContextsSnapshot);

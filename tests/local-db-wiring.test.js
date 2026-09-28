@@ -47,3 +47,9 @@ test('Solicitudes UI routes request/template storage through its repository faca
   assert.doesNotMatch(html, /localStorage\.getItem\('requestTemplates'\)/);
   assert.doesNotMatch(html, /localStorage\.setItem\('requestTemplates'/);
 });
+
+test('restoring a backup persists attendance through the repository', () => {
+  const restore = html.slice(html.indexOf('window.doRestoreBackup'), html.indexOf("closeModal('modal-restore-backup')", html.indexOf('window.doRestoreBackup')));
+  assert.match(restore, /attendanceRepository\.importBatch\(state\.attendance, 'replace'\)/);
+  assert.doesNotMatch(restore, /attendanceData = state\.attendance/);
+});
