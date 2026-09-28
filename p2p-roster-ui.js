@@ -2871,6 +2871,11 @@
   root.renderQr=renderQr;
   root.refreshMiniP2PHeader=refreshMiniP2PHeader;
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
+  root.MiniDeviceIdentity = {
+    getName: async () => (await identityStore.getSelf())?.displayName || '',
+    saveName: async name => { await identityStore.renameSelf(name); refreshMiniP2PHeader().catch(() => {}); },
+    issue: miniAliasIssue
+  };
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
   root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
   root.MiniP2PBackupInbox={ start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, listeners: miniBackupListeners };
@@ -2878,7 +2883,7 @@
   root.MiniP2PPresence = { isPeerOnline, getPeerState: getPeerVisualState, getPresence: getPeerPresence, attach: attachPresence, detach: detachPresence, isNetworkOnline, expireStale: expireStalePresence, handleOffline: handleNetworkOffline, handleOnline: handleNetworkOnline, HEARTBEAT_MS: core.PRESENCE_HEARTBEAT_MS || 25000, TTL_MS: core.PRESENCE_TTL_MS || 60000, BACKOFF_SCHEDULE_MS: PASSIVE_BACKOFF_SCHEDULE_MS };
   root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };
 
-  const boot=()=>{ refreshMiniP2PHeader().catch(()=>{}); try { startPassiveInbox().catch(()=>{}); } catch (_) {} return consumePairHash().catch(()=>{}); };
+  const boot=()=>{ try { root.MiniWelcome?.ensureNamed(root.MiniDeviceIdentity).catch(()=>{}); } catch (_) {} refreshMiniP2PHeader().catch(()=>{}); try { startPassiveInbox().catch(()=>{}); } catch (_) {} return consumePairHash().catch(()=>{}); };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else setTimeout(boot,0);
   root.addEventListener('hashchange',()=>consumePairHash().catch(()=>{}));
 })(window);
