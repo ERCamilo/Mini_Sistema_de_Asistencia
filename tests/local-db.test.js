@@ -158,3 +158,11 @@ test('atomic snapshots survive reload and the feature flag restores legacy reads
   assert.equal(await db.readState(), null);
   await assert.rejects(() => db.writeState(next), /disabled/);
 });
+
+test('legacy snapshot reads the repository key "attendance" first, weeklyAttendance only as fallback', () => {
+  const primaryOnly = { ...legacy, weeklyAttendance: undefined, attendance: legacy.weeklyAttendance };
+  delete primaryOnly.weeklyAttendance;
+  assert.deepEqual(Object.keys(LocalDb.readLegacySnapshot(storage(primaryOnly)).attendance), ['2026-07-29']);
+  const both = { ...legacy, attendance: JSON.stringify({ '2026-09-01': { u1: { status: 'present', hours: 8 } } }) };
+  assert.deepEqual(Object.keys(LocalDb.readLegacySnapshot(storage(both)).attendance), ['2026-09-01']);
+});

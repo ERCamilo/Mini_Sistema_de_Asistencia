@@ -9,6 +9,8 @@
         root.AttendanceCoordinator = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createAttendanceCoordinatorModule() {
     const OUTBOX_KEY = 'mini-sa-outbox-v1';
+    // Nothing drains this outbox yet; cap it so it can never fill localStorage.
+    const MAX_OUTBOX_ITEMS = 200;
     const DEFAULT_SCOPE = { ownerUid: 'local-owner', siteId: 'local-site', sourceId: 'mini-app' };
     function defaultUuid() {
         if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -60,7 +62,7 @@
             // outbox is a shrinking write, so nothing is left half-saved.
             const currentOutbox = loadOutbox();
             const outboxRecord = buildOutboxRecord(employee, hours);
-            persistOutbox([...currentOutbox, outboxRecord]);
+            persistOutbox([...currentOutbox, outboxRecord].slice(-MAX_OUTBOX_ITEMS));
             let repoResult;
             try {
                 repoResult = repository.setRecord(employee.id, date, status, hours);
@@ -152,6 +154,7 @@
         };
     }
     return {
+        MAX_OUTBOX_ITEMS,
         createAttendanceCoordinator
     };
 });
