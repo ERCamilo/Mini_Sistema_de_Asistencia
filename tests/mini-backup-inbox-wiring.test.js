@@ -9,7 +9,7 @@ test('passive Mini inbox is backup-only and never arms roster or attendance', ()
   const listener = between('async function ensureMiniBackupListener', 'async function startMiniBackupInbox');
   assert.match(listener, /isMiniBackupPeer\(peer\)/);
   assert.match(listener, /allowSameApp: true/);
-  assert.match(listener, /P2PBackupConsent\.listenForOffers/);
+  assert.match(listener, /P2PBackupConsent\.bufferOffers/);
   assert.doesNotMatch(listener, /armRosterReceiver|armAttendanceResponder|armBackupReceiver/);
 });
 
@@ -38,4 +38,23 @@ test('consent is used with Mini peers while SA keeps the direct protocol', () =>
 test('mini inbox starts with the passive inbox at boot and when the network returns', () => {
   assert.match(between('async function startPassiveInbox', 'function stopPeerListener'), /startMiniBackupInbox\(\)/);
   assert.match(between('function handleNetworkOnline', '\n  }\n'), /startMiniBackupInbox\(\)/);
+});
+
+test('offers are buffered from channel open and released only after authentication', () => {
+  const listener = between('async function ensureMiniBackupListener', 'async function startMiniBackupInbox');
+  const buffer = listener.indexOf('P2PBackupConsent.bufferOffers(channel, core)');
+  const attach = listener.indexOf('pairing.attachTrusted(channel');
+  assert.ok(buffer > -1 && buffer < attach, 'buffer before the trusted handshake');
+  assert.ok(listener.indexOf('offers.release(') > listener.indexOf('onAuthenticated'), 'release after authentication');
+  const wait = between('async function waitBackupTransfer', 'function hasOwn');
+  assert.ok(wait.indexOf('bufferOffers(channel, core)') > -1 && wait.indexOf('bufferOffers(channel, core)') < wait.indexOf('pairing.attachTrusted(channel'));
+});
+
+test('the Mini inbox heals itself: modal close, foreground return and a watchdog', () => {
+  assert.match(between('function closeTransferModal', '\n  }\n'), /startMiniBackupInbox\(\)/);
+  assert.match(ui, /addEventListener\('visibilitychange'[\s\S]{0,200}refreshMiniBackupInbox/);
+  const refresh = between('function refreshMiniBackupInbox', 'async function startMiniBackupInbox');
+  assert.match(refresh, /MINI_BACKUP_MAX_AGE_MS/);
+  assert.match(refresh, /readyState/);
+  assert.match(refresh, /activeTransferPeerId/);
 });

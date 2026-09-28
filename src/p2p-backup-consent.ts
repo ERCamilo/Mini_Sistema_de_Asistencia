@@ -35,6 +35,10 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
   if (root) root.P2PBackupConsent = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createP2PBackupConsentModule() {
   const DEFAULT_TIMEOUT_MS = 90_000;
+  // The trusted handshake finishes at different moments on each phone (each side
+  // writes IndexedDB first), so an offer sent right after authenticating can reach a
+  // peer that is not listening yet. The sender repeats it; the receiver dedupes.
+  const DEFAULT_RESEND_MS = 2_000;
 
   function createOfferId(): string {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -50,7 +54,7 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
     channel: ConsentChannel,
     core: ConsentCore,
     offer: ConsentOffer,
-    options: { timeoutMs?: number } = {}
+    options: { timeoutMs?: number; resendMs?: number } = {}
   ): Promise<ConsentResult> {
     return new Promise(resolve => {
       let settled = false;
@@ -58,8 +62,16 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearInterval(resend);
         channel.removeEventListener('message', onMessage);
         resolve(result);
+      };
+      const sendOffer = () => {
+        try {
+          core.sendControl(channel, 'backup-offer', offer);
+        } catch {
+          finish('closed');
+        }
       };
       const onMessage = (event: { data: unknown }) => {
         const control = safeParse(core, event.data);
@@ -67,26 +79,25 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
         finish(control.data.accepted === true ? 'accepted' : 'declined');
       };
       const timer = setTimeout(() => finish('timeout'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      const resend = setInterval(() => { if (!settled) sendOffer(); }, options.resendMs ?? DEFAULT_RESEND_MS);
       channel.addEventListener('message', onMessage);
-      try {
-        core.sendControl(channel, 'backup-offer', offer);
-      } catch {
-        finish('closed');
-      }
+      sendOffer();
     });
   }
 
-  function listenForOffers(
-    channel: ConsentChannel,
-    core: ConsentCore,
-    onOffer: (offer: ConsentOffer, respond: (accepted: boolean) => void) => void
-  ): () => void {
-    const onMessage = (event: { data: unknown }) => {
-      const control = safeParse(core, event.data);
-      if (!control || control.type !== 'backup-offer') return;
-      const offer = control.data as ConsentOffer;
+  type OfferHandler = (offer: ConsentOffer, respond: (accepted: boolean) => void) => void;
+
+  // Listen from the moment the channel opens; hold offers until release() (called
+  // once the channel is authenticated). Each offerId is delivered only once.
+  function bufferOffers(channel: ConsentChannel, core: ConsentCore) {
+    const seen = new Set<string>();
+    const queued: ConsentOffer[] = [];
+    let handler: OfferHandler | null = null;
+
+    const deliver = (offer: ConsentOffer) => {
+      if (!handler) { queued.push(offer); return; }
       let answered = false;
-      const respond = (accepted: boolean) => {
+      handler(offer, accepted => {
         if (answered) return;
         answered = true;
         try {
@@ -94,11 +105,34 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
         } catch (error) {
           console.warn('No se pudo responder la oferta de respaldo.', error);
         }
-      };
-      onOffer(offer, respond);
+      });
+    };
+    const onMessage = (event: { data: unknown }) => {
+      const control = safeParse(core, event.data);
+      if (!control || control.type !== 'backup-offer') return;
+      const offer = control.data as ConsentOffer;
+      if (seen.has(offer.offerId)) return;
+      seen.add(offer.offerId);
+      deliver(offer);
     };
     channel.addEventListener('message', onMessage);
-    return () => channel.removeEventListener('message', onMessage);
+    return {
+      release(onOffer: OfferHandler) {
+        handler = onOffer;
+        for (const offer of queued.splice(0)) deliver(offer);
+      },
+      detach() {
+        handler = null;
+        queued.length = 0;
+        channel.removeEventListener('message', onMessage);
+      }
+    };
+  }
+
+  function listenForOffers(channel: ConsentChannel, core: ConsentCore, onOffer: OfferHandler): () => void {
+    const inbox = bufferOffers(channel, core);
+    inbox.release(onOffer);
+    return inbox.detach;
   }
 
   function matchesOffer(offer: ConsentOffer | null, transfer: { schema?: unknown; size?: unknown }): boolean {
@@ -109,6 +143,7 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
     DEFAULT_TIMEOUT_MS,
     createOfferId,
     requestConsent,
+    bufferOffers,
     listenForOffers,
     matchesOffer
   };

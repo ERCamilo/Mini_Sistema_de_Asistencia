@@ -85,3 +85,29 @@ test('createOfferId returns a bounded random id', () => {
   assert.match(a, /^[a-z0-9-]{8,64}$/);
   assert.notEqual(a, Consent.createOfferId());
 });
+
+test('bufferOffers keeps offers that arrive before authentication and delivers them once', async () => {
+  const [sender, receiver] = linkedPair();
+  const inbox = Consent.bufferOffers(receiver, Core);
+  Core.sendControl(sender, 'backup-offer', offer);
+  Core.sendControl(sender, 'backup-offer', offer); // resend of the same offer
+  await new Promise(resolve => setTimeout(resolve, 5));
+  const seen = [];
+  inbox.release((incoming, respond) => { seen.push(incoming.offerId); respond(true); });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  Core.sendControl(sender, 'backup-offer', { ...offer, offerId: 'offer-2' });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.deepEqual(seen, ['offer-1', 'offer-2']);
+  inbox.detach();
+});
+
+test('requestConsent resends the offer until the receiver answers (slow handshake side)', async () => {
+  const [sender, receiver] = linkedPair();
+  const inbox = Consent.bufferOffers(receiver, Core);
+  // The receiver only finishes its handshake later, like a slow phone writing IndexedDB.
+  setTimeout(() => inbox.release((_incoming, respond) => respond(true)), 60);
+  const result = await Consent.requestConsent(sender, Core, offer, { timeoutMs: 1000, resendMs: 20 });
+  assert.equal(result, 'accepted');
+  const offersSent = sender.sent.map(frame => Core.parseControl(frame)).filter(frame => frame && frame.type === 'backup-offer');
+  assert.ok(offersSent.length >= 2, 'offer was resent');
+});
