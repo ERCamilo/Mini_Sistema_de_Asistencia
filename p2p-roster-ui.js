@@ -469,9 +469,10 @@
 
       if (!peers.length) {
         if (labelEl) labelEl.textContent = 'SA no vinculado';
-        try { btn.setAttribute('aria-label', 'SA no vinculado. Vincular'); } catch (_) {}
+        try { btn.setAttribute('aria-label', 'SA no vinculado. Abrir Transferencias para vincular SA u otro Mini'); } catch (_) {}
         try { btn.setAttribute('title', 'SA no vinculado'); } catch (_) {}
-        try { btn.onclick = openP2PPairingScanner; } catch (_) {}
+        // Open Transferencias (SA or another Mini), never straight to the camera.
+        try { btn.onclick = openP2PTransferModal; } catch (_) {}
         try { btn.setAttribute('data-p2p-header-state', 'unlinked'); } catch (_) {}
         try { btn.setAttribute('data-p2p-state', 'unlinked'); } catch (_) {}
         return 'unlinked';
