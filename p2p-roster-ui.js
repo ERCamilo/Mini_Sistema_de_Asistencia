@@ -1072,12 +1072,7 @@
       const transferId = btn.dataset.reviewBackup;
       const staged = root.SaMiniP2PBackup?.backupStagedStore?.getStaged(transferId);
       if (!staged) return renderHome();
-      try {
-        root.SaMiniP2PBackup.reviewStagedBackupInMini(staged);
-        closeTransferModal();
-      } catch (err) {
-        toast('Error al revisar respaldo: ' + err.message);
-      }
+      renderBackupReview(transferId).catch(err => toast('Error al revisar respaldo: ' + err.message));
     }));
     body().querySelectorAll('[data-download-backup]').forEach(btn => btn.addEventListener('click', async () => {
       const transferId = btn.dataset.downloadBackup;
@@ -1922,12 +1917,7 @@
     const bridge = root.SaMiniP2PBackup;
     const staged = bridge?.backupStagedStore?.getStaged(transferId);
     if (!staged) { toast('El respaldo ya no está disponible.'); return; }
-    try {
-      bridge.reviewStagedBackupInMini(staged);
-      if (isTransferModalOpen()) closeTransferModal();
-    } catch (err) {
-      toast('Error al revisar respaldo: ' + err.message);
-    }
+    renderBackupReview(transferId).catch(err => toast('Error al revisar respaldo: ' + err.message));
   }
 
   function receiveNoticeHooks(notice, senderLabel) {
@@ -2261,12 +2251,7 @@
             actionsBox.innerHTML = `${actionBtn}${uiButton('Ir al inicio', 'data-go-home', 'secondary', 'chevronLeft')}`;
             actionsBox.querySelector('[data-go-home]')?.addEventListener('click', renderHome);
             actionsBox.querySelector('[data-review-backup-now]')?.addEventListener('click', () => {
-              try {
-                bridge.reviewStagedBackupInMini(stagedRecord);
-                closeTransferModal();
-              } catch (e) {
-                toast('Error al revisar: ' + e.message);
-              }
+              renderBackupReview(result.transferId).catch(e => toast('Error al revisar: ' + e.message));
             });
             actionsBox.querySelector('[data-download-backup-now]')?.addEventListener('click', () => {
               try {
@@ -2301,6 +2286,124 @@
       core.revokeChannel(channel, error);
       if (!background) renderError(reason);
     }
+  }
+
+  // ---- Received Mini backup review (cards instead of raw JSON) ----
+  function formatReviewDay(day) {
+    if (!day) return '—';
+    try {
+      const [y, m, d] = day.split('-').map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }).replace('.', '');
+    } catch (_) { return day; }
+  }
+
+  function reviewRange(counts) {
+    if (!counts.attendanceDays) return 'sin asistencia';
+    const days = counts.attendanceDays + ' día' + (counts.attendanceDays === 1 ? '' : 's');
+    if (counts.firstDay === counts.lastDay) return days + ' (' + formatReviewDay(counts.firstDay) + ')';
+    return days + ' (' + formatReviewDay(counts.firstDay) + ' – ' + formatReviewDay(counts.lastDay) + ')';
+  }
+
+  function backupCompareRow(icon, label, before, after, tone = '') {
+    const value = before
+      ? `${esc(before)} <b aria-hidden="true">→</b><span class="mini-p2p-sr-only"> pasa a </span> ${esc(after)}`
+      : esc(after);
+    return `<li class="mini-backup-compare-row ${tone}"><span class="mini-roster-metric-icon">${vectorIcon(icon, 15)}</span><div><strong>${esc(label)}</strong><span>${value}</span></div></li>`;
+  }
+
+  async function renderBackupReview(transferId) {
+    const bridge = root.SaMiniP2PBackup;
+    const staged = bridge?.backupStagedStore?.getStaged(transferId);
+    if (!staged) { toast('El respaldo ya no está disponible.'); return renderBackupHub(); }
+    let parsed;
+    try {
+      ({ parsed } = bridge.parseStagedMiniBackup(staged));
+    } catch (err) {
+      return renderError(err.message || String(err));
+    }
+    const current = {
+      users: root.employeeRepository?.getAll?.() || [],
+      attendance: root.attendanceRepository?.getAll?.() || {}
+    };
+    const model = root.MiniBackupReview.buildBackupReviewModel(parsed, current);
+    const sender = staged.sourcePeerName || 'otro Mini';
+    const b = model.backup;
+    const created = b.exportedAt ? formatPeerDate(b.exportedAt) : 'en fecha desconocida';
+    const employeeRows = model.backupEmployees.map(e => `<li><strong>${esc((e.number ? e.number + ' · ' : '') + e.name)}</strong><span>${esc(e.position || 'Sin cargo')}</span></li>`).join('');
+    const changeRows = [
+      backupCompareRow('users', 'Empleados', model.current.employees + ' actuales', b.employees + ' del respaldo'),
+      model.employees.added.length ? backupCompareRow('add', 'Se agregan', '', model.employees.added.length + ' empleado' + (model.employees.added.length === 1 ? '' : 's') + ' nuevo' + (model.employees.added.length === 1 ? '' : 's'), 'is-info') : '',
+      model.employees.removed.length ? backupCompareRow('warning', 'Se quitan de este Mini', '', model.employees.removed.slice(0, 3).map(e => e.name).join(', ') + (model.employees.removed.length > 3 ? ' y ' + (model.employees.removed.length - 3) + ' más' : ''), 'is-danger') : '',
+      backupCompareRow('attendance', 'Asistencia', reviewRange(model.current), reviewRange(b))
+    ].join('');
+    const replaceNotice = model.replacesExistingData ? `
+      <div class="mini-roster-notice is-danger">${vectorIcon('warning', 17)}<div>
+        <strong>Restaurar reemplaza los datos de este Mini</strong>
+        <span>Tus ${model.current.employees} empleados y ${model.current.attendanceDays} días de asistencia actuales se sustituyen por los del respaldo. Descargá una copia antes si querés conservarlos.</span>
+        <button type="button" class="mini-p2p-link-btn" data-download-current>${vectorIcon('backup', 15)}<span>Descargar mi respaldo actual</span></button>
+      </div></div>` : '';
+
+    shell();
+    morphShell(() => { body().innerHTML = `
+      <div class="mini-p2p-step mini-roster-review mini-backup-review">
+        ${backButton('Respaldos')}
+        <div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('backup', 15)}<span>RESPALDO MINI</span></div><span class="mini-roster-step-count">1 / 2</span></div>
+        <div><h3>Respaldo de ${esc(sender)}</h3><p>Creado ${esc(created)} · verificado y todavía sin aplicar.</p></div>
+        <div class="mini-roster-metrics">
+          ${rosterMetric('users', 'Empleados', b.employees, 'is-info')}
+          ${rosterMetric('attendance', 'Días', b.attendanceDays, 'is-info')}
+          ${rosterMetric('requests', 'Solicitudes', b.requests, 'is-info')}
+          ${rosterMetric('building', 'Obras', b.workContexts, 'is-info')}
+        </div>
+        <section class="mini-backup-compare" aria-labelledby="mini-backup-compare-title">
+          <h4 id="mini-backup-compare-title">Qué cambiará en este Mini</h4>
+          <ul>${changeRows}</ul>
+        </section>
+        ${replaceNotice}
+        ${employeeRows ? `<details class="mini-roster-details"><summary>${vectorIcon('users', 16)}<span>Ver empleados del respaldo</span>${countBadge(model.backupEmployees.length, 'empleados')}${vectorIcon('chevronRight', 15)}</summary><ul>${employeeRows}</ul></details>` : ''}
+        <footer class="mini-roster-footer">
+          <span class="mini-roster-hint">Podés descartarlo: no se aplica nada hasta que confirmes.</span>
+          <div class="mini-backup-footer-actions">${secondary('Descartar', 'data-discard-review')}${primary('Restaurar', 'data-apply-backup', 'restore')}</div>
+        </footer>
+      </div>`; });
+
+    body().querySelector('[data-back]')?.addEventListener('click', renderBackupHub);
+    body().querySelector('[data-download-current]')?.addEventListener('click', () => {
+      try { root.downloadJSON?.(); toast('Respaldo actual descargado.'); } catch (err) { toast('No se pudo descargar: ' + err.message); }
+    });
+    body().querySelector('[data-discard-review]')?.addEventListener('click', async () => {
+      bridge.backupStagedStore.removeStaged(transferId);
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      toast('Respaldo descartado.');
+      renderBackupHub();
+    });
+    body().querySelector('[data-apply-backup]')?.addEventListener('click', async () => {
+      if (model.replacesExistingData && typeof root.showConfirm === 'function') {
+        const ok = await root.showConfirm(`Se reemplazarán ${model.current.employees} empleados y ${model.current.attendanceDays} días de asistencia de este Mini por el respaldo de ${sender}.`, { title: '¿Restaurar respaldo?', confirmText: 'Restaurar', danger: true });
+        if (!ok) return;
+      }
+      try {
+        root.restoreMiniBackupData(parsed, { stagedTransferId: transferId });
+      } catch (err) {
+        return renderError(err.message || String(err));
+      }
+      try { recordP2PActivity('backup-restored', { peerId: staged.sourcePeerId, peerApp: 'mini', displayName: sender }, 'Respaldo de ' + sender + ' restaurado.', 'backup-restored:' + staged.sha256); } catch (_) {}
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      morphShell(() => { body().innerHTML = `
+        <div class="mini-p2p-step mini-roster-result">
+          <div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check', 15)}<span>RESTAURADO</span></div><span class="mini-roster-step-count">2 / 2</span></div>
+          <div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check', 20)}</span><div class="mini-p2p-result-copy"><h3>Respaldo restaurado</h3><p>Este Mini ahora tiene los datos del respaldo de ${esc(sender)}.</p></div></div>
+          <div class="mini-roster-metrics">
+            ${rosterMetric('users', 'Empleados', b.employees, 'is-success')}
+            ${rosterMetric('attendance', 'Días', b.attendanceDays, 'is-success')}
+            ${rosterMetric('requests', 'Solicitudes', b.requests, 'is-success')}
+            ${rosterMetric('building', 'Obras', b.workContexts, 'is-success')}
+          </div>
+          <div class="mini-p2p-actions">${primary('Finalizar', 'data-finish-restore', 'check')}</div>
+        </div>`; });
+      body().querySelector('[data-finish-restore]')?.addEventListener('click', () => closeTransferModal());
+      try { signalTerminalSuccess('backup-restored:' + staged.sha256, { title: 'Respaldo restaurado', detail: 'Datos de ' + sender + ' aplicados.' }); } catch (_) {}
+    });
   }
 
   async function renderBackupHub() {
@@ -2387,12 +2490,7 @@
       const transferId = btn.dataset.reviewBackup;
       const staged = root.SaMiniP2PBackup?.backupStagedStore?.getStaged(transferId);
       if (!staged) return renderBackupHub();
-      try {
-        root.SaMiniP2PBackup.reviewStagedBackupInMini(staged);
-        closeTransferModal();
-      } catch (err) {
-        toast('Error al revisar respaldo: ' + err.message);
-      }
+      renderBackupReview(transferId).catch(err => toast('Error al revisar respaldo: ' + err.message));
     }));
     body().querySelectorAll('[data-download-backup]').forEach(btn => btn.addEventListener('click', async () => {
       const transferId = btn.dataset.downloadBackup;

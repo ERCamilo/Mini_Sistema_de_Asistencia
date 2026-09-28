@@ -58,3 +58,17 @@ test('the Mini inbox heals itself: modal close, foreground return and a watchdog
   assert.match(refresh, /readyState/);
   assert.match(refresh, /activeTransferPeerId/);
 });
+
+test('received Mini backups are reviewed with cards, not raw JSON, and restore via the shared path', () => {
+  const review = between('async function renderBackupReview', 'async function renderBackupHub');
+  assert.match(review, /MiniBackupReview\.buildBackupReviewModel\(parsed, current\)/);
+  assert.match(review, /rosterMetric\('users', 'Empleados'/);
+  assert.match(review, /Qué cambiará en este Mini/);
+  assert.match(review, /data-download-current/);
+  assert.match(review, /root\.restoreMiniBackupData\(parsed, \{ stagedTransferId: transferId \}\)/);
+  assert.match(review, /showConfirm\(/);
+  assert.doesNotMatch(ui, /reviewStagedBackupInMini\(/, 'no entry point opens the JSON textarea anymore');
+  const html = require('node:fs').readFileSync(require.resolve('../index.html'), 'utf8');
+  assert.match(html, /<script src="\.\/mini-backup-review\.js"><\/script>/);
+  assert.match(require('node:fs').readFileSync(require.resolve('../sw.js'), 'utf8'), /'\.\/mini-backup-review\.js'/);
+});

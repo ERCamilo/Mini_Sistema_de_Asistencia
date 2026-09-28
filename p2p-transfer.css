@@ -387,3 +387,25 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
   .mini-welcome, .mini-welcome-wave { animation: none; }
   .mini-welcome-wave { stroke-dashoffset: 0; }
 }
+
+/* ---- Received Mini backup review (renderBackupReview) ---- */
+.mini-backup-compare { display: grid; gap: 8px; }
+.mini-backup-compare h4 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+.mini-backup-compare ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.mini-backup-compare-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); }
+.mini-backup-compare-row strong { display: block; font-size: 12.5px; color: var(--text-color); }
+.mini-backup-compare-row div > span { font-size: 12px; line-height: 1.4; color: var(--text-muted); }
+.mini-backup-compare-row b { color: var(--accent-color); }
+.mini-backup-compare-row.is-info .mini-roster-metric-icon { color: var(--accent-color); }
+.mini-backup-compare-row.is-danger { border-color: var(--danger-color); }
+.mini-backup-compare-row.is-danger .mini-roster-metric-icon { color: var(--danger-color); }
+.mini-roster-notice.is-danger { border-color: var(--danger-color); color: var(--danger-color); }
+.mini-roster-notice.is-danger span { color: var(--text-muted); }
+.mini-p2p-link-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 6px; padding: 0 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--card-bg); color: var(--text-color); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.mini-p2p-link-btn:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.mini-backup-footer-actions { display: flex; gap: 8px; }
+.mini-p2p-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 520px) {
+  .mini-backup-review .mini-roster-footer { grid-template-columns: 1fr; }
+  .mini-backup-footer-actions > * { flex: 1; }
+}

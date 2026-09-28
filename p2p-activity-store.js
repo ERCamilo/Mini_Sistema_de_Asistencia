@@ -11,7 +11,7 @@
   const DETAIL_MAX_LENGTH = 280;
   const ACTIVITY_STORAGE_KEY = 'mini_p2p_activity_v1';
   const STAGED_STORAGE_KEY = 'mini_p2p_staged_roster_v1';
-  const ACTIVITY_TYPES = ['roster-staged', 'roster-applied', 'attendance-sent', 'peer-linked'];
+  const ACTIVITY_TYPES = ['roster-staged', 'roster-applied', 'attendance-sent', 'peer-linked', 'backup-sent', 'backup-staged', 'backup-restored'];
 
   function normalizePeerId(value) {
     const peerId = String(value ?? '').trim();
