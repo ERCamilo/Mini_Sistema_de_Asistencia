@@ -372,6 +372,7 @@
 
   function handleNetworkOnline() {
     expireStalePresence();
+    startMiniBackupInbox().catch(() => {});
     if (passiveInboxStarted) {
       identityStore.listPeers().then(peers => {
         const saPeers = (peers || []).filter(p => p.peerApp === 'sa');
@@ -1681,11 +1682,13 @@
     }
 
     const background = options.background === true;
+    const expectedOffer = options.expectedOffer || null;
     const receiver = core.createTransferReceiver({
       channel,
       onProgress: progress => {
         activeTransferPeerId = peer?.peerId || null;
         refreshMiniP2PHeader().catch(() => {});
+        try { options.onProgress?.(progress); } catch (_) {}
         if (background) return;
         const box = body()?.querySelector('[data-receive-state]') || body()?.querySelector('[data-wait-status]');
         if (box) box.textContent = 'Recibiendo respaldo… ' + Math.round(progress * 100) + '%';
@@ -1693,12 +1696,15 @@
       onError: error => {
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
+        try { options.onFailed?.(boundedUserSafeError(error)); } catch (_) {}
         if (!background) renderError(error);
       },
       onComplete: result => {
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
-        stageReceivedBackup(result, peer, channel, { background });
+        // A consented receiver admits exactly one transfer; the next needs a new offer.
+        if (expectedOffer) detach();
+        stageReceivedBackup(result, peer, channel, { background, onStaged: options.onStaged, onFailed: options.onFailed });
       }
     });
 
@@ -1712,6 +1718,13 @@
             return;
           }
           if (parsed && parsed.protocol === core.TRANSFER_PROTOCOL && parsed.type === 'start') {
+            if (expectedOffer && !root.P2PBackupConsent.matchesOffer(expectedOffer, parsed)) {
+              const mismatch = new Error('La transferencia no coincide con el respaldo aceptado.');
+              detach();
+              try { options.onFailed?.(mismatch.message); } catch (_) {}
+              core.revokeChannel(channel, mismatch);
+              return;
+            }
             activeTransferPeerId = peer?.peerId || null;
             refreshMiniP2PHeader().catch(() => {});
           }
@@ -1878,9 +1891,176 @@
       return passivePeerListeners.get(peerId) || entry;
     }
   }
+  // ---- Passive Mini <-> Mini backup inbox (backup-only, consent first) ----
+  // Linked Minis listen in the background for backup *offers*. Nothing is
+  // transferred until this user accepts in a notice; roster/attendance are never
+  // bound to same-app peers.
+  const MINI_BACKUP_BACKOFF_MS = [1500, 5000, 15000, 30000, 60000];
+  const OFFER_DECISION_MS = 85000;
+  const miniBackupListeners = new Map();
+
+  function isMiniBackupPeer(peer) {
+    return !!peer && peer.peerApp === 'mini' && peer.purpose === 'backup' && !!peer.linkToken;
+  }
+
+  function notices() {
+    return root.MiniNotice && typeof root.MiniNotice.show === 'function' ? root.MiniNotice : null;
+  }
+
+  function backupSizeLabel(size) {
+    try { return root.SaMiniP2PBackup.formatBackupSize(size); } catch (_) { return Math.round(size / 1024) + ' KB'; }
+  }
+
+  function openStagedBackupReview(transferId) {
+    const bridge = root.SaMiniP2PBackup;
+    const staged = bridge?.backupStagedStore?.getStaged(transferId);
+    if (!staged) { toast('El respaldo ya no está disponible.'); return; }
+    try {
+      bridge.reviewStagedBackupInMini(staged);
+      if (isTransferModalOpen()) closeTransferModal();
+    } catch (err) {
+      toast('Error al revisar respaldo: ' + err.message);
+    }
+  }
+
+  function receiveNoticeHooks(notice, senderLabel) {
+    return {
+      onProgress: progress => notice?.update({
+        state: 'progress', title: 'Recibiendo respaldo', progress,
+        description: Math.round(progress * 100) + '% · de ' + senderLabel, actions: []
+      }),
+      onStaged: record => notice?.update({
+        state: 'success', title: 'Respaldo recibido', progress: 1,
+        description: 'Verificado. Revisalo antes de restaurar; todavía no se aplicó nada.',
+        actions: [{ label: 'Revisar', tone: 'primary', onSelect: () => { notice.dismiss(); openStagedBackupReview(record.transferId); } }]
+      }),
+      onFailed: reason => notice?.update({
+        state: 'error', title: 'Respaldo no recibido', description: String(reason || 'La transferencia se interrumpió.'), actions: [], duration: 7000
+      })
+    };
+  }
+
+  function promptIncomingBackup(peer, offer, respond, channel, entry) {
+    const center = notices();
+    const senderLabel = offer.senderName || peerName(peer);
+    if (!center) { respond(false); return; }
+    let decided = false;
+    const decide = accepted => {
+      if (decided) return;
+      decided = true;
+      clearTimeout(expiry);
+      if (!accepted) {
+        respond(false);
+        notice.update({ state: 'info', title: 'Respaldo rechazado', description: 'No se recibió nada de ' + senderLabel + '.', actions: [], duration: 2500 });
+        return;
+      }
+      try { entry.detachReceiver?.(); } catch (_) {}
+      entry.detachReceiver = armBackupReceiver(channel, peer, { background: true, expectedOffer: offer, ...receiveNoticeHooks(notice, senderLabel) });
+      notice.update({ state: 'loading', title: 'Preparando recepción', description: 'Esperando datos de ' + senderLabel + '…', actions: [] });
+      respond(true);
+    };
+    const notice = center.show({
+      id: 'backup-offer-' + offer.offerId,
+      state: 'action',
+      title: 'Respaldo entrante',
+      description: senderLabel + ' quiere enviarte un respaldo (' + backupSizeLabel(offer.size) + '). Lo revisás antes de restaurar.',
+      actions: [
+        { label: 'Rechazar', tone: 'secondary', onSelect: () => decide(false) },
+        { label: 'Aceptar', tone: 'primary', onSelect: () => decide(true) }
+      ]
+    });
+    const expiry = setTimeout(() => {
+      if (decided) return;
+      decided = true;
+      respond(false);
+      notice.update({ state: 'info', title: 'Oferta vencida', description: 'No respondiste a tiempo; no se recibió nada.', actions: [], duration: 3000 });
+    }, OFFER_DECISION_MS);
+  }
+
+  function stopMiniBackupListener(peerId) {
+    const key = String(peerId || '').trim();
+    const entry = miniBackupListeners.get(key);
+    if (!entry) return false;
+    entry.stopped = true;
+    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
+    try { entry.detachOffers?.(); } catch (_) {}
+    try { entry.detachReceiver?.(); } catch (_) {}
+    try { entry.session?.close?.(); } catch (_) {}
+    miniBackupListeners.delete(key);
+    return true;
+  }
+
+  function scheduleMiniBackupRetry(peer, attempt) {
+    const peerId = String(peer?.peerId || '').trim();
+    const entry = miniBackupListeners.get(peerId);
+    if (!entry || entry.stopped || !isNetworkOnline()) return;
+    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
+    const index = Math.min(attempt, MINI_BACKUP_BACKOFF_MS.length - 1);
+    entry.retryTimer = setTimeout(() => {
+      const current = miniBackupListeners.get(peerId);
+      if (!current || current.stopped) return;
+      miniBackupListeners.delete(peerId);
+      ensureMiniBackupListener(peer, Math.min(attempt + 1, MINI_BACKUP_BACKOFF_MS.length - 1)).catch(() => {});
+    }, MINI_BACKUP_BACKOFF_MS[index]);
+  }
+
+  async function ensureMiniBackupListener(peer, attempt = 0) {
+    if (!isMiniBackupPeer(peer) || !isNetworkOnline()) return null;
+    const peerId = String(peer.peerId).trim();
+    if (activeManualPeerId && activeManualPeerId === peerId) return null;
+    const existing = miniBackupListeners.get(peerId);
+    if (existing && !existing.stopped) return existing;
+    const entry = { peer, session: null, retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
+    miniBackupListeners.set(peerId, entry);
+    const retry = () => {
+      if (entry.stopped) return;
+      try { entry.detachOffers?.(); } catch (_) {}
+      try { entry.session?.close?.(); } catch (_) {}
+      scheduleMiniBackupRetry(peer, attempt);
+    };
+    try {
+      const self = await identityStore.getSelf();
+      const route = await core.deriveTrustedRoute(peer.linkToken);
+      const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
+      entry.session = await core.createRtcSession({
+        signaling, initiator: false,
+        onState: (status, error) => {
+          if (error || status === 'disconnected' || status === 'failed' || status === 'closed') retry();
+        },
+        onChannel: channel => {
+          if (entry.stopped) { try { channel?.close?.(); } catch (_) {} return; }
+          pairing.attachTrusted(channel, {
+            self, peer, store: identityStore, allowSameApp: true,
+            onAuthenticated: () => {
+              attempt = 0;
+              entry.detachOffers = root.P2PBackupConsent.listenForOffers(channel, core, (offer, respond) => {
+                promptIncomingBackup(peer, offer, respond, channel, entry);
+              });
+            },
+            onError: retry
+          });
+        }
+      });
+      if (entry.stopped) { try { entry.session?.close?.(); } catch (_) {} }
+      return entry;
+    } catch (_) {
+      retry();
+      return entry;
+    }
+  }
+
+  async function startMiniBackupInbox() {
+    if (!isNetworkOnline()) return 0;
+    let peers = [];
+    try { peers = (await identityStore.listPeers()).filter(isMiniBackupPeer); } catch (_) { return 0; }
+    for (const peer of peers) ensureMiniBackupListener(peer, 0).catch(() => {});
+    return peers.length;
+  }
+
   async function startPassiveInbox() {
     passiveInboxStarted = true;
     if (!isNetworkOnline()) return 0;
+    startMiniBackupInbox().catch(() => {});
     let peers = [];
     try { peers = (await identityStore.listPeers()).filter(p => p.peerApp === 'sa'); }
     catch (_) { return 0; }
@@ -2073,11 +2253,14 @@
         } else {
           renderHome();
         }
+      } else if (typeof options.onStaged === 'function') {
+        options.onStaged(stagedRecord, display);
       } else {
         toast('Respaldo de ' + display + ' listo en Respaldos P2P.');
       }
     } catch (error) {
       const reason = boundedUserSafeError(error);
+      try { options.onFailed?.(reason); } catch (_) {}
       try {
         bridge.sendBackupRejectedAck(channel, {
           transferId: result.transferId,
@@ -2092,6 +2275,7 @@
 
   async function renderBackupHub() {
     cleanupSession();
+    startMiniBackupInbox().catch(() => {});
     shell();
     const self = await identityStore.getSelf();
     const allPeers = await identityStore.listPeers();
@@ -2134,11 +2318,11 @@
               <strong>${esc(peerName(peer))}</strong>
               <span class="mini-p2p-peer-pill is-online">${typeLabel}</span>
             </div>
-            <div class="mini-p2p-peer-meta">${originalLine}</div>
+            <div class="mini-p2p-peer-meta">${isMini ? 'Recibe respaldos automáticamente' : ''}${originalLine}</div>
           </div>
           <div class="mini-p2p-device-actions">
             ${uiButton('Enviar', `data-send-backup="${esc(peer.peerId)}" aria-label="Enviar respaldo a ${esc(peerName(peer))}"`, 'primary', 'backup')}
-            ${uiButton('Esperar', `data-wait-backup="${esc(peer.peerId)}" aria-label="Esperar respaldo de ${esc(peerName(peer))}"`, 'secondary', 'inbox')}
+            ${isMini ? '' : uiButton('Esperar', `data-wait-backup="${esc(peer.peerId)}" aria-label="Esperar respaldo de ${esc(peerName(peer))}"`, 'secondary', 'inbox')}
             <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink-backup="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
           </div>
         </div>`;
@@ -2212,6 +2396,7 @@
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
       try { stopPeerListener(peerId); } catch (_) {}
+      stopMiniBackupListener(peerId);
       try { await refreshMiniP2PHeader(); } catch (_) {}
       renderBackupHub();
     }));
@@ -2316,6 +2501,10 @@
 
   async function sendBackupToPeer(peerId, customPayload = null) {
     cleanupSession();
+    // Our own passive listener sits in the same trusted room; leave it so this
+    // active session is the only one here while we send.
+    activeManualPeerId = String(peerId || '').trim();
+    stopMiniBackupListener(peerId);
     shell();
     const self = await identityStore.getSelf();
     const peer = await identityStore.getPeer(peerId);
@@ -2334,11 +2523,23 @@
         </div>`;
     });
 
-    const handleCancel = () => { cleanupSession(); renderBackupHub(); };
+    const center = notices();
+    let sendNotice = null;
+    const handleCancel = () => { sendNotice?.dismiss(); cleanupSession(); renderBackupHub(); };
     body().querySelector('[data-back]').addEventListener('click', handleCancel);
     body().querySelector('[data-cancel-send]').addEventListener('click', handleCancel);
 
-    const payload = customPayload || await root.SaMiniP2PBackup.createMiniBackupPayload();
+    let payload;
+    try {
+      payload = customPayload || await root.SaMiniP2PBackup.createMiniBackupPayload();
+    } catch (err) {
+      const box = body()?.querySelector('[data-backup-send-status]');
+      if (box) { box.classList.add('is-error'); box.textContent = err.message || String(err); }
+      activeManualPeerId = null;
+      startMiniBackupInbox().catch(() => {});
+      return;
+    }
+    sendNotice = center?.show({ id: 'backup-send-' + peer.peerId, state: 'loading', title: 'Conectando', description: 'Buscando a ' + partnerName + '…' }) || null;
 
     const route = await core.deriveTrustedRoute(peer.linkToken);
     const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
@@ -2364,12 +2565,26 @@
           allowSameApp: peer.peerApp === self.appType,
           onAuthenticated: async () => {
             const liveBox = body()?.querySelector('[data-backup-send-status]');
-            if (liveBox) liveBox.textContent = 'Autenticado. Enviando respaldo…';
+            if (liveBox) liveBox.textContent = 'Esperando que ' + partnerName + ' acepte el respaldo…';
+            sendNotice?.update({ state: 'loading', title: 'Esperando aceptación', description: partnerName + ' debe aceptar el respaldo (' + backupSizeLabel(payload.size) + ').' });
 
             try {
               const bridge = root.SaMiniP2PBackup;
               if (!bridge || typeof bridge.sendBackupOnChannel !== 'function') {
                 throw new Error('Módulo de respaldos P2P no disponible.');
+              }
+              // SA does not speak backup-offer yet: SA peers keep the direct transfer.
+              const decision = peer.peerApp !== 'mini' ? 'accepted' : await root.P2PBackupConsent.requestConsent(channel, core, {
+                offerId: root.P2PBackupConsent.createOfferId(),
+                schema: 'mini-backup/v1',
+                size: payload.size,
+                senderName: String(self.displayName || 'Mini').slice(0, 80)
+              });
+              if (decision !== 'accepted') {
+                const why = decision === 'declined' ? partnerName + ' rechazó el respaldo.'
+                  : decision === 'timeout' ? partnerName + ' no respondió a tiempo.'
+                  : 'Se perdió la conexión con ' + partnerName + '.';
+                throw new Error(why);
               }
               const { transfer, ack } = await bridge.sendBackupOnChannel(channel, {
                 bytes: payload.bytes,
@@ -2377,8 +2592,10 @@
                 onProgress: progress => {
                   const curBox = body()?.querySelector('[data-backup-send-status]');
                   if (curBox) curBox.textContent = 'Enviando respaldo… ' + Math.round(progress * 100) + '%';
+                  sendNotice?.update({ state: 'progress', title: 'Enviando respaldo', progress, description: Math.round(progress * 100) + '% · a ' + partnerName });
                 }
               });
+              sendNotice?.update({ state: 'success', title: 'Respaldo enviado', progress: 1, description: partnerName + ' lo recibió y verificó.' });
 
               if (liveBox) {
                 liveBox.classList.remove('is-error');
@@ -2392,6 +2609,20 @@
                 liveBox.classList.add('is-error');
                 liveBox.textContent = 'Error al enviar respaldo: ' + (err.message || err);
               }
+              sendNotice?.update({ state: 'error', title: 'Respaldo no enviado', description: String(err.message || err), duration: 7000 });
+            } finally {
+              // Leave the trusted room before our passive listener rejoins it,
+              // so the room never holds more than the two linked devices.
+              const finished = activeSession;
+              setTimeout(() => {
+                if (activeSession === finished) {
+                  try { finished?.close?.(); } catch (_) {}
+                  activeSession = null;
+                  activeChannel = null;
+                }
+                activeManualPeerId = null;
+                startMiniBackupInbox().catch(() => {});
+              }, 1500);
             }
           },
           onError: err => {
@@ -2408,6 +2639,8 @@
 
   async function waitBackupTransfer(peerId) {
     cleanupSession();
+    activeManualPeerId = String(peerId || '').trim();
+    stopMiniBackupListener(peerId);
     shell();
     const self = await identityStore.getSelf();
     const peer = await identityStore.getPeer(peerId);
@@ -2454,7 +2687,19 @@
           allowSameApp: peer.peerApp === self.appType,
           onAuthenticated: () => {
             const box = body()?.querySelector('[data-wait-status]');
-            activeBackupReceiverDetach = armBackupReceiver(channel, peer, { background: false });
+            if (peer.peerApp !== 'mini') {
+              // SA sends directly (no offer); opening "Esperar" is the consent.
+              activeBackupReceiverDetach = armBackupReceiver(channel, peer, { background: false });
+            } else {
+            // The user opened "Esperar" for this peer: that is the consent.
+            const detachOffers = root.P2PBackupConsent.listenForOffers(channel, core, (offer, respond) => {
+              try { activeBackupReceiverDetach?.(); } catch (_) {}
+              const receiverDetach = armBackupReceiver(channel, peer, { background: false, expectedOffer: offer });
+              activeBackupReceiverDetach = () => { detachOffers(); receiverDetach(); };
+              respond(true);
+            });
+            activeBackupReceiverDetach = detachOffers;
+            }
             if (box) {
               box.classList.remove('is-error');
               box.innerHTML = statusMessage('check', partnerName + ' autenticado', 'Esperando transmisión del respaldo…');
@@ -2628,6 +2873,7 @@
   root.MiniP2PAlias={isValidChosenMiniAlias, shortHeaderLabel, MINI_DEFAULT_ALIAS: 'Mini - Dispositivo'};
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
   root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
+  root.MiniP2PBackupInbox={ start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, listeners: miniBackupListeners };
   root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel, isPeerOnline, isNetworkOnline };
   root.MiniP2PPresence = { isPeerOnline, getPeerState: getPeerVisualState, getPresence: getPeerPresence, attach: attachPresence, detach: detachPresence, isNetworkOnline, expireStale: expireStalePresence, handleOffline: handleNetworkOffline, handleOnline: handleNetworkOnline, HEARTBEAT_MS: core.PRESENCE_HEARTBEAT_MS || 25000, TTL_MS: core.PRESENCE_TTL_MS || 60000, BACKOFF_SCHEDULE_MS: PASSIVE_BACKOFF_SCHEDULE_MS };
   root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };
