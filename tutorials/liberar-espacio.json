@@ -1,57 +1,52 @@
 {
   "id": "liberar-espacio",
   "version": 1,
-  "recordedAt": "2026-09-28T21:11:28.262Z",
-  "duration": 51.39,
+  "recordedAt": "2026-09-28T21:33:37.113Z",
+  "duration": 44.68,
   "captions": [
     {
-      "start": 1.9,
-      "end": 6.5,
-      "text": "Si Mini se llena, no puede guardar más asistencia. Así se libera espacio sin perder nada."
+      "start": 2.03,
+      "end": 6.63,
+      "text": "Con los meses, Mini acumula mucha asistencia. Archivá los meses viejos en un archivo, sin perder nada."
     },
     {
-      "start": 6.5,
-      "end": 9.6,
+      "start": 6.63,
+      "end": 9.73,
       "text": "1 · Abrí \"Más\"."
     },
     {
-      "start": 9.6,
-      "end": 12.61,
+      "start": 9.73,
+      "end": 12.73,
       "text": "2 · Entrá a \"Datos\"."
     },
     {
-      "start": 12.61,
-      "end": 16.66,
+      "start": 12.73,
+      "end": 16.77,
       "text": "3 · Primero guardá un \"Respaldo completo\"."
     },
     {
-      "start": 16.66,
-      "end": 20.28,
+      "start": 16.77,
+      "end": 20.34,
       "text": "4 · Tocá \"Archivar meses antiguos\"."
     },
     {
-      "start": 20.28,
-      "end": 27.26,
+      "start": 20.34,
+      "end": 27.31,
       "text": "5 · Elegí cuántos meses mantener en el celular. Recomendado: 3."
     },
     {
-      "start": 27.26,
-      "end": 33.21,
+      "start": 27.31,
+      "end": 33.27,
       "text": "6 · Tocá \"Guardar archivo y archivar\": se descarga un archivo con los meses viejos."
     },
     {
-      "start": 33.21,
-      "end": 38.29,
+      "start": 33.27,
+      "end": 38.27,
       "text": "7 · Con el archivo guardado, confirmá \"Archivar\"."
     },
     {
-      "start": 38.29,
-      "end": 44.99,
-      "text": "8 · Volvé a \"Ajustes\" y tocá \"Liberar espacio\" para ver el uso."
-    },
-    {
-      "start": 44.99,
-      "end": 51.29,
+      "start": 38.27,
+      "end": 44.58,
       "text": "¡Listo! Si algún día necesitás esos meses, restaurá el archivo desde \"Datos\"."
     }
   ]

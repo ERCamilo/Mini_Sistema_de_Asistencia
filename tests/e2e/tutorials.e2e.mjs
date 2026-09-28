@@ -55,6 +55,7 @@ test('a new device opens "Marcar asistencia" once, right after the welcome scree
     assert.equal(await page.textContent('#tutorials-title'), 'Marcar asistencia');
     assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('tutorialsSeen'))), ['marcar-asistencia']);
     await page.evaluate(() => closeModal('modal-tutorials'));
+    await page.waitForTimeout(500); // let the back-navigation guard settle before reloading
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(1500);
     assert.equal(await page.isVisible('#modal-tutorials.active'), false, 'only the first time');
