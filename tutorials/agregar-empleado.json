@@ -1,0 +1,43 @@
+{
+  "id": "agregar-empleado",
+  "version": 1,
+  "recordedAt": "2026-09-28T21:08:26.975Z",
+  "duration": 31.98,
+  "captions": [
+    {
+      "start": 1.33,
+      "end": 4.27,
+      "text": "Sumá a una persona nueva a la lista en segundos."
+    },
+    {
+      "start": 4.27,
+      "end": 7.65,
+      "text": "1 · Tocá el botón \"+\" de abajo."
+    },
+    {
+      "start": 7.65,
+      "end": 10.67,
+      "text": "2 · Elegí \"Manual\"."
+    },
+    {
+      "start": 10.67,
+      "end": 17.12,
+      "text": "3 · Escribí su nombre y su cargo. El número se sugiere solo."
+    },
+    {
+      "start": 17.12,
+      "end": 20.28,
+      "text": "4 · Tocá \"Guardar Empleado\"."
+    },
+    {
+      "start": 20.28,
+      "end": 26.96,
+      "text": "5 · Ya aparece en \"Asistencia\": marcalo presente."
+    },
+    {
+      "start": 26.96,
+      "end": 31.88,
+      "text": "¡Listo! Para corregir sus datos, tocalo en \"Empleados\"."
+    }
+  ]
+}

@@ -89,3 +89,11 @@ test('service worker precaches the production coordinator', () => {
   assert.match(serviceWorker, /'\.\/roster-package\.js'/);
   assert.match(serviceWorker, /'\.\/field-requests\.js'/);
 });
+
+test('"Manual" opens one add-employee form that suggests the next number (no duplicate override)', () => {
+  const html = require('node:fs').readFileSync(require.resolve('../index.html'), 'utf8');
+  const definitions = html.match(/function openAddUserModal\(|window\.openAddUserModal\s*=/g) || [];
+  assert.equal(definitions.length, 1, 'a second definition silently replaces the first one');
+  const body = html.slice(html.indexOf('function openAddUserModal('), html.indexOf('function openCalendar('));
+  assert.match(body, /getElementById\('user-number'\)\.value = window\.EmployeeNumberRules\.getNextEmployeeNumber\(users\)/);
+});
