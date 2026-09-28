@@ -21,9 +21,11 @@ test('starts migration in the background and reads the authoritative snapshot', 
 });
 
 test('saveData keeps the legacy mirror and queues one atomic IndexedDB snapshot', () => {
-  const saveData = html.slice(html.indexOf('function saveData()'), html.indexOf('function getRecord'));
+  const saveData = html.slice(html.indexOf('function saveData('), html.indexOf('function getRecord'));
   assert.match(saveData, /writeLegacyMirror\(captureLocalSnapshot\(\)\)/);
   assert.match(saveData, /queueLocalSnapshot\(\)/);
+  // A failed mirror write (quota) must not skip the IndexedDB snapshot.
+  assert.ok(saveData.indexOf('queueLocalSnapshot()') > saveData.indexOf('} catch (error) {'));
   assert.match(html, /localDb\.writeState\(snapshot\)/);
   assert.match(html, /MiniLocalDb\.isEnabled\(localStorage\)/);
 });

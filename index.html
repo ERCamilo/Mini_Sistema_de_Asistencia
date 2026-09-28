@@ -3291,6 +3291,7 @@
         </button>
     </nav>
 
+    <script src="./local-date.js"></script>
     <script src="./icon-set.js"></script>
     <script src="./check-cycle.js"></script>
     <script src="./employee-number-rules.js"></script>
@@ -3332,7 +3333,7 @@
         let editingRequestTemplateId = null;
         let currentFilter = 'all';
         let currentView = 'attendance';
-        let selectedDate = new Date().toISOString().split('T')[0];
+        let selectedDate = window.LocalDate.toLocalDateKey();
         let currentWeekStart = new Date();
         let selectedUserId = null;
         let calendarDate = new Date();
@@ -3737,7 +3738,7 @@
         }
 
         function checkAndNotify() {
-            const today = new Date().toISOString().split('T')[0];
+            const today = window.LocalDate.toLocalDateKey();
             const records = attendanceData[today] || {};
             const hasAnyRecord = Object.keys(records).length > 0;
 
@@ -3911,10 +3912,22 @@
             }
         }
 
-        function saveData() {
+        function isStorageQuotaError(error) {
+            return !!error && (error.name === 'QuotaExceededError' || error.code === 22);
+        }
+
+        function saveData({ quiet = false } = {}) {
             localDataRevision += 1;
-            writeLegacyMirror(captureLocalSnapshot());
-            fieldRequestsRepository.save(requests, requestTemplates);
+            try {
+                writeLegacyMirror(captureLocalSnapshot());
+                fieldRequestsRepository.save(requests, requestTemplates);
+            } catch (error) {
+                // Keep going: the IndexedDB snapshot below must still capture the change.
+                console.warn('No se pudo actualizar la copia en localStorage.', error);
+                if (isStorageQuotaError(error) && !quiet) {
+                    showToast('Almacenamiento casi lleno. Exportá un respaldo y liberá espacio.');
+                }
+            }
             queueLocalSnapshot();
             updateDashboard();
         }
@@ -3925,13 +3938,25 @@
 
         function setRecord(uid, status, hours) {
             const emp = users.find(u => u.id === uid) || { id: uid, name: '', number: '' };
-            attendanceCoordinator.recordAttendance(emp, selectedDate, status, hours);
+            try {
+                attendanceCoordinator.recordAttendance(emp, selectedDate, status, hours);
+            } catch (error) {
+                console.error('No se pudo guardar la asistencia.', error);
+                // Re-sync mirror + IndexedDB with whatever actually reached storage.
+                attendanceData = attendanceRepository.getAll();
+                saveData({ quiet: true });
+                showToast(isStorageQuotaError(error)
+                    ? 'No se guardó: el almacenamiento está lleno. Exportá un respaldo y liberá espacio.'
+                    : 'No se pudo guardar la asistencia. Intentá de nuevo.');
+                return false;
+            }
             attendanceData = attendanceRepository.getAll();
 
             const now = new Date();
             lastActionTime = now.toLocaleTimeString('es-ES', { hour: 'numeric', minute: '2-digit', hour12: true });
 
             saveData();
+            return true;
         }
 
         function shareToWhatsApp() {
@@ -4184,10 +4209,7 @@
         }
 
         function changeDay(offset) {
-            const [y, m, d] = selectedDate.split('-');
-            const date = new Date(y, m - 1, d);
-            date.setDate(date.getDate() + offset);
-            selectedDate = date.toISOString().split('T')[0];
+            selectedDate = window.LocalDate.shiftLocalDateKey(selectedDate, offset);
             updateDashboard();
         }
 
@@ -7261,10 +7283,7 @@
                 return;
             }
 
-            const now = new Date();
-            const cutoffDate = new Date();
-            cutoffDate.setDate(now.getDate() - 30);
-            const cutoffStr = cutoffDate.toISOString().split('T')[0];
+            const cutoffStr = window.LocalDate.shiftLocalDateKey(window.LocalDate.toLocalDateKey(), -30);
 
             const filteredAttendance = {};
             for (const d in attendanceData) {
