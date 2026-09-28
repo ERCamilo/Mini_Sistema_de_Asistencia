@@ -4019,9 +4019,31 @@
             openModal('modal-tutorials');
         };
 
+        function markTutorialSeen(id) {
+            try { localStorage.setItem(window.Tutorials.SEEN_KEY, window.Tutorials.markSeen(localStorage.getItem(window.Tutorials.SEEN_KEY), id)); } catch (_) { /* best effort */ }
+        }
+
+        // New device: the welcome screen shows up and closes -> open the first tutorial once.
+        function watchFirstRunTutorial(attempt = 0, welcomeShown = false) {
+            const welcomeOpen = !!(window.MiniWelcome && window.MiniWelcome.isOpen());
+            if (welcomeOpen) { setTimeout(() => watchFirstRunTutorial(attempt + 1, true), 500); return; }
+            if (!welcomeShown) {
+                // The gate opens a moment after boot; stop looking after ~8 s.
+                if (attempt < 16) setTimeout(() => watchFirstRunTutorial(attempt + 1, false), 500);
+                return;
+            }
+            const id = window.Tutorials.firstRunTutorial({
+                welcomeShown,
+                seenRaw: localStorage.getItem(window.Tutorials.SEEN_KEY),
+                blocked: !!activeBigModal || !!document.querySelector('.modal.active')
+            });
+            if (id) setTimeout(() => window.openTutorial(id), 400);
+        }
+
         window.openTutorial = (id) => {
             const entry = window.Tutorials.find(id);
             if (!entry) return;
+            markTutorialSeen(id);
             document.getElementById('tutorials-title').textContent = entry.title;
             document.getElementById('tutorials-subtitle').textContent = entry.summary;
             document.getElementById('tutorials-list-view').hidden = true;
@@ -4208,6 +4230,7 @@
             initLocalPersistence();
             installBackNavigation();
             maybePromptStorageHelp();
+            watchFirstRunTutorial();
         }
 
         // --- SISTEMA DE TEMAS ---

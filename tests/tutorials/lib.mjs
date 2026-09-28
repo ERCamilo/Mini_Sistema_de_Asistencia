@@ -134,6 +134,8 @@ async function prepareDevice(browser, base, tutorial) {
     const page = await context.newPage();
     await page.goto(base + 'manifest.json');
     if (tutorial.seed) await page.evaluate(tutorial.seed.fn, tutorial.seed.arg ?? null);
+    // Recorded devices are not "first run": the auto-opened tutorial would cover the app.
+    await page.evaluate(() => localStorage.setItem('tutorialsSeen', JSON.stringify(['marcar-asistencia'])));
     await page.goto(base, { waitUntil: 'networkidle' });
     await page.fill('#mini-welcome-name', 'Mini Obra Norte');
     await page.click('.mini-welcome-submit');

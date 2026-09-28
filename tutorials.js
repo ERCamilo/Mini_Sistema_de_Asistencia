@@ -98,8 +98,29 @@
         }
         return length ? { ok: true } : { ok: false, index: 0, expected: null, recorded: null };
     }
+    // First run: a device that just went through the welcome screen is new.
+    const FIRST_RUN_TUTORIAL = 'marcar-asistencia';
+    const SEEN_KEY = 'tutorialsSeen';
+    function parseSeen(raw) {
+        try {
+            const parsed = JSON.parse(raw || '[]');
+            return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
+        }
+        catch {
+            return [];
+        }
+    }
+    function markSeen(raw, id) {
+        const seen = parseSeen(raw);
+        return JSON.stringify(seen.includes(id) ? seen : [...seen, id]);
+    }
+    function firstRunTutorial(input) {
+        if (!input.welcomeShown || input.blocked)
+            return null;
+        return parseSeen(input.seenRaw).includes(FIRST_RUN_TUTORIAL) ? null : FIRST_RUN_TUTORIAL;
+    }
     function offlineKey(id, recordedAt) {
         return `${videoUrl(id)}?rec=${encodeURIComponent(recordedAt)}`;
     }
-    return { LIST, OFFLINE_CACHE, find, videoUrl, captionsUrl, stepNumber, spokenText, captionIndexAt, stepSegments, toVtt, compareScripts, offlineKey };
+    return { LIST, OFFLINE_CACHE, find, videoUrl, captionsUrl, stepNumber, spokenText, captionIndexAt, stepSegments, toVtt, compareScripts, offlineKey, FIRST_RUN_TUTORIAL, SEEN_KEY, parseSeen, markSeen, firstRunTutorial };
 });

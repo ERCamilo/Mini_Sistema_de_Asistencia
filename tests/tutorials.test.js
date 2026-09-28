@@ -125,3 +125,31 @@ test('closing a tutorial stops its video; back goes from the player to the list 
   const back = html.slice(html.indexOf('function resolveBackLayer'), html.indexOf('function installBackNavigation'));
   assert.ok(back.indexOf("tutorials-player-view") > -1 && back.indexOf("tutorials-player-view") < back.indexOf('if (activeBigModal) {'));
 });
+
+test('first run: after the welcome screen on a new device, "marcar-asistencia" opens once', () => {
+  assert.equal(Tutorials.FIRST_RUN_TUTORIAL, 'marcar-asistencia');
+  assert.equal(Tutorials.SEEN_KEY, 'tutorialsSeen');
+  const base = { welcomeShown: true, seenRaw: null, blocked: false };
+  assert.equal(Tutorials.firstRunTutorial(base), 'marcar-asistencia');
+  assert.equal(Tutorials.firstRunTutorial({ ...base, welcomeShown: false }), null, 'devices that already had a name are not new');
+  assert.equal(Tutorials.firstRunTutorial({ ...base, blocked: true }), null, 'never on top of another popup');
+  assert.equal(Tutorials.firstRunTutorial({ ...base, seenRaw: '["marcar-asistencia"]' }), null, 'only once');
+});
+
+test('seen tutorials are a small JSON list that tolerates junk', () => {
+  assert.deepEqual(Tutorials.parseSeen(null), []);
+  assert.deepEqual(Tutorials.parseSeen('{oops'), []);
+  assert.deepEqual(Tutorials.parseSeen('[1,"a"]'), ['a']);
+  assert.equal(Tutorials.markSeen('["a"]', 'b'), '["a","b"]');
+  assert.equal(Tutorials.markSeen('["a"]', 'a'), '["a"]');
+});
+
+test('wiring: first-run tutorial waits for the welcome screen and records what was seen', () => {
+  const init = html.slice(html.indexOf('        function init() {'), html.indexOf('// --- SISTEMA DE TEMAS ---'));
+  assert.match(init, /watchFirstRunTutorial\(\);/);
+  const watch = html.slice(html.indexOf('function watchFirstRunTutorial'), html.indexOf('function watchFirstRunTutorial') + 1400);
+  assert.match(watch, /MiniWelcome\.isOpen\(\)/);
+  assert.match(watch, /Tutorials\.firstRunTutorial\(/);
+  const open = html.slice(html.indexOf('window.openTutorial = '), html.indexOf('window.saveTutorialsOffline'));
+  assert.match(open, /markTutorialSeen\(id\)/);
+});

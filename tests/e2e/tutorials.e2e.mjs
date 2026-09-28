@@ -32,13 +32,14 @@ for (const tutorial of await loadTutorials()) {
   });
 }
 
-async function namedPhone(seed) {
+async function namedPhone(seed, { firstRun = false } = {}) {
   const context = await browser.newContext({ viewport: PHONE, serviceWorkers: 'block' });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(base + 'manifest.json');
   if (seed) await page.evaluate(seed);
+  if (!firstRun) await page.evaluate(() => localStorage.setItem('tutorialsSeen', JSON.stringify(['marcar-asistencia'])));
   await page.evaluate(() => localStorage.setItem('storageHelpSnoozedUntil', String(Date.now() + 864e5)));
   await page.goto(base, { waitUntil: 'networkidle' });
   await page.fill('#mini-welcome-name', 'Mini E2E');
@@ -46,6 +47,22 @@ async function namedPhone(seed) {
   await page.waitForTimeout(300);
   return { context, page, errors };
 }
+
+test('a new device opens "Marcar asistencia" once, right after the welcome screen', { skip: DRAFT }, async () => {
+  const { context, page, errors } = await namedPhone(null, { firstRun: true });
+  try {
+    await page.waitForSelector('#modal-tutorials.active #tutorials-player-view:not([hidden])', { timeout: 5000 });
+    assert.equal(await page.textContent('#tutorials-title'), 'Marcar asistencia');
+    assert.deepEqual(JSON.parse(await page.evaluate(() => localStorage.getItem('tutorialsSeen'))), ['marcar-asistencia']);
+    await page.evaluate(() => closeModal('modal-tutorials'));
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(1500);
+    assert.equal(await page.isVisible('#modal-tutorials.active'), false, 'only the first time');
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
 
 test('Tutoriales menu: player shows captions below the video and a step bar that seeks', { skip: DRAFT }, async () => {
   const { context, page, errors } = await namedPhone();
