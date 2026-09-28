@@ -20,10 +20,10 @@ function loadBuildInfo() {
   return sandbox.window.MINI_BUILD_INFO;
 }
 
-test('package version is the human semantic version 2.13.0', () => {
-  assert.equal(pkg.version, '2.13.0');
-  assert.match(buildInfoSrc, /version:\s*"2\.13\.0"/);
-  assert.match(sw, /asistencia-v2\.13\.0/);
+test('package version is a human semantic version shared by build-info and the SW cache', () => {
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
+  assert.ok(buildInfoSrc.includes(`version: "${pkg.version}"`));
+  assert.ok(sw.includes(`asistencia-v${pkg.version}-`));
 });
 
 test('Settings/System shows a visible Mini version and build date', () => {
@@ -61,7 +61,7 @@ test('index.html loads build-info.js before the main inline app script', () => {
 });
 
 test('service worker uses a unique cache name and precaches build-info.js', () => {
-  assert.match(sw, /^const CACHE_VERSION = 'asistencia-v2\.13\.0-.+';/m);
+  assert.match(sw, /^const CACHE_VERSION = 'asistencia-v\d+\.\d+\.\d+-.+';/m);
   assert.match(sw, /'\.\/build-info\.js'/);
   // Offline behavior is preserved: install precache, old-cache cleanup, fetch handler.
   assert.match(sw, /self\.addEventListener\('install'/);
@@ -111,7 +111,7 @@ test('stamp script only rewrites generated stamp fields and is rerunnable', () =
 test('pre-commit hook stamps and stages ONLY the generated files', () => {
   assert.ok(existsSync(path.join(root, '.githooks/pre-commit')));
   assert.match(hookSrc, /node scripts\/stamp-build\.mjs/);
-  assert.match(hookSrc, /git add build-info\.js sw\.js/);
+  assert.match(hookSrc, /git add package\.json package-lock\.json build-info\.js sw\.js/);
   assert.doesNotMatch(hookSrc, /git commit/);
   assert.doesNotMatch(hookSrc, /git push/);
   assert.doesNotMatch(hookSrc, /git add -A/);
