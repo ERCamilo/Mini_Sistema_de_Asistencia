@@ -44,6 +44,13 @@
             return null;
         return options.state === 'error' ? 7000 : 4000;
     }
+    // Oldest first; notices waiting for a decision (Accept/Decline) are never dropped.
+    function pickOverflow(entries, max) {
+        const extra = entries.length - max;
+        if (extra <= 0)
+            return [];
+        return entries.filter(entry => !entry.needsDecision).slice(0, extra).map(entry => entry.id);
+    }
     function clampProgress(value) {
         const number = Number(value);
         if (!Number.isFinite(number))
@@ -297,13 +304,15 @@
                         return;
                     apply({ ...options, ...partial }, options);
                 },
+                needsDecision: () => !!(options.actions && options.actions.length),
                 dismiss
             };
         }
         function trimOverflow() {
-            const extra = [...notices.entries()].filter(([, notice]) => notice).slice(0, Math.max(0, notices.size - MAX_VISIBLE));
-            for (const [, notice] of extra)
-                notice.dismiss();
+            var _a;
+            const entries = [...notices.entries()].map(([id, notice]) => ({ id, needsDecision: notice.needsDecision() }));
+            for (const id of pickOverflow(entries, MAX_VISIBLE))
+                (_a = notices.get(id)) === null || _a === void 0 ? void 0 : _a.dismiss();
         }
         function show(options) {
             const id = options.id || `n${Date.now().toString(36)}${(counter += 1)}`;
@@ -340,6 +349,7 @@
     return {
         springStep,
         autoDismissMs,
+        pickOverflow,
         clampProgress,
         createNoticeCenter,
         show: (options) => center().show(options),

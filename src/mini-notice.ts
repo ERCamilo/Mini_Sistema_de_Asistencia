@@ -71,6 +71,13 @@ interface MiniNoticeHandle {
     return options.state === 'error' ? 7000 : 4000;
   }
 
+  // Oldest first; notices waiting for a decision (Accept/Decline) are never dropped.
+  function pickOverflow(entries: Array<{ id: string; needsDecision: boolean }>, max: number): string[] {
+    const extra = entries.length - max;
+    if (extra <= 0) return [];
+    return entries.filter(entry => !entry.needsDecision).slice(0, extra).map(entry => entry.id);
+  }
+
   function clampProgress(value: unknown): number {
     const number = Number(value);
     if (!Number.isFinite(number)) return 0;
@@ -318,13 +325,14 @@ interface MiniNoticeHandle {
           if (exiting) return;
           apply({ ...options, ...partial }, options);
         },
+        needsDecision: () => !!(options.actions && options.actions.length),
         dismiss
       };
     }
 
     function trimOverflow() {
-      const extra = [...notices.entries()].filter(([, notice]) => notice).slice(0, Math.max(0, notices.size - MAX_VISIBLE));
-      for (const [, notice] of extra) notice.dismiss();
+      const entries = [...notices.entries()].map(([id, notice]) => ({ id, needsDecision: notice.needsDecision() }));
+      for (const id of pickOverflow(entries, MAX_VISIBLE)) notices.get(id)?.dismiss();
     }
 
     function show(options: MiniNoticeOptions): MiniNoticeHandle {
@@ -363,6 +371,7 @@ interface MiniNoticeHandle {
   return {
     springStep,
     autoDismissMs,
+    pickOverflow,
     clampProgress,
     createNoticeCenter,
     show: (options: MiniNoticeOptions) => center().show(options),

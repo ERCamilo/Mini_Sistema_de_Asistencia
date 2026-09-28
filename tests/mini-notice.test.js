@@ -47,3 +47,16 @@ test('notice styles only use theme tokens and honor reduced motion', () => {
   assert.match(sw, /'\.\/mini-notice\.js'/);
   assert.match(sw, /'\.\/mini-notice\.css'/);
 });
+
+test('overflow trimming never drops a notice that is waiting for a decision', () => {
+  assert.deepEqual(
+    MiniNotice.pickOverflow([
+      { id: 'offer', needsDecision: true },
+      { id: 'a', needsDecision: false },
+      { id: 'b', needsDecision: false },
+      { id: 'c', needsDecision: false }
+    ], 3),
+    ['a']
+  );
+  assert.deepEqual(MiniNotice.pickOverflow([{ id: 'x', needsDecision: true }, { id: 'y', needsDecision: true }], 1), []);
+});
