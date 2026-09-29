@@ -63,9 +63,9 @@ test('wiring: header button, Sol colors, Apariencia options, module loaded and p
   assert.match(html, /id="quick-theme-b"[^>]*onchange="setQuickPair\(\)"/);
   assert.match(html, /<script src="\.\/theme-switch\.js"><\/script>/);
   assert.match(sw, /'\.\/theme-switch\.js'/);
-  const setTheme = html.slice(html.indexOf('        function setTheme(themeName) {'), html.indexOf('        function loadTheme() {'));
-  assert.match(setTheme, /statusBarColor\(/);
-  assert.match(setTheme, /renderQuickThemeButton\(\)/);
+  const applyTheme = html.slice(html.indexOf('        function applyTheme(themeName) {'), html.indexOf('        function setTheme(themeName) {'));
+  assert.match(applyTheme, /statusBarColor\(/);
+  assert.match(applyTheme, /renderQuickThemeButton\(\)/);
 });
 
 test('every light-theme override also covers Sol (active pills, buttons, FAB)', () => {
@@ -74,4 +74,16 @@ test('every light-theme override also covers Sol (active pills, buttons, FAB)', 
   for (const selector of lightRules) {
     assert.ok(html.includes(`[data-theme="sol"] ${selector}`), 'Sol lacks: ' + selector);
   }
+});
+
+test('settings the user changes while the app boots survive the startup restore', () => {
+  const save = html.slice(html.indexOf('        function saveLocalSetting(key, value) {'), html.indexOf('        function applyLocalSnapshot(snapshot) {'));
+  assert.match(save, /settingsChangedThisSession\.add\(key\)/);
+  const load = html.slice(html.indexOf('        function loadTheme() {'), html.indexOf('        function loadData() {'));
+  assert.match(load, /applyTheme\(/);
+  assert.doesNotMatch(load, /setTheme\(/, 'reading the saved theme must not count as a user change');
+  const apply = html.slice(html.indexOf('        function applyLocalSnapshot(snapshot) {'), html.indexOf('        async function initLocalPersistence'));
+  assert.match(apply, /settingsChangedThisSession\.has\(key\)/);
+  const init = html.slice(html.indexOf('        async function initLocalPersistence'), html.indexOf('        function isStorageQuotaError'));
+  assert.match(init, /if \(settingsChangedThisSession\.size\) queueLocalSnapshot\(\);/);
 });

@@ -69,3 +69,27 @@ test('Apariencia: the chosen pair drives the button; two equal themes are refuse
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+
+test('a setting changed while storage is still starting is not undone by the startup restore', async () => {
+  const { context, page, errors } = await namedDevice(null);
+  try {
+    await page.click('#btn-theme-quick'); // Original -> Sol, saved in the local snapshot too
+    await page.waitForTimeout(1500);
+    // A slow phone: storage takes 1.5 s to open, so the next tap lands mid-boot.
+    await page.addInitScript(() => {
+      let md;
+      Object.defineProperty(window, 'MiniData', { configurable: true, get: () => md, set: v => { const open = v.openIdbBackend; v.openIdbBackend = async (...a) => { await new Promise(r => setTimeout(r, 1500)); return open(...a); }; md = v; } });
+    });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.click('#btn-theme-quick'); // Sol -> Original, while booting
+    assert.equal(await page.evaluate(() => usingMiniDataV2()), false, 'the tap really happened mid-boot');
+    assert.equal(await theme(page), 'dark');
+    await page.waitForTimeout(3000);
+    assert.equal(await theme(page), 'dark', 'the startup restore must not undo it');
+    assert.equal(await page.evaluate(() => localStorage.getItem('appTheme')), 'dark');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForTimeout(2500);
+    assert.equal(await theme(page), 'dark', 'and it is what the snapshot keeps');
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});

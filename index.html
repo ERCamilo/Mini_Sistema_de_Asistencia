@@ -4426,14 +4426,19 @@
         }
 
         // --- SISTEMA DE TEMAS ---
-        function setTheme(themeName) {
+        // Shows a theme without saving it (used at boot for the saved one).
+        function applyTheme(themeName) {
             themeName = window.ThemeSwitch.normalizeTheme(themeName);
             document.documentElement.setAttribute('data-theme', themeName);
-            saveLocalSetting('appTheme', themeName);
             markActiveTheme(themeName);
             const meta = document.querySelector('meta[name="theme-color"]');
             if (meta) meta.setAttribute('content', window.ThemeSwitch.statusBarColor(themeName));
             renderQuickThemeButton();
+            return themeName;
+        }
+
+        function setTheme(themeName) {
+            saveLocalSetting('appTheme', applyTheme(themeName));
         }
 
         function quickPair() {
@@ -4485,8 +4490,7 @@
         };
 
         function loadTheme() {
-            const savedTheme = localStorage.getItem('appTheme') || 'dark';
-            setTheme(savedTheme);
+            applyTheme(localStorage.getItem('appTheme') || 'dark');
             renderQuickPairOptions();
         }
 
@@ -4563,7 +4567,12 @@
                 });
         }
 
+        // Settings the user changed in this session: the boot restore of the
+        // local snapshot must not undo them (a tap during a slow start).
+        const settingsChangedThisSession = new Set();
+
         function saveLocalSetting(key, value) {
+            settingsChangedThisSession.add(key);
             localStorage.setItem(key, value);
             localDataRevision += 1;
             queueLocalSnapshot();
@@ -4580,6 +4589,7 @@
             if (Array.isArray(snapshot.requests)) requests = snapshot.requests;
             if (Array.isArray(snapshot.templates)) requestTemplates = snapshot.templates;
             BACKUP_SETTINGS_KEYS.forEach(key => {
+                if (settingsChangedThisSession.has(key)) return;
                 if (typeof snapshot.settings[key] === 'string') {
                     localStorage.setItem(key, snapshot.settings[key]);
                 } else {
@@ -4604,6 +4614,7 @@
                     await localDb.writeState(captureDbSnapshot());
                 }
                 localDbReady = true;
+                if (settingsChangedThisSession.size) queueLocalSnapshot();
                 if (localDataRevision === startingRevision) {
                     ({ users, pendingConflict: pendingEmployeeConflict } =
                         initializeEmployeeNumberState(users));
