@@ -3472,7 +3472,7 @@
             </div>
             <div id="confirm-message" style="font-size:14px;color:var(--text-color);line-height:1.4;text-align:center;margin-bottom:8px;"></div>
             <button type="button" class="btn-full btn-danger" id="confirm-ok" onclick="resolveConfirm(true)">Confirmar</button>
-            <button type="button" class="btn-full btn-secondary" onclick="resolveConfirm(false)">Cancelar</button>
+            <button type="button" class="btn-full btn-secondary" id="confirm-cancel" onclick="resolveConfirm(false)">Cancelar</button>
         </div>
     </div>
 
@@ -3501,6 +3501,7 @@
     </nav>
 
     <script src="./local-date.js"></script>
+    <script src="./report-send-guard.js"></script>
     <script src="./storage-maintenance.js"></script>
     <script src="./attendance-archive.js"></script>
     <script src="./storage-help.js"></script>
@@ -3689,6 +3690,7 @@
                 const btn = document.getElementById('confirm-ok');
                 btn.textContent = o.confirmText || 'Confirmar';
                 btn.className = 'btn-full ' + (o.danger === false ? 'btn-primary' : 'btn-danger');
+                document.getElementById('confirm-cancel').textContent = o.cancelText || 'Cancelar';
                 openModal('modal-confirm');
             });
         }
@@ -4675,7 +4677,27 @@
             return true;
         }
 
-        function shareToWhatsApp() {
+        // Before sending: warn when the day is unusual (older than yesterday,
+        // older than a month, or in the future). The message itself is sent by
+        // sendWhatsAppReport() unchanged: its format is imported elsewhere.
+        async function shareToWhatsApp() {
+            const todayKey = window.LocalDate.toLocalDateKey();
+            const check = window.ReportSendGuard.classify(selectedDate, todayKey);
+            const [y, m, d] = selectedDate.split('-');
+            const label = new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+            const ask = window.ReportSendGuard.prompt(check, label);
+            if (ask) {
+                const ok = await showConfirm(ask.message, ask);
+                if (!ok) {
+                    selectedDate = todayKey;
+                    updateDashboard();
+                    return;
+                }
+            }
+            sendWhatsAppReport();
+        }
+
+        function sendWhatsAppReport() {
             const records = attendanceData[selectedDate] || {};
             const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
             const presentUsers = contextUsers.filter(u => records[u.id]).sort((a, b) => parseInt(a.number) - parseInt(b.number));
