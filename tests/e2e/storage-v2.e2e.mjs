@@ -179,3 +179,90 @@ test('when the old IndexedDB snapshot is the newest copy, the migration uses it'
     await context.close();
   }
 });
+
+async function confirmStorageToggle(page) {
+  await page.evaluate(() => { switchView('more'); setMoreTab('settings'); });
+  await page.click('#btn-storage-mode');
+  await page.click('#modal-confirm.active #confirm-ok');
+  await page.waitForLoadState('load');
+  await page.waitForFunction(() => typeof usingMiniDataV2 === 'function' && document.querySelector('#users-container'));
+  await page.waitForTimeout(800);
+}
+
+test('Ajustes: back to the old storage and forward again, keeping every mark (round trip)', async () => {
+  const { context, page, errors } = await device();
+  try {
+    await page.goto(base + 'manifest.json');
+    const days = await page.evaluate(seedV1, { months: 2, employees: 5 });
+    await openApp(page);
+    assert.equal(await page.evaluate(() => usingMiniDataV2()), true);
+    await page.evaluate(() => { switchView('more'); setMoreTab('settings'); });
+    assert.match(await page.textContent('#storage-mode-hint'), new RegExp(days + ' días'));
+
+    await confirmStorageToggle(page);
+    assert.equal(await page.evaluate(() => usingMiniDataV2()), false, 'now on v1');
+    assert.equal(await page.evaluate(() => Object.keys(attendanceRepository.getAll()).length), days, 'every day is back in v1');
+    assert.equal(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('attendance'))).length), days);
+
+    // A mark made while on v1 must survive going back to v2.
+    await page.evaluate(() => { switchView('attendance'); });
+    await page.click('.user-card:nth-child(1) .check-box');
+    await page.waitForTimeout(300);
+
+    await confirmStorageToggle(page);
+    assert.equal(await page.evaluate(() => usingMiniDataV2()), true, 'v2 again');
+    assert.equal(await page.evaluate(() => Object.keys(attendanceRepository.getAll()).length), days + 1);
+    assert.equal(await page.evaluate(() => (getRecord('u0') || {}).hours), 8, 'the v1 mark made it to v2');
+    assert.equal(await page.evaluate(() => localStorage.getItem('attendance')), null);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('if the data does not fit in the old storage, Mini stays on v2 and loses nothing', async () => {
+  const { context, page } = await device();
+  try {
+    await page.goto(base + 'manifest.json');
+    await page.evaluate(seedV1, { months: 14, employees: 60 });
+    await openApp(page);
+    // Grow v2 beyond what localStorage can hold (~5 MB).
+    const total = await page.evaluate(async () => {
+      const extra = {};
+      for (let m = 1; m <= 12; m++) for (let d = 1; d <= 26; d++) {
+        const date = `2019-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        extra[date] = {};
+        for (let i = 0; i < 60; i++) extra[date]['u' + i] = { status: 'present', hours: 8 };
+      }
+      attendanceRepository.importBatch(extra, 'merge');
+      await new Promise(r => setTimeout(r, 1500));
+      return Object.keys(attendanceRepository.getAll()).length;
+    });
+    await confirmStorageToggle(page);
+    assert.equal(await page.evaluate(() => usingMiniDataV2()), true, 'stays on v2');
+    assert.equal(await page.evaluate(() => Object.keys(attendanceRepository.getAll()).length), total, 'nothing lost');
+    assert.equal(await page.evaluate(k => localStorage.getItem(k), 'miniDataV2'), null, 'the flag was cleared');
+    assert.equal(await page.evaluate(() => localStorage.getItem('attendance')), null, 'no half copy left in localStorage');
+  } finally {
+    await context.close();
+  }
+});
+
+test('with v2, a tap no longer rewrites the whole attendance into the old snapshot', async () => {
+  const { context, page, errors } = await device();
+  try {
+    await page.goto(base + 'manifest.json');
+    await page.evaluate(seedV1, { months: 2, employees: 5 });
+    await openApp(page);
+    await page.waitForTimeout(800);
+    await page.click('.user-card:nth-child(2) .check-box');
+    await page.waitForTimeout(1200);
+    const snap = await page.evaluate(async () => { const s = await localDb.readState(); return s ? Object.keys(s.attendance || {}).length : null; });
+    assert.equal(snap, 0);
+    const backup = await page.evaluate(() => Object.keys(captureLocalSnapshot().attendance).length);
+    assert.ok(backup > 0, 'backups still include the attendance');
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
