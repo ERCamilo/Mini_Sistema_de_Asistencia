@@ -13,6 +13,8 @@
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="icon" type="image/svg+xml" href="icon.svg">
     <link rel="manifest" href="manifest.json">
+    <!-- Theme before first paint (no flash). Same list as ThemeSwitch.THEMES. -->
+    <script>try { var savedTheme = localStorage.getItem('appTheme'); if (/^(dark|light|contrast|ocean|sol)$/.test(savedTheme || '')) document.documentElement.setAttribute('data-theme', savedTheme); } catch (e) { /* default theme */ }</script>
     <link rel="stylesheet" href="./p2p-transfer.css">
     <link rel="stylesheet" href="./mini-notice.css">
 
@@ -86,6 +88,30 @@
             --input-bg: #0f172a;
             --nav-bg: rgba(15, 23, 42, 0.95);
         }
+
+        /* Tema Sol: para trabajar al aire libre (máximo contraste sobre blanco) */
+        [data-theme="sol"] {
+            --bg-color: #ffffff;
+            --card-bg: #ffffff;
+            --accent-color: #0033cc;
+            --text-color: #000000;
+            --text-muted: #262626;
+            --border-color: #000000;
+            --success-color: #006b2e;
+            --danger-color: #b00000;
+            --warning-color: #8a4b00;
+            --extra-color: #0033cc;
+            --whatsapp-color: #006b2e;
+            --input-bg: #ffffff;
+            --nav-bg: #ffffff;
+        }
+
+        [data-theme="sol"] body { font-weight: 500; }
+        [data-theme="sol"] .user-card,
+        [data-theme="sol"] .check-box,
+        [data-theme="sol"] .search-input,
+        [data-theme="sol"] .export-option,
+        [data-theme="sol"] .modal-content { border-width: 2px; }
 
         * {
             margin: 0;
@@ -219,6 +245,26 @@
             transform: scale(0.95);
         }
 
+        .header-theme-btn {
+            width: 44px;
+            min-height: 44px;
+            flex: none;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--card-bg);
+            color: var(--accent-color);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            transition: transform .15s ease;
+        }
+        .header-theme-btn:active { transform: scale(.92); }
+        .quick-theme-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .quick-theme-pair select { min-height: 44px; cursor: pointer; }
+        html.theme-switching, html.theme-switching * { transition: background-color .35s ease, color .35s ease, border-color .35s ease !important; }
+
         .header-p2p-link {
             margin-left: auto;
             min-height: 44px;
@@ -306,7 +352,8 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
 
-        [data-theme="light"] .view-btn.active {
+        [data-theme="light"] .view-btn.active,
+        [data-theme="sol"] .view-btn.active {
             color: white;
         }
 
@@ -995,7 +1042,8 @@
             background: var(--accent-color);
         }
 
-        [data-theme="light"] .fab-add {
+        [data-theme="light"] .fab-add,
+        [data-theme="sol"] .fab-add {
             color: white;
             background: var(--accent-color);
         }
@@ -1674,7 +1722,8 @@
             transform: translateX(-50%) scale(0.9);
         }
 
-        [data-theme="light"] .nav-fab {
+        [data-theme="light"] .nav-fab,
+        [data-theme="sol"] .nav-fab {
             color: #fff;
         }
 
@@ -1950,7 +1999,8 @@
         }
         [data-theme="dark"] .category-pill.active,
         [data-theme="ocean"] .category-pill.active,
-        [data-theme="light"] .category-pill.active {
+        [data-theme="light"] .category-pill.active,
+        [data-theme="sol"] .category-pill.active {
             color: #fff;
         }
         [data-theme="contrast"] .category-pill.active {
@@ -2265,7 +2315,8 @@
         }
         [data-theme="dark"] .req-ans-btn.active-opt,
         [data-theme="ocean"] .req-ans-btn.active-opt,
-        [data-theme="light"] .req-ans-btn.active-opt {
+        [data-theme="light"] .req-ans-btn.active-opt,
+        [data-theme="sol"] .req-ans-btn.active-opt {
             color: #fff;
         }
         .req-details-toggle {
@@ -2390,6 +2441,7 @@
 <body>
 
     <div class="top-nav">
+        <button type="button" class="header-theme-btn" id="btn-theme-quick" onclick="toggleQuickTheme()" aria-label="Cambiar tema" title="Cambiar tema"><span class="ic" data-icon="sun"></span></button>
         <div class="app-title" id="section-title">Asistencia</div>
         <button type="button" class="header-p2p-link" id="btn-attendance-link" data-p2p-state="unlinked" data-p2p-header-state="unlinked" onclick="openP2PTransferModal()" aria-label="SA no vinculado. Abrir Transferencias para vincular SA u otro Mini" title="SA no vinculado">
             <span class="header-p2p-ring" aria-hidden="true">
@@ -2586,6 +2638,16 @@
                     <div class="theme-preview" style="background:#0f172a; border-color:#38bdf8;"></div>
                     <span>Océano</span>
                 </button>
+                <button type="button" class="theme-btn" data-theme-name="sol" onclick="setTheme('sol')">
+                    <div class="theme-preview" style="background:#ffffff; border-color:#000000; border-width:2px;"></div>
+                    <span>Sol (exterior)</span>
+                </button>
+            </div>
+            <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin:18px 0 6px;">Botón rápido de arriba</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">Un toque cambia entre estos dos temas.</div>
+            <div class="quick-theme-pair">
+                <select id="quick-theme-a" class="search-input" aria-label="Primer tema del botón rápido" onchange="setQuickPair()"></select>
+                <select id="quick-theme-b" class="search-input" aria-label="Segundo tema del botón rápido" onchange="setQuickPair()"></select>
             </div>
             <div style="font-size:13px;color:var(--text-muted);font-weight:600;margin:18px 0 10px;">Estilo de íconos</div>
             <div class="theme-options">
@@ -3410,7 +3472,7 @@
             </div>
             <div id="confirm-message" style="font-size:14px;color:var(--text-color);line-height:1.4;text-align:center;margin-bottom:8px;"></div>
             <button type="button" class="btn-full btn-danger" id="confirm-ok" onclick="resolveConfirm(true)">Confirmar</button>
-            <button type="button" class="btn-full btn-secondary" onclick="resolveConfirm(false)">Cancelar</button>
+            <button type="button" class="btn-full btn-secondary" id="confirm-cancel" onclick="resolveConfirm(false)">Cancelar</button>
         </div>
     </div>
 
@@ -3439,6 +3501,7 @@
     </nav>
 
     <script src="./local-date.js"></script>
+    <script src="./report-send-guard.js"></script>
     <script src="./storage-maintenance.js"></script>
     <script src="./attendance-archive.js"></script>
     <script src="./storage-help.js"></script>
@@ -3446,6 +3509,7 @@
     <script src="./tutorials.js"></script>
     <script src="./tutorial-player.js"></script>
     <script src="./icon-set.js"></script>
+    <script src="./theme-switch.js"></script>
     <script src="./check-cycle.js"></script>
     <script src="./employee-number-rules.js"></script>
     <script src="./employee-number-modal.js"></script>
@@ -3626,6 +3690,7 @@
                 const btn = document.getElementById('confirm-ok');
                 btn.textContent = o.confirmText || 'Confirmar';
                 btn.className = 'btn-full ' + (o.danger === false ? 'btn-primary' : 'btn-danger');
+                document.getElementById('confirm-cancel').textContent = o.cancelText || 'Cancelar';
                 openModal('modal-confirm');
             });
         }
@@ -4363,15 +4428,72 @@
         }
 
         // --- SISTEMA DE TEMAS ---
-        function setTheme(themeName) {
+        // Shows a theme without saving it (used at boot for the saved one).
+        function applyTheme(themeName) {
+            themeName = window.ThemeSwitch.normalizeTheme(themeName);
             document.documentElement.setAttribute('data-theme', themeName);
-            saveLocalSetting('appTheme', themeName);
             markActiveTheme(themeName);
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.setAttribute('content', window.ThemeSwitch.statusBarColor(themeName));
+            renderQuickThemeButton();
+            return themeName;
         }
 
+        function setTheme(themeName) {
+            saveLocalSetting('appTheme', applyTheme(themeName));
+        }
+
+        function quickPair() {
+            return window.ThemeSwitch.parsePair(localStorage.getItem(window.ThemeSwitch.PAIR_KEY));
+        }
+
+        // The header button shows where it goes (sun = to a light theme, moon = to a dark one).
+        function renderQuickThemeButton() {
+            const btn = document.getElementById('btn-theme-quick');
+            if (!btn) return;
+            const target = window.ThemeSwitch.nextTheme(document.documentElement.getAttribute('data-theme'), quickPair());
+            const label = 'Cambiar a tema ' + window.ThemeSwitch.label(target);
+            btn.setAttribute('aria-label', label);
+            btn.title = label;
+            btn.innerHTML = '<span class="ic" data-icon="' + window.ThemeSwitch.iconFor(target) + '"></span>';
+            applyIcons(btn);
+        }
+
+        window.toggleQuickTheme = () => {
+            const next = window.ThemeSwitch.nextTheme(document.documentElement.getAttribute('data-theme'), quickPair());
+            const root = document.documentElement;
+            root.classList.add('theme-switching');
+            setTheme(next);
+            setTimeout(() => root.classList.remove('theme-switching'), 400);
+            try { if (navigator.vibrate) navigator.vibrate(12); } catch (_) { /* optional */ }
+            showToast('Tema: ' + window.ThemeSwitch.label(next));
+        };
+
+        function renderQuickPairOptions() {
+            const [a, b] = quickPair();
+            const options = window.ThemeSwitch.THEMES.map(t => '<option value="' + t + '">' + window.ThemeSwitch.label(t) + '</option>').join('');
+            const selA = document.getElementById('quick-theme-a');
+            const selB = document.getElementById('quick-theme-b');
+            if (!selA || !selB) return;
+            selA.innerHTML = options; selB.innerHTML = options;
+            selA.value = a; selB.value = b;
+        }
+
+        window.setQuickPair = () => {
+            const a = document.getElementById('quick-theme-a').value;
+            const b = document.getElementById('quick-theme-b').value;
+            if (a === b) {
+                showToast('Elegí dos temas distintos para el botón rápido.');
+                renderQuickPairOptions();
+                return;
+            }
+            saveLocalSetting(window.ThemeSwitch.PAIR_KEY, JSON.stringify([a, b]));
+            renderQuickThemeButton();
+        };
+
         function loadTheme() {
-            const savedTheme = localStorage.getItem('appTheme') || 'dark';
-            setTheme(savedTheme);
+            applyTheme(localStorage.getItem('appTheme') || 'dark');
+            renderQuickPairOptions();
         }
 
         function loadData() {
@@ -4447,7 +4569,12 @@
                 });
         }
 
+        // Settings the user changed in this session: the boot restore of the
+        // local snapshot must not undo them (a tap during a slow start).
+        const settingsChangedThisSession = new Set();
+
         function saveLocalSetting(key, value) {
+            settingsChangedThisSession.add(key);
             localStorage.setItem(key, value);
             localDataRevision += 1;
             queueLocalSnapshot();
@@ -4464,6 +4591,7 @@
             if (Array.isArray(snapshot.requests)) requests = snapshot.requests;
             if (Array.isArray(snapshot.templates)) requestTemplates = snapshot.templates;
             BACKUP_SETTINGS_KEYS.forEach(key => {
+                if (settingsChangedThisSession.has(key)) return;
                 if (typeof snapshot.settings[key] === 'string') {
                     localStorage.setItem(key, snapshot.settings[key]);
                 } else {
@@ -4488,6 +4616,7 @@
                     await localDb.writeState(captureDbSnapshot());
                 }
                 localDbReady = true;
+                if (settingsChangedThisSession.size) queueLocalSnapshot();
                 if (localDataRevision === startingRevision) {
                     ({ users, pendingConflict: pendingEmployeeConflict } =
                         initializeEmployeeNumberState(users));
@@ -4548,7 +4677,27 @@
             return true;
         }
 
-        function shareToWhatsApp() {
+        // Before sending: warn when the day is unusual (older than yesterday,
+        // older than a month, or in the future). The message itself is sent by
+        // sendWhatsAppReport() unchanged: its format is imported elsewhere.
+        async function shareToWhatsApp() {
+            const todayKey = window.LocalDate.toLocalDateKey();
+            const check = window.ReportSendGuard.classify(selectedDate, todayKey);
+            const [y, m, d] = selectedDate.split('-');
+            const label = new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+            const ask = window.ReportSendGuard.prompt(check, label);
+            if (ask) {
+                const ok = await showConfirm(ask.message, ask);
+                if (!ok) {
+                    selectedDate = todayKey;
+                    updateDashboard();
+                    return;
+                }
+            }
+            sendWhatsAppReport();
+        }
+
+        function sendWhatsAppReport() {
             const records = attendanceData[selectedDate] || {};
             const contextUsers = window.workContextManager ? window.workContextManager.filterEmployees(users) : users;
             const presentUsers = contextUsers.filter(u => records[u.id]).sort((a, b) => parseInt(a.number) - parseInt(b.number));
