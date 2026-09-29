@@ -526,6 +526,9 @@ interface AttExportHandlerContext {
       if (!hasPresent && !includeRosterCoverage) continue;
 
       const emp = empMap.get(empId) || { id: empId, name: empId, number: '' };
+      // Paused employees with no mark that day are not reported (no 0h rows in SA).
+      // If they did work, the row below still carries their hours.
+      if (!hasPresent && emp.paused) continue;
 
       const empProject = emp.saProjectId ? normalizeAttendanceSubmissionId(emp.saProjectId) : '';
       if (empProject && empProject !== saProjectId) {

@@ -254,17 +254,13 @@ test('range: produces one canonical submission per workDate without mutating fro
 });
 
 
-test('connected coverage preserves 16h total and declares paused/unmarked roster state', () => {
-  const { attRepo, empRepo } = makeSetup();
-  attRepo.setRecord('mini-u1', '2026-09-06', 'present', 16);
-  empRepo.setPaused('mini-u4', true);
-
-  const response = AttendanceExport.handleAttendanceRequest({
+function coverageRequest(attRepo, empRepo, date = '2026-09-06') {
+  return AttendanceExport.handleAttendanceRequest({
     schema: 'attendance-request/v1',
     requestId: 'req-coverage-state',
     saProjectId: SA_PROJECT,
-    fromDate: '2026-09-06',
-    toDate: '2026-09-06'
+    fromDate: date,
+    toDate: date
   }, {
     channel: new FakeChannel(),
     peer: { peerId: 'sa-device-1', peerApp: 'sa' },
@@ -277,7 +273,14 @@ test('connected coverage preserves 16h total and declares paused/unmarked roster
     rosterVersion: ROSTER_VERSION,
     expectedHours: 8
   });
+}
 
+test('connected coverage preserves 16h total; paused employees without marks are not sent (no 0h rows)', () => {
+  const { attRepo, empRepo } = makeSetup();
+  attRepo.setRecord('mini-u1', '2026-09-06', 'present', 16);
+  empRepo.setPaused('mini-u4', true);
+
+  const response = coverageRequest(attRepo, empRepo);
   assert.equal(response.submissions.length, 1);
   const submission = response.submissions[0];
   assert.equal(submission.coverageMode, 'linked-roster-full');
@@ -285,10 +288,21 @@ test('connected coverage preserves 16h total and declares paused/unmarked roster
   assert.deepEqual({ normal: ana.normalHours, overtime: ana.overtimeHours, status: ana.status, roster: ana.rosterStatus }, {
     normal: 8, overtime: 8, status: 'present', roster: 'active'
   });
+  assert.equal(submission.rows.find(row => row.saEmployeeId === 'EMP-004'), undefined, 'paused + unmarked: omitted');
+  assert.ok(submission.rows.every(row => row.rosterStatus !== 'paused'));
+
+  // A day with no marks: the active employee is still reported as unmarked; the paused one is not.
+  const empty = coverageRequest(attRepo, empRepo, '2026-09-08').submissions[0];
+  assert.deepEqual(empty.rows.map(row => [row.saEmployeeId, row.status, row.rosterStatus]), [['EMP-001', 'unmarked', 'active']]);
+});
+
+test('a paused employee who still worked that day is sent with their hours', () => {
+  const { attRepo, empRepo } = makeSetup();
+  empRepo.setPaused('mini-u4', true);
+  attRepo.setRecord('mini-u4', '2026-09-06', 'present', 6);
+  const submission = coverageRequest(attRepo, empRepo).submissions[0];
   const elena = submission.rows.find(row => row.saEmployeeId === 'EMP-004');
-  assert.deepEqual({ normal: elena.normalHours, overtime: elena.overtimeHours, status: elena.status, roster: elena.rosterStatus }, {
-    normal: 0, overtime: 0, status: 'unmarked', roster: 'paused'
-  });
+  assert.deepEqual({ normal: elena.normalHours, status: elena.status, roster: elena.rosterStatus }, { normal: 6, status: 'present', roster: 'paused' });
 });
 
 // 3. Project mismatch: fails closed when requested saProjectId does not match Mini project identity
