@@ -247,6 +247,24 @@ type MiniDataMigrationResult =
     }
   }
 
+  async function isVerified(backend: MiniDataBackend): Promise<boolean> {
+    const all = await backend.readAll();
+    return !!(all.meta.migration && all.meta.migration.state === 'verified');
+  }
+
+  // Rollback ("volver al almacenamiento anterior"): the current v2 data, in v1 shape.
+  async function exportAttendance(backend: MiniDataBackend): Promise<{ attendance: MiniDataDays; tombstonesRaw: string | null }> {
+    const all = await backend.readAll();
+    const attendance: MiniDataDays = {};
+    Object.keys(all.days).sort().forEach(date => { attendance[date] = all.days[date]; });
+    return { attendance, tombstonesRaw: typeof all.meta.attendanceTombstones === 'string' ? all.meta.attendanceTombstones : null };
+  }
+
+  // After a rollback v1 is the source again; enabling v2 later migrates from it anew.
+  async function markRolledBack(backend: MiniDataBackend, at = new Date().toISOString()): Promise<void> {
+    await backend.write({ puts: [], deletes: [], meta: { migration: { state: 'rolled-back', at } } });
+  }
+
   // After v2 is verified and active: free the ~5 MB of attendance in localStorage.
   function releaseV1(storage: MiniDataKeyValue) {
     V1_KEYS.forEach(key => storage.removeItem?.(key));
@@ -263,5 +281,5 @@ type MiniDataMigrationResult =
     };
   }
 
-  return { DB_NAME, FLAG_KEY, isEnabled, diffDays, createMemoryBackend, openIdbBackend, createDayStorage, migrateFromV1, releaseV1, createSwitchableStorage };
+  return { DB_NAME, FLAG_KEY, isEnabled, diffDays, createMemoryBackend, openIdbBackend, createDayStorage, migrateFromV1, releaseV1, createSwitchableStorage, isVerified, exportAttendance, markRolledBack };
 });

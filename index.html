@@ -2855,6 +2855,13 @@
                                 <div style="font-size: 12px; color: var(--text-muted);" id="storage-usage-hint">Borra copias duplicadas sin tocar tu asistencia</div>
                             </div>
                         </button>
+                        <button type="button" class="export-option" id="btn-storage-mode" onclick="toggleStorageMode()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
+                            <div>
+                                <div style="font-weight: 600;" id="storage-mode-title">Dónde se guardan los datos</div>
+                                <div style="font-size: 12px; color: var(--text-muted);" id="storage-mode-hint">Revisando…</div>
+                            </div>
+                        </button>
                         <button type="button" class="export-option" onclick="clearCacheAndReload()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
                             <div>
@@ -4234,10 +4241,42 @@
             showToast('No se pudo guardar en el celular. Se reintenta con la próxima marca; si sigue, exportá un respaldo.');
         }
 
+        // "Volver al almacenamiento anterior": copy the v2 days back to v1 first.
+        // v1 is localStorage (~5 MB): if the data does not fit, stay on v2.
+        async function rollbackToV1(backend) {
+            if (!await window.MiniData.isVerified(backend)) return true;
+            const { attendance, tombstonesRaw } = await window.MiniData.exportAttendance(backend);
+            try {
+                localStorage.setItem('attendance', JSON.stringify(attendance));
+                if (tombstonesRaw !== null) localStorage.setItem('attendance_tombstones', tombstonesRaw);
+            } catch (error) {
+                localStorage.removeItem('attendance');
+                localStorage.removeItem(window.MiniData.FLAG_KEY);
+                console.warn('Mini: los datos no entran en el almacenamiento anterior; se mantiene IndexedDB.', error);
+                setTimeout(() => showToast('Tus datos no entran en el almacenamiento anterior. Mini sigue usando el nuevo.'), 1500);
+                return false;
+            }
+            if (window.MiniLocalDb.isEnabled(localStorage)) {
+                try {
+                    const stored = await localDb.readState();
+                    if (stored) await localDb.writeState({ ...stored, attendance });
+                } catch (error) {
+                    console.warn('Mini: no se pudo actualizar la copia anterior en IndexedDB.', error);
+                }
+            }
+            await window.MiniData.markRolledBack(backend);
+            return true;
+        }
+        // --- END ROLLBACK ---
+
         async function bootStorage() {
-            if (!window.MiniData.isEnabled(localStorage) || !window.indexedDB) return;
+            if (!window.indexedDB) return;
             try {
                 const backend = await window.MiniData.openIdbBackend(window.indexedDB);
+                if (!window.MiniData.isEnabled(localStorage)) {
+                    const rolledBack = await rollbackToV1(backend);
+                    if (rolledBack) return;
+                }
                 const result = await window.MiniData.migrateFromV1({ backend, readSource: readV1AttendanceSource });
                 if (result.status === 'failed') {
                     console.warn('Mini sigue con el almacenamiento anterior: ' + result.reason);
@@ -4257,6 +4296,39 @@
             }
         }
         // --- END STORAGE V2 BOOT ---
+
+        function renderStorageMode() {
+            const title = document.getElementById('storage-mode-title');
+            const hint = document.getElementById('storage-mode-hint');
+            if (!title || !hint) return;
+            const days = Object.keys(attendanceData || {}).length;
+            if (usingMiniDataV2()) {
+                title.textContent = 'Datos: almacenamiento nuevo (IndexedDB)';
+                hint.textContent = days + ' días guardados, sin límite de 5 MB. Tocá para volver al anterior.';
+            } else {
+                title.textContent = 'Datos: almacenamiento anterior';
+                hint.textContent = days + ' días guardados (límite ~5 MB). Tocá para usar el nuevo.';
+            }
+        }
+
+        window.toggleStorageMode = async () => {
+            const toV1 = usingMiniDataV2();
+            const message = toV1
+                ? 'Mini copiará tu asistencia al almacenamiento anterior (máx. ~5 MB) y se reiniciará. Si no entra, sigue con el nuevo. Te recomendamos guardar un respaldo antes. ¿Continuar?'
+                : 'Mini pasará tu asistencia al almacenamiento nuevo (sin límite de 5 MB), verificará cada día y se reiniciará. ¿Continuar?';
+            const ok = await showConfirm(message, { title: toV1 ? 'Volver al almacenamiento anterior' : 'Usar el almacenamiento nuevo', confirmText: toV1 ? 'Volver' : 'Usar el nuevo', danger: toV1 });
+            if (!ok) return;
+            try {
+                if (toV1) localStorage.setItem(window.MiniData.FLAG_KEY, 'off');
+                else localStorage.removeItem(window.MiniData.FLAG_KEY);
+            } catch (error) {
+                console.warn('Mini: no se pudo cambiar el almacenamiento.', error);
+                showToast('No se pudo cambiar el almacenamiento.');
+                return;
+            }
+            location.reload();
+        };
+        // --- END STORAGE MODE ---
 
         function init() {
             const today = new Date();
@@ -4287,6 +4359,7 @@
             installBackNavigation();
             maybePromptStorageHelp();
             watchFirstRunTutorial();
+            renderStorageMode();
         }
 
         // --- SISTEMA DE TEMAS ---
@@ -4348,6 +4421,14 @@
             };
         }
 
+        // Snapshot for the old full-copy database. With v2 the attendance lives in
+        // IndexedDB per day, so it is not rewritten here on every tap.
+        function captureDbSnapshot() {
+            const snapshot = captureLocalSnapshot();
+            if (usingMiniDataV2()) snapshot.attendance = {};
+            return snapshot;
+        }
+
         function writeLegacyMirror(snapshot) {
             localStorage.setItem('users', JSON.stringify(snapshot.users));
             if (!usingMiniDataV2()) localStorage.setItem('attendance', JSON.stringify(snapshot.attendance));
@@ -4356,7 +4437,7 @@
 
         function queueLocalSnapshot() {
             if (!localDbReady || !window.MiniLocalDb.isEnabled(localStorage)) return;
-            const snapshot = captureLocalSnapshot();
+            const snapshot = captureDbSnapshot();
             localDbWriteQueue = localDbWriteQueue
                 .then(() => localDb.writeState(snapshot))
                 .catch(error => {
@@ -4404,7 +4485,7 @@
                 if (localDataRevision === startingRevision) {
                     applyLocalSnapshot(stored);
                 } else {
-                    await localDb.writeState(captureLocalSnapshot());
+                    await localDb.writeState(captureDbSnapshot());
                 }
                 localDbReady = true;
                 if (localDataRevision === startingRevision) {
@@ -5751,6 +5832,7 @@
 
         window.setMoreTab = (tab) => {
             moreTab = tab;
+            renderStorageMode();
             document.querySelectorAll('#more-view .view-mode-pills .view-btn').forEach(b => {
                 b.classList.toggle('active', b.id === 'btn-more-tab-' + tab);
             });

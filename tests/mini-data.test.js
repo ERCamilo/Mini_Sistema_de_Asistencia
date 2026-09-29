@@ -196,3 +196,29 @@ test('AttendanceRepository works unchanged on top of the day storage', async () 
   assert.equal(repo2.getRecord('u1', '2026-09-02').hours, 10);
   await settle();
 });
+
+test('rollback: v2 days can be exported, and after a rollback the next enable migrates again', async () => {
+  const backend = spyBackend();
+  const readSource = async () => ({ attendanceRaw: JSON.stringify(v1), tombstonesRaw: '[]' });
+  await MiniData.migrateFromV1({ backend, readSource });
+  const storage = MiniData.createDayStorage({ backend, fallback: localStore() });
+  await storage.hydrate();
+  storage.setItem('attendance', JSON.stringify({ ...v1, '2026-09-04': day(6) }));
+  await storage.flush();
+
+  const exported = await MiniData.exportAttendance(backend);
+  assert.deepEqual(Object.keys(exported.attendance), ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04']);
+  assert.equal(exported.tombstonesRaw, '[]');
+
+  await MiniData.markRolledBack(backend, '2026-09-29T00:00:00.000Z');
+  assert.equal((await backend.inner.readAll()).meta.migration.state, 'rolled-back');
+  const again = await MiniData.migrateFromV1({ backend, readSource: async () => ({ attendanceRaw: JSON.stringify(exported.attendance), tombstonesRaw: '[]' }) });
+  assert.equal(again.status, 'migrated', 'turning v2 back on copies v1 (which may have new marks) again');
+});
+
+test('isVerified tells whether a device has v2 data', async () => {
+  const backend = spyBackend();
+  assert.equal(await MiniData.isVerified(backend), false);
+  await MiniData.migrateFromV1({ backend, readSource: async () => ({ attendanceRaw: null, tombstonesRaw: null }) });
+  assert.equal(await MiniData.isVerified(backend), true);
+});

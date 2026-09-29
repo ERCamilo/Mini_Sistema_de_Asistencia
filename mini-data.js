@@ -242,6 +242,21 @@
             return failed(error instanceof Error ? error.message : String(error));
         }
     }
+    async function isVerified(backend) {
+        const all = await backend.readAll();
+        return !!(all.meta.migration && all.meta.migration.state === 'verified');
+    }
+    // Rollback ("volver al almacenamiento anterior"): the current v2 data, in v1 shape.
+    async function exportAttendance(backend) {
+        const all = await backend.readAll();
+        const attendance = {};
+        Object.keys(all.days).sort().forEach(date => { attendance[date] = all.days[date]; });
+        return { attendance, tombstonesRaw: typeof all.meta.attendanceTombstones === 'string' ? all.meta.attendanceTombstones : null };
+    }
+    // After a rollback v1 is the source again; enabling v2 later migrates from it anew.
+    async function markRolledBack(backend, at = new Date().toISOString()) {
+        await backend.write({ puts: [], deletes: [], meta: { migration: { state: 'rolled-back', at } } });
+    }
     // After v2 is verified and active: free the ~5 MB of attendance in localStorage.
     function releaseV1(storage) {
         V1_KEYS.forEach(key => { var _a; return (_a = storage.removeItem) === null || _a === void 0 ? void 0 : _a.call(storage, key); });
@@ -256,5 +271,5 @@
             current: () => target
         };
     }
-    return { DB_NAME, FLAG_KEY, isEnabled, diffDays, createMemoryBackend, openIdbBackend, createDayStorage, migrateFromV1, releaseV1, createSwitchableStorage };
+    return { DB_NAME, FLAG_KEY, isEnabled, diffDays, createMemoryBackend, openIdbBackend, createDayStorage, migrateFromV1, releaseV1, createSwitchableStorage, isVerified, exportAttendance, markRolledBack };
 });

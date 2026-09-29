@@ -17,8 +17,23 @@
     function createAttendanceRepository(options) {
         const storage = options.storage;
         const nowFn = options.now || defaultNow;
-        function loadAttendance() {
+        // Read cache: the history is parsed once and reused until the stored string
+        // changes. Only read functions use it, and they always return copies.
+        let cachedRaw;
+        let cachedView = {};
+        function readView() {
             const raw = storage.getItem(STORAGE_KEY_ATTENDANCE);
+            if (raw !== cachedRaw) {
+                cachedView = parseAttendance(raw);
+                cachedRaw = raw;
+            }
+            return cachedView;
+        }
+        // Fresh, mutable copy for writes.
+        function loadAttendance() {
+            return parseAttendance(storage.getItem(STORAGE_KEY_ATTENDANCE));
+        }
+        function parseAttendance(raw) {
             if (!raw)
                 return {};
             try {
@@ -67,24 +82,38 @@
                 return [];
             }
         }
-        function persistAttendance(data) {
+        // `adopt`: the caller hands `data` over (never mutates it again), so it
+        // becomes the read cache and the next read needs no parse.
+        function persistAttendance(data, adopt = false) {
             var _a;
-            storage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(data));
+            const raw = JSON.stringify(data);
+            storage.setItem(STORAGE_KEY_ATTENDANCE, raw);
+            if (adopt) {
+                cachedRaw = raw;
+                cachedView = data;
+            }
             (_a = options.onSnapshotChanged) === null || _a === void 0 ? void 0 : _a.call(options, data, loadTombstones());
+        }
+        // Copy-on-write for one day: other days are shared with the (read-only) cache.
+        function withDayCopy(date) {
+            const all = { ...readView() };
+            if (all[date])
+                all[date] = { ...all[date] };
+            return all;
         }
         function persistTombstones(tombstones) {
             var _a;
             storage.setItem(STORAGE_KEY_TOMBSTONES, JSON.stringify(tombstones));
-            (_a = options.onSnapshotChanged) === null || _a === void 0 ? void 0 : _a.call(options, loadAttendance(), tombstones);
+            (_a = options.onSnapshotChanged) === null || _a === void 0 ? void 0 : _a.call(options, getAll(), tombstones);
         }
         function getRecord(employeeId, date) {
             var _a;
-            const all = loadAttendance();
+            const all = readView();
             const rec = (_a = all[date]) === null || _a === void 0 ? void 0 : _a[employeeId];
             return rec ? { ...rec } : null;
         }
         function getByDate(date) {
-            const all = loadAttendance();
+            const all = readView();
             const day = all[date] || {};
             const result = {};
             for (const id in day) {
@@ -96,7 +125,7 @@
         }
         function getByEmployee(employeeId, fromDate, toDate) {
             var _a;
-            const all = loadAttendance();
+            const all = readView();
             const result = {};
             for (const date in all) {
                 if (Object.prototype.hasOwnProperty.call(all, date)) {
@@ -112,7 +141,7 @@
             return result;
         }
         function getDateRange(fromDate, toDate) {
-            const all = loadAttendance();
+            const all = readView();
             const result = {};
             for (const date in all) {
                 if (Object.prototype.hasOwnProperty.call(all, date)) {
@@ -130,7 +159,7 @@
         }
         function setRecord(employeeId, date, status, hours = 8) {
             var _a;
-            const all = loadAttendance();
+            const all = withDayCopy(date);
             const timestamp = nowFn();
             if (status === 'absent' || status === 'pending') {
                 if ((_a = all[date]) === null || _a === void 0 ? void 0 : _a[employeeId]) {
@@ -138,7 +167,7 @@
                     if (Object.keys(all[date]).length === 0) {
                         delete all[date];
                     }
-                    persistAttendance(all);
+                    persistAttendance(all, true);
                     // Register tombstone
                     const tombstones = loadTombstones();
                     const tombstone = {
@@ -172,7 +201,7 @@
                 updatedAt: timestamp
             };
             all[date][employeeId] = record;
-            persistAttendance(all);
+            persistAttendance(all, true);
             // Clean any existing tombstone for this same day+employee
             const tombstones = loadTombstones();
             if (tombstones.some((t) => t.date === date && t.employeeId === employeeId)) {
@@ -185,7 +214,7 @@
             return result.status === 'deleted' && !!result.tombstone;
         }
         function getAll() {
-            const all = loadAttendance();
+            const all = readView();
             const result = {};
             for (const d in all) {
                 if (Object.prototype.hasOwnProperty.call(all, d)) {

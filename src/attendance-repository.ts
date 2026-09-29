@@ -55,8 +55,26 @@ interface AttendanceRepositoryOptions {
     const storage = options.storage;
     const nowFn = options.now || defaultNow;
 
-    function loadAttendance(): AttendanceDataStoreMap {
+    // Read cache: the history is parsed once and reused until the stored string
+    // changes. Only read functions use it, and they always return copies.
+    let cachedRaw: string | null | undefined;
+    let cachedView: AttendanceDataStoreMap = {};
+
+    function readView(): AttendanceDataStoreMap {
       const raw = storage.getItem(STORAGE_KEY_ATTENDANCE);
+      if (raw !== cachedRaw) {
+        cachedView = parseAttendance(raw);
+        cachedRaw = raw;
+      }
+      return cachedView;
+    }
+
+    // Fresh, mutable copy for writes.
+    function loadAttendance(): AttendanceDataStoreMap {
+      return parseAttendance(storage.getItem(STORAGE_KEY_ATTENDANCE));
+    }
+
+    function parseAttendance(raw: string | null): AttendanceDataStoreMap {
       if (!raw) return {};
       try {
         const parsed = JSON.parse(raw);
@@ -102,24 +120,38 @@ interface AttendanceRepositoryOptions {
       }
     }
 
-    function persistAttendance(data: AttendanceDataStoreMap): void {
-      storage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(data));
+    // `adopt`: the caller hands `data` over (never mutates it again), so it
+    // becomes the read cache and the next read needs no parse.
+    function persistAttendance(data: AttendanceDataStoreMap, adopt = false): void {
+      const raw = JSON.stringify(data);
+      storage.setItem(STORAGE_KEY_ATTENDANCE, raw);
+      if (adopt) {
+        cachedRaw = raw;
+        cachedView = data;
+      }
       options.onSnapshotChanged?.(data, loadTombstones());
+    }
+
+    // Copy-on-write for one day: other days are shared with the (read-only) cache.
+    function withDayCopy(date: string): AttendanceDataStoreMap {
+      const all: AttendanceDataStoreMap = { ...readView() };
+      if (all[date]) all[date] = { ...all[date] };
+      return all;
     }
 
     function persistTombstones(tombstones: AttendanceTombstoneRecord[]): void {
       storage.setItem(STORAGE_KEY_TOMBSTONES, JSON.stringify(tombstones));
-      options.onSnapshotChanged?.(loadAttendance(), tombstones);
+      options.onSnapshotChanged?.(getAll(), tombstones);
     }
 
     function getRecord(employeeId: string, date: string): AttendanceRecordEntry | null {
-      const all = loadAttendance();
+      const all = readView();
       const rec = all[date]?.[employeeId];
       return rec ? { ...rec } : null;
     }
 
     function getByDate(date: string): AttendanceDayRecords {
-      const all = loadAttendance();
+      const all = readView();
       const day = all[date] || {};
       const result: AttendanceDayRecords = {};
       for (const id in day) {
@@ -131,7 +163,7 @@ interface AttendanceRepositoryOptions {
     }
 
     function getByEmployee(employeeId: string, fromDate?: string, toDate?: string): Record<string, AttendanceRecordEntry> {
-      const all = loadAttendance();
+      const all = readView();
       const result: Record<string, AttendanceRecordEntry> = {};
       for (const date in all) {
         if (Object.prototype.hasOwnProperty.call(all, date)) {
@@ -146,7 +178,7 @@ interface AttendanceRepositoryOptions {
     }
 
     function getDateRange(fromDate: string, toDate: string): AttendanceDataStoreMap {
-      const all = loadAttendance();
+      const all = readView();
       const result: AttendanceDataStoreMap = {};
       for (const date in all) {
         if (Object.prototype.hasOwnProperty.call(all, date)) {
@@ -169,7 +201,7 @@ interface AttendanceRepositoryOptions {
       status: 'present' | 'absent' | 'pending',
       hours: number = 8
     ): { status: 'saved' | 'deleted'; record?: AttendanceRecordEntry; tombstone?: AttendanceTombstoneRecord } {
-      const all = loadAttendance();
+      const all = withDayCopy(date);
       const timestamp = nowFn();
 
       if (status === 'absent' || status === 'pending') {
@@ -178,7 +210,7 @@ interface AttendanceRepositoryOptions {
           if (Object.keys(all[date]).length === 0) {
             delete all[date];
           }
-          persistAttendance(all);
+          persistAttendance(all, true);
 
           // Register tombstone
           const tombstones = loadTombstones();
@@ -215,7 +247,7 @@ interface AttendanceRepositoryOptions {
       };
 
       all[date][employeeId] = record;
-      persistAttendance(all);
+      persistAttendance(all, true);
 
       // Clean any existing tombstone for this same day+employee
       const tombstones = loadTombstones();
@@ -232,7 +264,7 @@ interface AttendanceRepositoryOptions {
     }
 
     function getAll(): AttendanceDataStoreMap {
-      const all = loadAttendance();
+      const all = readView();
       const result: AttendanceDataStoreMap = {};
       for (const d in all) {
         if (Object.prototype.hasOwnProperty.call(all, d)) {

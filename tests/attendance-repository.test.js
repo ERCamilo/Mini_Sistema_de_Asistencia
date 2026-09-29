@@ -235,3 +235,95 @@ test('replace prunes duplicated and stale tombstones left by older versions', ()
   assert.deepEqual(tombstones.map(t => `${t.date}:${t.employeeId}`), ['2026-08-31:u9']);
   assert.equal(tombstones[0].deletedAt, '2026-09-03T00:00:00.000Z');
 });
+
+// --- Read cache: the history is parsed once, not once per read ---
+function countingParse(fn) {
+  const original = JSON.parse;
+  let calls = 0;
+  JSON.parse = function (...args) { calls += 1; return original.apply(this, args); };
+  try { fn(); } finally { JSON.parse = original; }
+  return calls;
+}
+
+function bigHistoryStorage() {
+  const attendance = {};
+  for (let d = 1; d <= 28; d++) {
+    const date = `2026-02-${String(d).padStart(2, '0')}`;
+    attendance[date] = {};
+    for (let i = 0; i < 60; i++) attendance[date]['u' + i] = { status: 'present', hours: 8 };
+  }
+  const data = { attendance: JSON.stringify(attendance) };
+  return { getItem: k => (k in data ? data[k] : null), setItem: (k, v) => { data[k] = String(v); }, data };
+}
+
+test('reads reuse one parse of the history until it changes (60 getRecord = 1 parse)', () => {
+  const repo = AttendanceRepository.createAttendanceRepository({ storage: bigHistoryStorage() });
+  const parses = countingParse(() => {
+    for (let i = 0; i < 60; i++) repo.getRecord('u' + i, '2026-02-10');
+    repo.getByDate('2026-02-10');
+    repo.getAll();
+  });
+  assert.equal(parses, 1);
+});
+
+test('the read cache never leaks: callers get copies, and writes are seen right away', () => {
+  const storage = bigHistoryStorage();
+  const repo = AttendanceRepository.createAttendanceRepository({ storage, now: () => '2026-03-01T00:00:00.000Z' });
+  const rec = repo.getRecord('u1', '2026-02-10');
+  rec.hours = 99;
+  repo.getAll()['2026-02-10'].u1.hours = 77;
+  repo.getByDate('2026-02-10').u1.hours = 55;
+  assert.equal(repo.getRecord('u1', '2026-02-10').hours, 8, 'mutating results does not touch the store');
+
+  repo.setRecord('u1', '2026-02-10', 'present', 10);
+  assert.equal(repo.getRecord('u1', '2026-02-10').hours, 10);
+  repo.setRecord('u1', '2026-02-10', 'absent');
+  assert.equal(repo.getRecord('u1', '2026-02-10'), null);
+  assert.equal(repo.getTombstones().length, 1);
+});
+
+test('the read cache follows changes written to storage by someone else', () => {
+  const storage = bigHistoryStorage();
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+  assert.equal(repo.getRecord('u1', '2026-02-10').hours, 8);
+  storage.setItem('attendance', JSON.stringify({ '2026-02-10': { u1: { status: 'present', hours: 4 } } }));
+  assert.equal(repo.getRecord('u1', '2026-02-10').hours, 4);
+});
+
+test('a tap (setRecord) does not re-parse the history, before or after writing', () => {
+  const storage = bigHistoryStorage();
+  const repo = AttendanceRepository.createAttendanceRepository({ storage, now: () => '2026-03-01T00:00:00.000Z' });
+  repo.getAll(); // warm cache, as the app does at boot
+  const original = JSON.parse;
+  let bigParses = 0;
+  JSON.parse = function (text, ...rest) { if (typeof text === 'string' && text.length > 10000) bigParses += 1; return original.call(this, text, ...rest); };
+  try {
+    repo.setRecord('u1', '2026-02-10', 'present', 10);
+    repo.setRecord('u2', '2026-02-10', 'absent');
+    repo.setRecord('new', '2026-03-01', 'present', 8);
+    for (let i = 0; i < 60; i++) repo.getRecord('u' + i, '2026-02-10');
+  } finally {
+    JSON.parse = original;
+  }
+  assert.equal(bigParses, 0);
+  // And the stored JSON is exactly what a fresh repository reads back.
+  const fresh = AttendanceRepository.createAttendanceRepository({ storage });
+  assert.equal(fresh.getRecord('u1', '2026-02-10').hours, 10);
+  assert.equal(fresh.getRecord('u2', '2026-02-10'), null);
+  assert.equal(fresh.getRecord('new', '2026-03-01').hours, 8);
+  assert.deepEqual(fresh.getAll(), repo.getAll());
+});
+
+test('copy-on-write: a previously returned snapshot is not changed by later taps', () => {
+  const storage = bigHistoryStorage();
+  const repo = AttendanceRepository.createAttendanceRepository({ storage });
+  const before = repo.getAll();
+  const snapshotEvents = [];
+  const repo2 = AttendanceRepository.createAttendanceRepository({ storage, onSnapshotChanged: a => snapshotEvents.push(a) });
+  repo2.setRecord('u1', '2026-02-10', 'present', 12);
+  repo2.setRecord('u1', '2026-02-11', 'absent');
+  assert.equal(before['2026-02-10'].u1.hours, 8);
+  assert.ok(before['2026-02-11'].u1);
+  assert.equal(snapshotEvents[0]['2026-02-10'].u1.hours, 12);
+  assert.ok(snapshotEvents[0]['2026-02-11'].u1, 'the first event still shows the day-11 mark');
+});
