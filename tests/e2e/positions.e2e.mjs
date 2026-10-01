@@ -52,6 +52,12 @@ test('chips: only for employees with more than one position; tapping one marks p
     await page.waitForTimeout(200);
     assert.equal(await page.evaluate(() => 'position' in getRecord('u1')), false, 'principal = no stored override');
     await card(page, 'Franklin').locator('.pos-chip', { hasText: 'Plomero' }).click();
+    // Storage v2 writes the day to IndexedDB asynchronously: reload only once it landed.
+    await page.waitForFunction(async () => {
+      const all = await (await window.MiniData.openIdbBackend(indexedDB)).readAll();
+      const day = all.days[selectedDate] || {};
+      return (day.u1 || {}).position === 'Plomero';
+    }, null, { timeout: 5000 });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
     assert.equal(await card(page, 'Franklin').locator('.pos-chip.is-on').textContent(), 'Plomero', 'survives reload');
