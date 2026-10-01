@@ -258,6 +258,20 @@ interface AttendanceRepositoryOptions {
       return { status: 'saved', record: { ...record } };
     }
 
+    // Position worked that day (employees with more than one position). It only
+    // decorates an existing mark: no mark that day = nothing to change.
+    function setDayPosition(employeeId: string, date: string, position: string | null): boolean {
+      if (!readView()[date]?.[employeeId]) return false;
+      const all = withDayCopy(date);
+      const record: AttendanceRecordEntry = { ...all[date][employeeId] };
+      const name = typeof position === 'string' ? position.trim() : '';
+      if (name) record.position = name;
+      else delete record.position;
+      all[date][employeeId] = record;
+      persistAttendance(all, true);
+      return true;
+    }
+
     function deleteRecord(employeeId: string, date: string): boolean {
       const result = setRecord(employeeId, date, 'absent');
       return result.status === 'deleted' && !!result.tombstone;
@@ -442,6 +456,7 @@ interface AttendanceRepositoryOptions {
       importBatch,
       exportSnapshot,
       getTombstones,
+      setDayPosition,
       clearTombstones
     };
   }

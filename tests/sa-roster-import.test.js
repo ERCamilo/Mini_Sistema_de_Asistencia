@@ -382,3 +382,34 @@ test('index.html SA route and legacy import use createdCount/updatedCount (count
   assert.match(html, /Reemplazo deshabilitado para SA/);
   assert.match(html, /sa-roster-import\.js/);
 });
+
+// --- Multiple positions (up to 3, principal first) ---
+require('../employee-positions.js');
+
+test('SA `positions` (up to 3) set principal + extras with SA ids, for new and existing employees', () => {
+  const { repo } = makeRepo([{ id: 'u1', name: 'A', number: '1', position: 'Old', saProjectId: 'proj-1', saEmployeeId: 'e1' }]);
+  const applied = SaRosterImport.applySaRosterToUsers(repo.getAll(), saEnvelope([
+    { saEmployeeId: 'e1', number: '1', name: 'A', position: 'Albañil', positions: [{ id: 'POS-1', name: 'Albañil' }, { id: 'POS-7', name: 'Plomero' }] },
+    { saEmployeeId: 'e2', number: '2', name: 'B', position: 'Chofer', positions: [{ id: 'POS-3', name: 'Chofer' }] }
+  ]), { now: () => 'T' });
+  const a = applied.users.find(u => u.saEmployeeId === 'e1');
+  assert.equal(a.position, 'Albañil');
+  assert.equal(a.positionSaId, 'POS-1');
+  assert.deepEqual(a.extraPositions, [{ name: 'Plomero', saPositionId: 'POS-7' }]);
+  const b = applied.users.find(u => u.saEmployeeId === 'e2');
+  assert.equal(b.position, 'Chofer');
+  assert.deepEqual(b.extraPositions, []);
+});
+
+test('an older SA that only sends `position` updates the principal and keeps local extra positions', () => {
+  const { repo } = makeRepo([{ id: 'u1', name: 'A', number: '1', position: 'Albañil', extraPositions: [{ name: 'Plomero' }], saProjectId: 'proj-1', saEmployeeId: 'e1' }]);
+  const applied = SaRosterImport.applySaRosterToUsers(repo.getAll(), saEnvelope([{ saEmployeeId: 'e1', number: '1', name: 'A', position: 'Maestro' }]), { now: () => 'T' });
+  assert.equal(applied.users[0].position, 'Maestro');
+  assert.deepEqual(applied.users[0].extraPositions, [{ name: 'Plomero' }]);
+});
+
+test('malformed `positions` reject the roster fail-closed', () => {
+  for (const positions of ['Albañil', [{ id: 'X' }], [1, 2, 3, 4].map(n => ({ name: 'P' + n }))]) {
+    assert.throws(() => SaRosterImport.normalizeSaRoster(saEnvelope([{ saEmployeeId: 'e1', number: '1', name: 'A', positions }])), /positions/);
+  }
+});

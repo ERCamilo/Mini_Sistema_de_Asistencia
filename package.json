@@ -1,6 +1,6 @@
 {
   "name": "asistencia-mini",
-  "version": "2.14.3",
+  "version": "2.14.4",
   "private": true,
   "scripts": {
     "build": "node scripts/stamp-build.mjs && tsc",
@@ -8,7 +8,7 @@
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
     "test": "node --test",
     "tutorials": "tsc && node tests/tutorials/record.mjs",
-    "test:e2e": "tsc && node --test tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/tutorials.e2e.mjs"
+    "test:e2e": "tsc && node --test tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/positions.e2e.mjs tests/e2e/tutorials.e2e.mjs"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

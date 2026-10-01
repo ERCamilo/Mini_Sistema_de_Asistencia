@@ -39,7 +39,9 @@
         'overtimeHours',
         'status',
         'rosterStatus',
-        'saEmployeeId'
+        'saEmployeeId',
+        'positionName',
+        'saPositionId'
     ];
     const ATTENDANCE_SUBMISSION_SCOPE_KEYS = ['ownerUid', 'siteId', 'sourceId'];
     const ATTENDANCE_SUBMISSION_ERROR_SUMMARY_KEYS = ['unparsedFragments', 'codes'];
@@ -209,6 +211,17 @@
         }
         if (Object.prototype.hasOwnProperty.call(rec, 'saEmployeeId')) {
             safe.saEmployeeId = requireCanonicalSaId(rec.saEmployeeId, `rows[${index}].saEmployeeId`);
+        }
+        if (Object.prototype.hasOwnProperty.call(rec, 'positionName')) {
+            if (typeof rec.positionName !== 'string' || !rec.positionName.trim() || rec.positionName.trim().length > 80) {
+                throw new TypeError(`rows[${index}].positionName must be a non-empty string of at most 80 characters`);
+            }
+            safe.positionName = rec.positionName.trim();
+        }
+        if (Object.prototype.hasOwnProperty.call(rec, 'saPositionId')) {
+            if (!safe.positionName)
+                throw new TypeError(`rows[${index}].saPositionId requires positionName`);
+            safe.saPositionId = requireCanonicalSaId(rec.saPositionId, `rows[${index}].saPositionId`);
         }
         return safe;
     }
@@ -463,6 +476,12 @@
             }
             if (empSaId)
                 row.saEmployeeId = empSaId;
+            if (hasPresent) {
+                // employee-positions.js loads before this module (index.html and tests).
+                const positions = globalThis.EmployeePositions;
+                if (positions)
+                    Object.assign(row, positions.submissionFields(emp, rec));
+            }
             rows.push(row);
         }
         // Legacy mode carries only attendance rows. Coverage mode may return 0h/unmarked roster rows.

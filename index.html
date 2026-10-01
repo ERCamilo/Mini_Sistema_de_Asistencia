@@ -759,6 +759,13 @@
             color: var(--text-muted);
         }
 
+        /* Posición del día: hasta 3 chips; la marcada es la que se envía */
+        .pos-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        .pos-chip { min-height: 30px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .pos-chip.is-on { background: color-mix(in srgb, var(--accent-color) 18%, var(--input-bg)); border-color: var(--accent-color); color: var(--text-color); }
+        .pos-chip.is-unmarked.is-on { background: var(--input-bg); border-style: dashed; color: var(--text-muted); }
+        .extra-positions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: -8px 0 16px; }
+
         .hours-badge {
             background: var(--input-bg);
             color: var(--text-muted);
@@ -2770,6 +2777,10 @@
                 <div style="margin-bottom: 16px;"><input type="text" id="user-position" list="position-options"
                         placeholder="Cargo / Puesto (Opcional)" aria-label="Cargo o puesto (opcional)" class="search-input">
                     <datalist id="position-options"></datalist></div>
+                <div class="extra-positions">
+                    <input type="text" id="user-position-2" list="position-options" placeholder="Otra posición (opcional)" aria-label="Segunda posición (opcional)" class="search-input">
+                    <input type="text" id="user-position-3" list="position-options" placeholder="Otra posición (opcional)" aria-label="Tercera posición (opcional)" class="search-input">
+                </div>
                 <div style="margin-bottom: 16px;"><input type="text" id="user-sueldo"
                         placeholder="Sueldo (Opcional)" aria-label="Sueldo (opcional)" class="search-input"></div>
                 <div style="margin-bottom: 16px;">
@@ -3518,6 +3529,7 @@
     <script src="./local-db.js"></script>
     <script src="./mini-sa-envelope.js"></script>
     <script src="./roster-package.js"></script>
+    <script src="./employee-positions.js"></script>
     <script src="./sa-roster-import.js"></script>
     <script src="./p2p-core.js"></script>
     <script src="./p2p-pairing.js"></script>
@@ -4718,7 +4730,7 @@
 
             presentUsers.forEach(u => {
                 const rec = records[u.id];
-                message += `${u.number}. ${u.name}  *${rec.hours}h*\n`;
+                message += `${u.number}. ${u.name}  *${rec.hours}h*${window.EmployeePositions.whatsappSuffix(u, rec)}\n`;
             });
 
             const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
@@ -4777,6 +4789,38 @@
             }
         }
 
+        // --- DAY POSITION (employees with more than one position) ---
+        function positionChips(u, record) {
+            const today = window.EmployeePositions.dayPosition(u, record);
+            const chips = window.EmployeePositions.positionsOf(u).map((p, i) => {
+                const on = today && today.name === p.name;
+                return `<button type="button" class="pos-chip${on ? ' is-on' : ''}${record ? '' : ' is-unmarked'}" aria-pressed="${on}" onclick="selectDayPosition('${esc(u.id)}', ${i})" aria-label="${esc(u.name)}: trabajó de ${esc(p.name)}">${esc(p.name)}</button>`;
+            }).join('');
+            return `<div class="pos-chips" role="group" aria-label="Posición del día">${chips}</div>`;
+        }
+
+        // Tap a position: marks present (full day) if needed, then stores the day's position.
+        window.selectDayPosition = (uid, index) => {
+            const u = users.find(x => x.id === uid);
+            const position = u && window.EmployeePositions.positionsOf(u)[index];
+            if (!position) return;
+            if (!getRecord(uid)) {
+                const fullHours = parseInt(document.getElementById('default-hours-input').value) || 8;
+                if (!setRecord(uid, 'present', fullHours)) return;
+            }
+            try {
+                attendanceRepository.setDayPosition(uid, selectedDate, index === 0 ? null : position.name);
+            } catch (error) {
+                console.error('No se pudo guardar la posición del día.', error);
+                showToast('No se pudo guardar la posición. Intentá de nuevo.');
+                return;
+            }
+            attendanceData = attendanceRepository.getAll();
+            saveData();
+            try { if (navigator.vibrate) navigator.vibrate(10); } catch (_) { /* optional */ }
+        };
+        // --- END DAY POSITION ---
+
         function renderList() {
             const container = document.getElementById('users-container');
             const search = document.getElementById('search-input').value.toLowerCase();
@@ -4830,7 +4874,9 @@
                                 ${esc(u.name)}
                                 ${isPaused ? '<span class="badge-paused">Pausado</span>' : ''}
                             </div>
-                            <div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>
+                            ${window.EmployeePositions.hasMultiple(u)
+                                ? positionChips(u, record)
+                                : `<div class="user-role">${esc(u.position || 'Sin cargo')}${u.sueldo ? ' · $' + esc(u.sueldo) : ''}</div>`}
                         </div>
                         ${isPresent ? `<button type="button" class="hours-badge ${colorClass}" onclick="openHoursModal('${esc(u.id)}')" aria-label="Modificar horas de ${esc(u.name)}" title="Modificar horas"><span class="state-glyph">${stateGlyph(colorClass)}</span>${hours}h</button>` : ''}
                     </div>
@@ -4903,7 +4949,7 @@
             sortedUsers.forEach(u => {
                 let row = `<tr><td class="week-num">${esc(u.number)}</td>`;
                 row += `<td class="week-emp-cell"><span class="emp-full">${esc(u.name)}</span>` +
-                    (u.position ? `<span class="emp-pos">${esc(u.position)}</span>` : '') + `</td>`;
+                    (u.position ? `<span class="emp-pos">${esc(window.EmployeePositions.label(u))}</span>` : '') + `</td>`;
                 weekDates.forEach(d => {
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -5101,15 +5147,24 @@
         function readEmployeeDraft() {
             const ctxSelect = document.getElementById('user-work-context');
             const workContextId = ctxSelect && ctxSelect.value ? ctxSelect.value : undefined;
-            return {
-                id: document.getElementById('edit-user-id').value,
+            const id = document.getElementById('edit-user-id').value;
+            // Up to 3 positions, principal first; SA ids survive for unchanged names.
+            const positions = window.EmployeePositions.fromNames(
+                ['user-position', 'user-position-2', 'user-position-3'].map(f => document.getElementById(f).value),
+                users.find(u => u.id === id)
+            );
+            const draft = {
+                id,
                 name: document.getElementById('user-name').value.trim(),
                 number: document.getElementById('user-number').value,
-                position: document.getElementById('user-position').value.trim(),
+                position: positions.position,
+                extraPositions: positions.extraPositions,
                 sueldo: document.getElementById('user-sueldo').value.trim(),
                 workContextId: workContextId,
                 paused: document.getElementById('user-paused').checked
             };
+            if (positions.positionSaId) draft.positionSaId = positions.positionSaId;
+            return draft;
         }
 
         function refreshEmployeeViews() {
@@ -5682,6 +5737,7 @@
 
         function openAddUserModal() {
             document.getElementById('user-form').reset();
+            ['user-position-2', 'user-position-3'].forEach(f => { document.getElementById(f).value = ''; });
             document.getElementById('user-paused').checked = false;
             document.getElementById('form-title').textContent = 'Nuevo Empleado';
             document.getElementById('edit-user-id').value = '';
@@ -7024,7 +7080,7 @@
                                 ${pausedBadge}
                                 ${ctxTag}
                             </div>
-                            <div class="user-role">${esc(u.position || 'Sin cargo')}</div>
+                            <div class="user-role">${esc(window.EmployeePositions.label(u) || 'Sin cargo')}</div>
                         </div>
                     </div>
                     ${rightActions}
@@ -7242,7 +7298,10 @@
             document.getElementById('user-number').value = u.number;
             populatePositionOptions();
             populateWorkContextOptions(u.workContextId);
-            document.getElementById('user-position').value = u.position || '';
+            const positions = window.EmployeePositions.positionsOf(u);
+            ['user-position', 'user-position-2', 'user-position-3'].forEach((f, i) => {
+                document.getElementById(f).value = positions[i] ? positions[i].name : '';
+            });
             document.getElementById('user-sueldo').value = u.sueldo || '';
             document.getElementById('user-paused').checked = !!u.paused;
             document.getElementById('btn-delete-user').style.display = 'block';

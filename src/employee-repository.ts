@@ -93,6 +93,25 @@ interface BatchImportResult {
     return trimmed;
   }
 
+  // Positions beyond the principal (see employee-positions.ts): up to 2,
+  // { name, saPositionId? }. Returns undefined when the input has none.
+  function sanitizeExtraPositions(value: unknown): Array<{ name: string; saPositionId?: string }> | undefined {
+    if (!Array.isArray(value)) return undefined;
+    return value
+      .filter(item => item && typeof item === 'object' && typeof (item as any).name === 'string' && (item as any).name.trim())
+      .slice(0, 2)
+      .map(item => {
+        const id = typeof (item as any).saPositionId === 'string' ? (item as any).saPositionId.trim() : '';
+        return id ? { name: (item as any).name.trim(), saPositionId: id } : { name: (item as any).name.trim() };
+      });
+  }
+
+  function copyPositionFields(target: Record<string, unknown>, source: any): void {
+    const extras = sanitizeExtraPositions(source.extraPositions);
+    if (extras !== undefined) target.extraPositions = extras;
+    if (typeof source.positionSaId === 'string' && source.positionSaId.trim()) target.positionSaId = source.positionSaId.trim();
+  }
+
   function createEmployeeRepository(options: EmployeeRepositoryOptions) {
     const storage = options.storage;
     const nowFn = options.now || defaultNow;
@@ -366,6 +385,7 @@ interface BatchImportResult {
           const saEmployee = sanitizeSaLink(emp.saEmployeeId);
           if (saProject !== undefined) entry.saProjectId = saProject;
           if (saEmployee !== undefined) entry.saEmployeeId = saEmployee;
+          copyPositionFields(entry as Record<string, unknown>, emp);
           return entry;
         });
 
@@ -397,6 +417,7 @@ interface BatchImportResult {
         if (existing) {
           existing.name = String(emp.name).trim();
           if (emp.position !== undefined) existing.position = String(emp.position).trim();
+          copyPositionFields(existing as Record<string, unknown>, emp);
           if (emp.sueldo !== undefined) {
             const s = String(emp.sueldo).trim();
             existing.sueldo = s ? s : undefined;
@@ -413,7 +434,7 @@ interface BatchImportResult {
           existing.localOnly = true;
           updatedCount++;
         } else {
-          nextUsers.push({
+          const created: EmployeeRecord = {
             id: emp.id || generateId(),
             name: String(emp.name).trim(),
             number: String(emp.number).trim(),
@@ -425,7 +446,9 @@ interface BatchImportResult {
             localOnly: true,
             createdAt: emp.createdAt || timestamp,
             updatedAt: timestamp
-          });
+          };
+          copyPositionFields(created as Record<string, unknown>, emp);
+          nextUsers.push(created);
           createdCount++;
         }
       });

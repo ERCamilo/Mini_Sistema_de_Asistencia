@@ -14,6 +14,9 @@ interface AttExportSubmissionRow {
   status: 'present' | 'unmarked';
   rosterStatus?: 'active' | 'paused';
   saEmployeeId?: string;
+  // Only for employees with more than one position: the position of that day.
+  positionName?: string;
+  saPositionId?: string;
 }
 
 interface AttExportErrorSummary {
@@ -137,7 +140,9 @@ interface AttExportHandlerContext {
     'overtimeHours',
     'status',
     'rosterStatus',
-    'saEmployeeId'
+    'saEmployeeId',
+    'positionName',
+    'saPositionId'
   ];
 
   const ATTENDANCE_SUBMISSION_SCOPE_KEYS = ['ownerUid', 'siteId', 'sourceId'];
@@ -316,6 +321,16 @@ interface AttExportHandlerContext {
     }
     if (Object.prototype.hasOwnProperty.call(rec, 'saEmployeeId')) {
       safe.saEmployeeId = requireCanonicalSaId(rec.saEmployeeId, `rows[${index}].saEmployeeId`);
+    }
+    if (Object.prototype.hasOwnProperty.call(rec, 'positionName')) {
+      if (typeof rec.positionName !== 'string' || !rec.positionName.trim() || rec.positionName.trim().length > 80) {
+        throw new TypeError(`rows[${index}].positionName must be a non-empty string of at most 80 characters`);
+      }
+      safe.positionName = rec.positionName.trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(rec, 'saPositionId')) {
+      if (!safe.positionName) throw new TypeError(`rows[${index}].saPositionId requires positionName`);
+      safe.saPositionId = requireCanonicalSaId(rec.saPositionId, `rows[${index}].saPositionId`);
     }
     return safe;
   }
@@ -597,6 +612,11 @@ interface AttExportHandlerContext {
         row.rosterStatus = emp.paused ? 'paused' : 'active';
       }
       if (empSaId) row.saEmployeeId = empSaId;
+      if (hasPresent) {
+        // employee-positions.js loads before this module (index.html and tests).
+        const positions = (globalThis as any).EmployeePositions;
+        if (positions) Object.assign(row, positions.submissionFields(emp, rec));
+      }
       rows.push(row);
     }
 

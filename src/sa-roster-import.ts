@@ -26,6 +26,7 @@ interface SaRosterRecordInput {
   number?: unknown;
   name?: unknown;
   position?: unknown;
+  positions?: unknown;
   sueldo?: unknown;
   paused?: unknown;
   [extra: string]: unknown;
@@ -48,6 +49,8 @@ interface SaNormalizedRecord {
   number: string;
   name: string;
   position?: string;
+  // Up to 3 positions from SA, principal first (see employee-positions.ts).
+  positions?: Array<{ id?: string; name: string }>;
   sueldo?: string;
   paused?: boolean;
 }
@@ -121,7 +124,7 @@ interface SaApplyResult {
   const SCHEMA: SaEnvelopeSchema = 'sa-roster/v1';
   const VERSION = 1;
   const ENVELOPE_ALLOWLIST = ['schema', 'version', 'saProjectId', 'rosterVersion', 'generatedAt', 'employees', 'source'];
-  const RECORD_ALLOWLIST = ['saProjectId', 'saEmployeeId', 'number', 'name', 'position', 'sueldo', 'paused'];
+  const RECORD_ALLOWLIST = ['saProjectId', 'saEmployeeId', 'number', 'name', 'position', 'positions', 'sueldo', 'paused'];
 
   function isObject(value: unknown): value is Record<string, unknown> {
     return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -206,6 +209,20 @@ interface SaApplyResult {
     if (hasOwn(record, 'position')) {
       if (typeof record.position !== 'string') throw new Error(`SA roster employees[${index}].position must be a string`);
       normalized.position = (record.position as string).trim();
+    }
+    if (hasOwn(record, 'positions')) {
+      const positions = (globalThis as any).EmployeePositions;
+      if (!positions) throw new Error('EmployeePositions module is not loaded');
+      try {
+        // Validate, then keep the input shape so normalizing twice is stable.
+        const fields = positions.fromSaPositions(record.positions);
+        normalized.positions = [
+          { name: fields.position, ...(fields.positionSaId ? { id: fields.positionSaId } : {}) },
+          ...fields.extraPositions.map((p: { name: string; saPositionId?: string }) => ({ name: p.name, ...(p.saPositionId ? { id: p.saPositionId } : {}) }))
+        ].filter(p => p.name);
+      } catch (error) {
+        throw new Error(`SA roster employees[${index}].${error instanceof Error ? error.message : 'positions are invalid'}`);
+      }
     }
     if (hasOwn(record, 'sueldo')) {
       const sueldo = record.sueldo;
@@ -471,6 +488,16 @@ interface SaApplyResult {
       if (hasPosition) {
         target.position = record.position !== undefined ? record.position : '';
       }
+      // `positions` (newer SA) is authoritative for all of them, principal included.
+      if (record.positions) {
+        const fields = (globalThis as any).EmployeePositions.fromSaPositions(record.positions);
+        target.position = fields.position;
+        if (fields.positionSaId) target.positionSaId = fields.positionSaId;
+        else delete target.positionSaId;
+        target.extraPositions = fields.extraPositions;
+      } else if (hasPosition) {
+        delete target.positionSaId;
+      }
       if (hasSueldo) {
         if (record.sueldo !== undefined && record.sueldo !== '') target.sueldo = record.sueldo;
         else delete target.sueldo;
@@ -546,6 +573,12 @@ interface SaApplyResult {
         saProjectId: record.saProjectId,
         saEmployeeId: record.saEmployeeId
       };
+      if (record.positions) {
+        const fields = (globalThis as any).EmployeePositions.fromSaPositions(record.positions);
+        entry.position = fields.position;
+        if (fields.positionSaId) entry.positionSaId = fields.positionSaId;
+        entry.extraPositions = fields.extraPositions;
+      }
       if ((raw ? hasOwn(raw, 'sueldo') : hasOwn(record, 'sueldo')) && record.sueldo !== undefined && record.sueldo !== '') {
         entry.sueldo = record.sueldo;
       }

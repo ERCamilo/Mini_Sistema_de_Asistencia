@@ -31,6 +31,26 @@
             return undefined;
         return trimmed;
     }
+    // Positions beyond the principal (see employee-positions.ts): up to 2,
+    // { name, saPositionId? }. Returns undefined when the input has none.
+    function sanitizeExtraPositions(value) {
+        if (!Array.isArray(value))
+            return undefined;
+        return value
+            .filter(item => item && typeof item === 'object' && typeof item.name === 'string' && item.name.trim())
+            .slice(0, 2)
+            .map(item => {
+            const id = typeof item.saPositionId === 'string' ? item.saPositionId.trim() : '';
+            return id ? { name: item.name.trim(), saPositionId: id } : { name: item.name.trim() };
+        });
+    }
+    function copyPositionFields(target, source) {
+        const extras = sanitizeExtraPositions(source.extraPositions);
+        if (extras !== undefined)
+            target.extraPositions = extras;
+        if (typeof source.positionSaId === 'string' && source.positionSaId.trim())
+            target.positionSaId = source.positionSaId.trim();
+    }
     function createEmployeeRepository(options) {
         const storage = options.storage;
         const nowFn = options.now || defaultNow;
@@ -291,6 +311,7 @@
                         entry.saProjectId = saProject;
                     if (saEmployee !== undefined)
                         entry.saEmployeeId = saEmployee;
+                    copyPositionFields(entry, emp);
                     return entry;
                 });
                 persistUsers(nextUsers);
@@ -319,6 +340,7 @@
                     existing.name = String(emp.name).trim();
                     if (emp.position !== undefined)
                         existing.position = String(emp.position).trim();
+                    copyPositionFields(existing, emp);
                     if (emp.sueldo !== undefined) {
                         const s = String(emp.sueldo).trim();
                         existing.sueldo = s ? s : undefined;
@@ -336,7 +358,7 @@
                     updatedCount++;
                 }
                 else {
-                    nextUsers.push({
+                    const created = {
                         id: emp.id || generateId(),
                         name: String(emp.name).trim(),
                         number: String(emp.number).trim(),
@@ -348,7 +370,9 @@
                         localOnly: true,
                         createdAt: emp.createdAt || timestamp,
                         updatedAt: timestamp
-                    });
+                    };
+                    copyPositionFields(created, emp);
+                    nextUsers.push(created);
                     createdCount++;
                 }
             });
