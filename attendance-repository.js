@@ -209,6 +209,23 @@
             }
             return { status: 'saved', record: { ...record } };
         }
+        // Position worked that day (employees with more than one position). It only
+        // decorates an existing mark: no mark that day = nothing to change.
+        function setDayPosition(employeeId, date, position) {
+            var _a;
+            if (!((_a = readView()[date]) === null || _a === void 0 ? void 0 : _a[employeeId]))
+                return false;
+            const all = withDayCopy(date);
+            const record = { ...all[date][employeeId] };
+            const name = typeof position === 'string' ? position.trim() : '';
+            if (name)
+                record.position = name;
+            else
+                delete record.position;
+            all[date][employeeId] = record;
+            persistAttendance(all, true);
+            return true;
+        }
         function deleteRecord(employeeId, date) {
             const result = setRecord(employeeId, date, 'absent');
             return result.status === 'deleted' && !!result.tombstone;
@@ -371,6 +388,7 @@
             importBatch,
             exportSnapshot,
             getTombstones,
+            setDayPosition,
             clearTombstones
         };
     }

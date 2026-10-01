@@ -327,3 +327,18 @@ test('copy-on-write: a previously returned snapshot is not changed by later taps
   assert.equal(snapshotEvents[0]['2026-02-10'].u1.hours, 12);
   assert.ok(snapshotEvents[0]['2026-02-11'].u1, 'the first event still shows the day-11 mark');
 });
+
+test('setDayPosition: stores the day position on an existing mark; null clears it; no mark = no-op', () => {
+  const storage = createMemoryStorage();
+  const repo = AttendanceRepository.createAttendanceRepository({ storage, now: () => '2026-09-30T12:00:00.000Z' });
+  repo.setRecord('u1', '2026-09-30', 'present', 8);
+  assert.equal(repo.setDayPosition('u1', '2026-09-30', 'Plomero'), true);
+  assert.equal(repo.getRecord('u1', '2026-09-30').position, 'Plomero');
+  repo.setRecord('u1', '2026-09-30', 'present', 10);
+  assert.equal(repo.getRecord('u1', '2026-09-30').position, 'Plomero', 'changing hours keeps the position');
+  repo.setDayPosition('u1', '2026-09-30', null);
+  assert.equal('position' in repo.getRecord('u1', '2026-09-30'), false);
+  assert.equal(repo.setDayPosition('u9', '2026-09-30', 'Plomero'), false, 'no mark that day');
+  const fresh = AttendanceRepository.createAttendanceRepository({ storage });
+  assert.equal(fresh.getRecord('u1', '2026-09-30').hours, 10);
+});

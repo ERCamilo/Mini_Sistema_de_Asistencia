@@ -57,7 +57,8 @@ test('the WhatsApp message builder is byte-for-byte the original', () => {
   for (const line of [
     "let message = `*Asistencia de hoy ${dateStr}${ctxSuffix}*\\n`;",
     "message += `_Última actualización: ${lastActionTime || 'Reciente'}_\\n\\n`;",
-    "message += `${u.number}. ${u.name}  *${rec.hours}h*\\n`;",
+    // One position: the line is exactly as before (suffix is ''). More: " _Position_" after the hours.
+    "message += `${u.number}. ${u.name}  *${rec.hours}h*${window.EmployeePositions.whatsappSuffix(u, rec)}\\n`;",
     "const dateStr = dateObj.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });",
     "const ctxSuffix = activeCtx ? ` · ${activeCtx.type === 'squad' ? '👥' : '🏗️'} ${activeCtx.name}` : '';",
     "const url = `https://wa.me/?text=${encodeURIComponent(message)}`;"

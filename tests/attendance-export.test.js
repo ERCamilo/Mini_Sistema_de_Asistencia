@@ -1,4 +1,5 @@
 const test = require('node:test');
+require('../employee-positions.js'); // sets globalThis.EmployeePositions, as index.html does
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -617,4 +618,43 @@ test('P2P channel responder: responds to attendance-request/v1 and ignores non-a
   detach();
   fakeChannel.receive(JSON.stringify(validRequest));
   assert.equal(fakeChannel.sentFrames.length, 1, 'must not respond after detach');
+});
+
+test('employees with more than one position send the day position (name + SA id); single-position rows are unchanged', () => {
+  const { attRepo, empRepo } = makeSetup();
+  const employees = empRepo.getAll().map(e => e.id === 'mini-u1'
+    ? { ...e, position: 'Albañil', positionSaId: 'POS-1', extraPositions: [{ name: 'Plomero', saPositionId: 'POS-7' }] }
+    : e);
+  attRepo.setRecord('mini-u1', '2026-09-06', 'present', 8);
+  attRepo.setDayPosition('mini-u1', '2026-09-06', 'Plomero');
+  const submission = AttendanceExport.generateAttendanceSubmission({
+    workDate: '2026-09-06', saProjectId: SA_PROJECT, repository: attRepo, employees,
+    scope: SCOPE, deviceId: DEVICE_ID, rosterVersion: ROSTER_VERSION
+  });
+  const ana = submission.rows.find(row => row.saEmployeeId === 'EMP-001');
+  assert.equal(ana.positionName, 'Plomero');
+  assert.equal(ana.saPositionId, 'POS-7');
+  assert.deepEqual(AttendanceExport.validateAttendanceSubmission(JSON.parse(JSON.stringify(submission)), SA_PROJECT).rows.find(r => r.saEmployeeId === 'EMP-001').positionName, 'Plomero');
+
+  attRepo.setDayPosition('mini-u1', '2026-09-06', null);
+  const principal = AttendanceExport.generateAttendanceSubmission({
+    workDate: '2026-09-06', saProjectId: SA_PROJECT, repository: attRepo, employees,
+    scope: SCOPE, deviceId: DEVICE_ID, rosterVersion: ROSTER_VERSION
+  }).rows.find(row => row.saEmployeeId === 'EMP-001');
+  assert.deepEqual([principal.positionName, principal.saPositionId], ['Albañil', 'POS-1'], 'the principal is sent too');
+
+  const plain = AttendanceExport.generateAttendanceSubmission({
+    workDate: '2026-09-06', saProjectId: SA_PROJECT, repository: attRepo, employees: empRepo.getAll(),
+    scope: SCOPE, deviceId: DEVICE_ID, rosterVersion: ROSTER_VERSION
+  }).rows.find(row => row.saEmployeeId === 'EMP-001');
+  assert.equal('positionName' in plain, false, 'one position: row shape as before');
+});
+
+test('validator: position fields are optional, typed and bounded', () => {
+  const base = { miniLocalId: 'a', number: '1', name: 'A', normalHours: 8, overtimeHours: 0, status: 'present', saEmployeeId: 'EMP-1' };
+  const sub = rows => ({ schema: 'attendance-submission/v1', submissionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', saProjectId: SA_PROJECT, scope: SCOPE, deviceId: DEVICE_ID, rosterVersion: ROSTER_VERSION, capturedAt: '2026-09-06T12:00:00.000Z', workDate: '2026-09-06', rows });
+  assert.doesNotThrow(() => AttendanceExport.validateAttendanceSubmission(sub([{ ...base, positionName: 'Plomero' }]), SA_PROJECT));
+  assert.throws(() => AttendanceExport.validateAttendanceSubmission(sub([{ ...base, positionName: '' }]), SA_PROJECT), /positionName/);
+  assert.throws(() => AttendanceExport.validateAttendanceSubmission(sub([{ ...base, positionName: 'x'.repeat(81) }]), SA_PROJECT), /positionName/);
+  assert.throws(() => AttendanceExport.validateAttendanceSubmission(sub([{ ...base, saPositionId: 'POS-7' }]), SA_PROJECT), /saPositionId requires positionName/);
 });

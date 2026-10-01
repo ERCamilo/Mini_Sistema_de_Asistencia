@@ -309,3 +309,22 @@ test('save and importBatch preserve workContextId assignment', () => {
   const sofia = repo.getByNumber('11');
   assert.equal(sofia.workContextId, 'ctx_cuadrilla_a');
 });
+
+test('importBatch keeps extra positions and the principal SA position id (replace, merge new and merge existing)', () => {
+  const store = new Map();
+  const storage = { getItem: k => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)), removeItem: k => store.delete(k) };
+  const repo = EmployeeRepository.createEmployeeRepository({ storage, rules: EmployeeNumberRules, now: () => 'T' });
+  const multi = { id: 'u1', name: 'A', number: '1', position: 'Albañil', positionSaId: 'POS-1', extraPositions: [{ name: 'Plomero', saPositionId: 'POS-7' }] };
+  repo.importBatch([multi], 'replace');
+  let saved = repo.getAll()[0];
+  assert.equal(saved.positionSaId, 'POS-1');
+  assert.deepEqual(saved.extraPositions, [{ name: 'Plomero', saPositionId: 'POS-7' }]);
+
+  repo.importBatch([{ id: 'u1', name: 'A', number: '1', extraPositions: [{ name: 'Pintor' }, { name: 'X' }, { name: 'Y' }] }, { id: 'u2', name: 'B', number: '2', position: 'Chofer', extraPositions: [{ name: 'Ayudante' }] }], 'merge');
+  saved = repo.getAll();
+  assert.deepEqual(saved.find(u => u.id === 'u1').extraPositions, [{ name: 'Pintor' }, { name: 'X' }], 'at most 2 extras');
+  assert.deepEqual(saved.find(u => u.id === 'u2').extraPositions, [{ name: 'Ayudante' }]);
+
+  repo.importBatch([{ id: 'u1', name: 'A', number: '1' }], 'merge');
+  assert.deepEqual(repo.getAll().find(u => u.id === 'u1').extraPositions, [{ name: 'Pintor' }, { name: 'X' }], 'absent = untouched');
+});
