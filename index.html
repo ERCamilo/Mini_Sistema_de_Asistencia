@@ -1148,6 +1148,22 @@
         .archive-total, .archive-empty { font-size: 13px; line-height: 1.45; color: var(--text-muted); }
         .archive-total strong, .archive-empty strong { color: var(--text-color); }
         .archive-footnote { margin-top: 10px; font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+        .sheet-import-textarea { width: 100%; min-height: 120px; resize: vertical; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--border-color); border-radius: 12px; padding: 12px; font-size: 12px; font-family: monospace; line-height: 1.4; outline: none; box-sizing: border-box; white-space: pre; margin-bottom: 10px; }
+        .sheet-import-preview { display: grid; gap: 10px; margin: 12px 0; }
+        .sheet-import-preview:empty { display: none; }
+        .sheet-summary, .sheet-hint { font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+        .sheet-summary strong { color: var(--text-color); }
+        .sheet-problems { margin: 0; padding: 10px 12px 10px 28px; border: 1px solid var(--danger-color); border-radius: 12px; font-size: 13px; color: var(--danger-color); }
+        .sheet-days { display: flex; flex-wrap: wrap; gap: 6px; }
+        .sheet-day { min-height: 44px; min-width: 52px; padding: 4px 8px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-muted); font-size: 12px; line-height: 1.2; cursor: pointer; }
+        .sheet-day.is-on { border-color: var(--accent-color); color: var(--accent-color); font-weight: 700; }
+        .sheet-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+        .sheet-rows label { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); cursor: pointer; }
+        .sheet-rows input { width: 20px; height: 20px; flex: none; accent-color: var(--accent-color); }
+        .sheet-row-text { display: grid; gap: 2px; min-width: 0; }
+        .sheet-row-text strong { color: var(--text-color); font-size: 14px; }
+        .sheet-row-text span { color: var(--text-muted); font-size: 12px; }
+        .sheet-row-text .sheet-warn { color: var(--danger-color); font-weight: 600; }
         #btn-archive-run:disabled { opacity: .45; cursor: not-allowed; }
 
         /* Confirmation dialogs must stay above feature overlays such as P2P. */
@@ -3002,6 +3018,13 @@
                                 <div style="font-size: 12px; color: var(--text-muted);">Actualizar existentes (preserva asistencias) o reemplazar</div>
                             </div>
                         </button>
+                        <button type="button" class="export-option" id="btn-sheet-import" onclick="openSheetImportModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="weekly"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Importar planilla de días</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Pegar la tabla de Excel o Sheets y actualizar días de empleados existentes</div>
+                            </div>
+                        </button>
                         <button type="button" class="export-option" onclick="openDraftImportModal()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="addMany"></span></span>
                             <div>
@@ -3186,6 +3209,21 @@
             <div id="archive-summary" class="archive-summary" aria-live="polite"></div>
             <button type="button" class="btn-full btn-primary" id="btn-archive-run" onclick="runArchiveMonths()"><span class="ic" data-icon="package"></span> Guardar archivo y archivar</button>
             <div class="archive-footnote">Podés volver a cargarlos cuando quieras desde <strong>Restaurar respaldo</strong>: se suman sin borrar nada.</div>
+        </div>
+    </div>
+
+    <div class="modal big" id="modal-sheet-import">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title"><span class="ic" data-icon="weekly" data-icon-vector></span> Importar planilla de días</div>
+                <div class="modal-subtitle">Copiá la tabla en Excel o Sheets (con los encabezados No., Descripción y los días) y pegala acá. Sólo se actualizan días de empleados que ya están en Mini.</div>
+            </div>
+            <textarea id="sheet-import-textarea" class="sheet-import-textarea" placeholder="Pegá aquí la planilla..." oninput="resetSheetImport()"></textarea>
+            <button type="button" class="btn-full btn-secondary" id="btn-sheet-import-review" onclick="reviewSheetImport()"><span class="ic" data-icon="search"></span> Revisar planilla</button>
+            <div id="sheet-import-preview" class="sheet-import-preview" aria-live="polite"></div>
+            <button type="button" class="btn-full btn-primary" id="btn-sheet-import-run" onclick="runSheetImport()" disabled><span class="ic" data-icon="check"></span> Actualizar días</button>
+            <div class="archive-footnote">Celda vacía: no cambia nada · 0.00: borra la marca · el día queda en la posición principal. Si algo sale mal, usá <strong>Deshacer última importación</strong>.</div>
         </div>
     </div>
 
@@ -3530,6 +3568,7 @@
     <script src="./mini-sa-envelope.js"></script>
     <script src="./roster-package.js"></script>
     <script src="./employee-positions.js"></script>
+    <script src="./sheet-import.js"></script>
     <script src="./sa-roster-import.js"></script>
     <script src="./p2p-core.js"></script>
     <script src="./p2p-pairing.js"></script>
@@ -4247,6 +4286,145 @@
             setTimeout(() => URL.revokeObjectURL(a.href), 30000);
             return a.download;
         }
+
+        // --- IMPORTAR PLANILLA DE DÍAS ---
+        // Pasted Excel/Sheets table -> day updates for existing employees (SheetImport).
+        let sheetImportState = null;
+
+        function sheetExpectedHours() {
+            return parseFloat(localStorage.getItem('expectedHoursPerDay')) || 8;
+        }
+
+        function sheetDayLabel(date) {
+            const [y, m, d] = date.split('-').map(Number);
+            return new Date(y, m - 1, d).toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '') + ' ' + d + '/' + m;
+        }
+
+        function planSheetImport() {
+            const st = sheetImportState;
+            st.plan = window.SheetImport.planSheetImport(st.parsed, employeeRepository.getAll(), {
+                expectedHours: sheetExpectedHours(),
+                doubleDates: [...st.doubles],
+                getRecord: (id, date) => attendanceRepository.getRecord(id, date)
+            });
+            if (!st.included) st.included = new Set(st.plan.entries.filter(e => e.include).map(e => e.line));
+        }
+
+        function sheetRowItem(entry, included) {
+            const sets = entry.changes.filter(c => c.action === 'set').length;
+            const clears = entry.changes.length - sets;
+            const detail = entry.changes.length
+                ? sets + ' días' + (clears ? ' · ' + clears + ' borrado' + (clears > 1 ? 's' : '') : '')
+                : 'Sin cambios';
+            const target = entry.employee.number + ' · ' + entry.employee.name;
+            const note = entry.note ? '<span class="sheet-warn">' + esc(entry.note) + '</span>' : '';
+            return '<li><label><input type="checkbox" ' + (included ? 'checked ' : '') + 'onchange="toggleSheetRow(' + entry.line + ')">'
+                + '<span class="sheet-row-text"><strong>' + esc(entry.number + '. ' + entry.name) + '</strong>'
+                + '<span>→ ' + esc(target) + ' · ' + detail + '</span>' + note + '</span></label></li>';
+        }
+
+        function renderSheetImport() {
+            const box = document.getElementById('sheet-import-preview');
+            const run = document.getElementById('btn-sheet-import-run');
+            if (!box || !run) return;
+            const st = sheetImportState;
+            run.disabled = true;
+            if (!st) { box.innerHTML = ''; return; }
+            const problems = st.parsed.problems.length
+                ? '<ul class="sheet-problems">' + st.parsed.problems.map(p => '<li>' + esc(p) + '</li>').join('') + '</ul>' : '';
+            const columns = st.parsed.columns;
+            if (!columns.length || !st.plan) { box.innerHTML = problems; return; }
+            const hours = sheetExpectedHours();
+            const days = columns.map(c => '<button type="button" class="sheet-day' + (st.doubles.has(c.date) ? ' is-on' : '') + '" aria-pressed="' + st.doubles.has(c.date) + '" onclick="toggleSheetDouble(\'' + c.date + '\')">' + esc(sheetDayLabel(c.date)) + '</button>').join('');
+            const matched = st.plan.entries.filter(e => e.employee);
+            const missing = st.plan.unmatched.filter(e => st.parsed.rows.find(r => r.line === e.line).values.some(v => v !== null));
+            const chosen = matched.filter(e => st.included.has(e.line));
+            const changes = chosen.reduce((n, e) => n + e.changes.length, 0);
+            box.innerHTML = problems
+                + '<div class="sheet-summary">Del <strong>' + esc(sheetDayLabel(columns[0].date)) + '</strong> al <strong>' + esc(sheetDayLabel(columns[columns.length - 1].date)) + '</strong> · ' + columns.length + ' días · 1.00 = ' + hours + 'h</div>'
+                + '<div class="archive-keep-label">Días pagados doble (2.00 = 1 día)</div><div class="sheet-days">' + days + '</div>'
+                + '<div class="archive-keep-label">Empleados</div><ul class="sheet-rows">' + matched.map(e => sheetRowItem(e, st.included.has(e.line))).join('') + '</ul>'
+                + (missing.length ? '<div class="sheet-hint">No están en Mini (no se importan): ' + missing.map(e => esc(e.number + '. ' + e.name)).join(', ') + '</div>' : '');
+            run.disabled = changes === 0;
+            run.innerHTML = '<span class="ic" data-icon="check"></span> ' + (changes ? 'Actualizar ' + changes + ' días de ' + chosen.length + ' empleados' : 'No hay días para actualizar');
+            applyIcons(run);
+        }
+
+        window.openSheetImportModal = () => {
+            sheetImportState = null;
+            const ta = document.getElementById('sheet-import-textarea');
+            if (ta) ta.value = '';
+            renderSheetImport();
+            openModal('modal-sheet-import');
+        };
+
+        window.resetSheetImport = () => {
+            if (!sheetImportState) return;
+            sheetImportState = null;
+            renderSheetImport();
+        };
+
+        window.reviewSheetImport = () => {
+            const text = document.getElementById('sheet-import-textarea').value;
+            const parsed = window.SheetImport.parseSheet(text, { today: window.LocalDate.toLocalDateKey() });
+            sheetImportState = { parsed, doubles: new Set(parsed.columns.filter(c => c.suggestDouble).map(c => c.date)), included: null, plan: null };
+            if (parsed.columns.length) planSheetImport();
+            renderSheetImport();
+        };
+
+        window.toggleSheetDouble = date => {
+            const st = sheetImportState;
+            if (!st) return;
+            if (st.doubles.has(date)) st.doubles.delete(date); else st.doubles.add(date);
+            planSheetImport();
+            renderSheetImport();
+        };
+
+        window.toggleSheetRow = line => {
+            const st = sheetImportState;
+            if (!st) return;
+            if (st.included.has(line)) st.included.delete(line); else st.included.add(line);
+            renderSheetImport();
+        };
+
+        window.runSheetImport = () => {
+            const st = sheetImportState;
+            if (!st || !st.plan) return;
+            const snapshotBefore = { users: employeeRepository.getAll(), attendance: attendanceRepository.getAll() };
+            const included = st.plan.entries.filter(e => e.employee && st.included.has(e.line)).length;
+            // Recorded before writing: even a half-applied import can be undone.
+            try {
+                importHistoryRepository.recordImport({
+                    source: 'sheet',
+                    mode: 'merge',
+                    summary: { totalIncoming: st.plan.entries.length, createdCount: 0, updatedCount: included, skippedCount: st.plan.entries.length - included },
+                    snapshotBefore
+                });
+            } catch (historyErr) {
+                console.warn('No se pudo guardar el historial de importación:', historyErr);
+            }
+            let result;
+            try {
+                result = window.SheetImport.applySheetImport(st.plan, [...st.included], attendanceRepository);
+            } catch (error) {
+                console.error('No se pudo importar la planilla.', error);
+                attendanceData = attendanceRepository.getAll();
+                saveData({ quiet: true });
+                if (typeof updateUndoImportButton === 'function') updateUndoImportButton();
+                showToast(isStorageQuotaError(error)
+                    ? 'No se guardó todo: el almacenamiento está lleno. Liberá espacio y volvé a importar.'
+                    : 'No se pudo importar la planilla. Revisala e intentá de nuevo.');
+                return;
+            }
+            attendanceData = attendanceRepository.getAll();
+            saveData();
+            renderList();
+            if (typeof updateUndoImportButton === 'function') updateUndoImportButton();
+            sheetImportState = null;
+            closeModal('modal-sheet-import');
+            showToast('Planilla importada: ' + result.set + ' días cargados' + (result.cleared ? ', ' + result.cleared + ' borrados' : '') + ' en ' + result.employees + ' empleados ✅');
+        };
+        // --- END IMPORTAR PLANILLA ---
 
         window.openArchiveModal = () => {
             archiveKeepMonths = 3;
@@ -5013,7 +5191,7 @@
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
             'modal-quick-actions', 'modal-hours', 'theme-menu',
             'modal-request-create', 'modal-request-answering', 'modal-request-review',
-            'modal-work-contexts', 'modal-archive-months', 'modal-storage-help', 'modal-tutorials'
+            'modal-work-contexts', 'modal-archive-months', 'modal-sheet-import', 'modal-storage-help', 'modal-tutorials'
         ]);
         let activeBigModal = null;
 
