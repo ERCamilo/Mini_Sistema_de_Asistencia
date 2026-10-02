@@ -1164,6 +1164,9 @@
         .sheet-row-text strong { color: var(--text-color); font-size: 14px; }
         .sheet-row-text span { color: var(--text-muted); font-size: 12px; }
         .sheet-row-text .sheet-warn { color: var(--danger-color); font-weight: 600; }
+        .sheet-range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
+        .sheet-range label { display: grid; gap: 4px; min-width: 0; font-size: 13px; color: var(--text-muted); }
+        .sheet-range input { min-height: 44px; box-sizing: border-box; width: 100%; min-width: 0; padding-left: 10px; padding-right: 10px; font-size: 15px; }
         #btn-archive-run:disabled { opacity: .45; cursor: not-allowed; }
 
         /* Confirmation dialogs must stay above feature overlays such as P2P. */
@@ -3025,6 +3028,13 @@
                                 <div style="font-size: 12px; color: var(--text-muted);">Pegar la tabla de Excel o Sheets y actualizar días de empleados existentes</div>
                             </div>
                         </button>
+                        <button type="button" class="export-option" id="btn-sheet-export" onclick="openSheetExportModal()">
+                            <span style="font-size: 24px;"><span class="ic" data-icon="copy"></span></span>
+                            <div>
+                                <div style="font-weight: 600; color: var(--accent-color);">Exportar planilla de días</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Copiar la tabla de días (jornadas) para pegarla en Excel o Sheets</div>
+                            </div>
+                        </button>
                         <button type="button" class="export-option" onclick="openDraftImportModal()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="addMany"></span></span>
                             <div>
@@ -3224,6 +3234,24 @@
             <div id="sheet-import-preview" class="sheet-import-preview" aria-live="polite"></div>
             <button type="button" class="btn-full btn-primary" id="btn-sheet-import-run" onclick="runSheetImport()" disabled><span class="ic" data-icon="check"></span> Actualizar días</button>
             <div class="archive-footnote">Celda vacía: no cambia nada · 0.00: borra la marca · el día queda en la posición principal. Si algo sale mal, usá <strong>Deshacer última importación</strong>.</div>
+        </div>
+    </div>
+
+    <div class="modal big" id="modal-sheet-export">
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="modal-header">
+                <div class="modal-title"><span class="ic" data-icon="copy" data-icon-vector></span> Exportar planilla de días</div>
+                <div class="modal-subtitle">La misma tabla de la obra (No., Descripción, Ocupación y un día por columna), lista para pegar en Excel o Sheets.</div>
+            </div>
+            <div class="sheet-range">
+                <label>Desde<input type="date" id="sheet-export-from" class="search-input" onchange="changeSheetExportRange()"></label>
+                <label>Hasta<input type="date" id="sheet-export-to" class="search-input" onchange="changeSheetExportRange()"></label>
+            </div>
+            <div id="sheet-export-preview" class="sheet-import-preview" aria-live="polite"></div>
+            <textarea id="sheet-export-text" class="sheet-import-textarea" readonly aria-label="Planilla para copiar"></textarea>
+            <button type="button" class="btn-full btn-primary" id="btn-sheet-export-copy" onclick="copySheetExport()" disabled><span class="ic" data-icon="copy"></span> Copiar planilla</button>
+            <div class="archive-footnote">1.00 = un día completo · los días dobles (domingos y feriados) salen en 2.00 · sin marca = celda vacía. Se puede volver a importar sin cambiar nada.</div>
         </div>
     </div>
 
@@ -4367,7 +4395,8 @@
         window.reviewSheetImport = () => {
             const text = document.getElementById('sheet-import-textarea').value;
             const parsed = window.SheetImport.parseSheet(text, { today: window.LocalDate.toLocalDateKey() });
-            sheetImportState = { parsed, doubles: new Set(parsed.columns.filter(c => c.suggestDouble).map(c => c.date)), included: null, plan: null };
+            const holidays = new Set(loadSheetHolidays());
+            sheetImportState = { parsed, doubles: new Set(parsed.columns.filter(c => c.suggestDouble || holidays.has(c.date)).map(c => c.date)), included: null, plan: null };
             if (parsed.columns.length) planSheetImport();
             renderSheetImport();
         };
@@ -4376,6 +4405,7 @@
             const st = sheetImportState;
             if (!st) return;
             if (st.doubles.has(date)) st.doubles.delete(date); else st.doubles.add(date);
+            rememberSheetHoliday(date, st.doubles.has(date));
             planSheetImport();
             renderSheetImport();
         };
@@ -4416,6 +4446,7 @@
                     : 'No se pudo importar la planilla. Revisala e intentá de nuevo.');
                 return;
             }
+            st.doubles.forEach(date => rememberSheetHoliday(date, true));
             attendanceData = attendanceRepository.getAll();
             saveData();
             renderList();
@@ -4425,6 +4456,109 @@
             showToast('Planilla importada: ' + result.set + ' días cargados' + (result.cleared ? ', ' + result.cleared + ' borrados' : '') + ' en ' + result.employees + ' empleados ✅');
         };
         // --- END IMPORTAR PLANILLA ---
+
+        // --- EXPORTAR PLANILLA DE DÍAS ---
+        // Holidays the user marked as double (weekdays only; Sundays are always double).
+        const SHEET_HOLIDAYS_KEY = 'sheetHolidays';
+        let sheetExportState = null;
+
+        function isSundayKey(date) {
+            const [y, m, d] = date.split('-').map(Number);
+            return new Date(y, m - 1, d).getDay() === 0;
+        }
+
+        function loadSheetHolidays() {
+            try {
+                const list = JSON.parse(localStorage.getItem(SHEET_HOLIDAYS_KEY) || '[]');
+                return Array.isArray(list) ? list.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
+            } catch (_) { return []; }
+        }
+
+        function rememberSheetHoliday(date, isDouble) {
+            if (isSundayKey(date)) return;
+            const set = new Set(loadSheetHolidays());
+            if (isDouble) set.add(date); else set.delete(date);
+            try { localStorage.setItem(SHEET_HOLIDAYS_KEY, JSON.stringify([...set].sort())); }
+            catch (error) { console.warn('No se pudieron guardar los feriados de la planilla.', error); }
+        }
+
+        function shiftDateKey(date, days) {
+            const [y, m, d] = date.split('-').map(Number);
+            const next = new Date(y, m - 1, d + days);
+            return next.getFullYear() + '-' + String(next.getMonth() + 1).padStart(2, '0') + '-' + String(next.getDate()).padStart(2, '0');
+        }
+
+        function sheetExportDates(from, to) {
+            const dates = [];
+            for (let date = from; date <= to && dates.length < 400; date = shiftDateKey(date, 1)) dates.push(date);
+            return dates;
+        }
+
+        function defaultSheetDoubles(from, to) {
+            const holidays = new Set(loadSheetHolidays());
+            return new Set(sheetExportDates(from, to).filter(d => isSundayKey(d) || holidays.has(d)));
+        }
+
+        function renderSheetExport() {
+            const st = sheetExportState;
+            const box = document.getElementById('sheet-export-preview');
+            const area = document.getElementById('sheet-export-text');
+            const copy = document.getElementById('btn-sheet-export-copy');
+            if (!st || !box || !area || !copy) return;
+            copy.disabled = true;
+            area.value = '';
+            if (!st.from || !st.to || st.from > st.to) {
+                box.innerHTML = '<div class="sheet-hint">Elegí un rango válido: «Desde» no puede ser posterior a «Hasta».</div>';
+                return;
+            }
+            const out = window.SheetImport.buildSheet(employeeRepository.getAll(), attendanceRepository.getDateRange(st.from, st.to), {
+                from: st.from, to: st.to, expectedHours: sheetExpectedHours(), doubleDates: [...st.doubles]
+            });
+            const days = sheetExportDates(st.from, st.to).map(d => '<button type="button" class="sheet-day' + (st.doubles.has(d) ? ' is-on' : '') + '" aria-pressed="' + st.doubles.has(d) + '" onclick="toggleSheetExportDouble(\'' + d + '\')">' + esc(sheetDayLabel(d)) + '</button>').join('');
+            box.innerHTML = '<div class="sheet-summary"><strong>' + out.rows + ' empleados</strong> · ' + out.days + ' días · 1.00 = ' + sheetExpectedHours() + 'h</div>'
+                + '<div class="archive-keep-label">Días pagados doble (salen en 2.00)</div><div class="sheet-days">' + days + '</div>';
+            area.value = out.text;
+            copy.disabled = out.rows === 0;
+        }
+
+        window.openSheetExportModal = () => {
+            const to = window.LocalDate.toLocalDateKey();
+            const from = shiftDateKey(to, -20);
+            sheetExportState = { from, to, doubles: defaultSheetDoubles(from, to) };
+            document.getElementById('sheet-export-from').value = from;
+            document.getElementById('sheet-export-to').value = to;
+            renderSheetExport();
+            openModal('modal-sheet-export');
+        };
+
+        window.changeSheetExportRange = () => {
+            const from = document.getElementById('sheet-export-from').value;
+            const to = document.getElementById('sheet-export-to').value;
+            sheetExportState = { from, to, doubles: from && to ? defaultSheetDoubles(from, to) : new Set() };
+            renderSheetExport();
+        };
+
+        window.toggleSheetExportDouble = date => {
+            const st = sheetExportState;
+            if (!st) return;
+            if (st.doubles.has(date)) st.doubles.delete(date); else st.doubles.add(date);
+            rememberSheetHoliday(date, st.doubles.has(date));
+            renderSheetExport();
+        };
+
+        window.copySheetExport = () => {
+            const area = document.getElementById('sheet-export-text');
+            if (!area || !area.value) return;
+            copyTextToClipboard(area.value)
+                .then(() => showToast('Planilla copiada. Pegala en Excel o Sheets ✅'))
+                .catch(error => {
+                    console.warn('No se pudo copiar la planilla.', error);
+                    area.focus();
+                    area.select();
+                    showToast('No se pudo copiar solo: el texto quedó seleccionado, copialo a mano.');
+                });
+        };
+        // --- END EXPORTAR PLANILLA ---
 
         window.openArchiveModal = () => {
             archiveKeepMonths = 3;
@@ -5191,7 +5325,7 @@
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
             'modal-quick-actions', 'modal-hours', 'theme-menu',
             'modal-request-create', 'modal-request-answering', 'modal-request-review',
-            'modal-work-contexts', 'modal-archive-months', 'modal-sheet-import', 'modal-storage-help', 'modal-tutorials'
+            'modal-work-contexts', 'modal-archive-months', 'modal-sheet-import', 'modal-sheet-export', 'modal-storage-help', 'modal-tutorials'
         ]);
         let activeBigModal = null;
 

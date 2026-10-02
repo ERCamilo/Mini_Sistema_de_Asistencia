@@ -149,3 +149,49 @@ test('apply: only included rows; sets present hours on the principal position, c
   assert.ok(result.set > 60);
   assert.deepEqual(result.dates[0], '2026-09-11');
 });
+
+// --- Export: the same sheet, built from Mini ---
+
+const exportUsers = [
+  { id: 'a', number: '010', name: 'Elena Paredes', position: 'Ayudante' },
+  { id: 'b', number: '2', name: 'Marysol Betancourt', position: 'Capataz', extraPositions: [{ name: 'Chofer' }] },
+  { id: 'c', number: '003', name: 'Tomás Rivera', position: 'Ayudante', paused: true },
+  { id: 'd', number: '004', name: 'Iván Ortega', position: 'Ayudante', paused: true }
+];
+const exportAttendance = {
+  '2026-09-19': { a: { status: 'present', hours: 8 }, b: { status: 'present', hours: 9, position: 'Chofer' } },
+  '2026-09-20': { a: { status: 'present', hours: 8 }, c: { status: 'present', hours: 4 } },
+  '2026-09-21': { b: { status: 'present', hours: 4 } }
+};
+
+test('export: one column per day, values in workdays, doubles x2, blank without a mark', () => {
+  const out = S.buildSheet(exportUsers, exportAttendance, {
+    from: '2026-09-19', to: '2026-09-21', expectedHours: 8, doubleDates: ['2026-09-20']
+  });
+  assert.deepEqual(out.text.split('\n'), [
+    'No.\tDescripcion\tOCUPACION\tS19\tS20\tS21',
+    '2\tMarysol Betancourt\tCapataz\t1.125\t\t0.50',
+    '3\tTomás Rivera\tAyudante\t\t1.00\t',
+    '10\tElena Paredes\tAyudante\t1.00\t2.00\t'
+  ]);
+  assert.equal(out.rows, 3, 'paused without marks (Iván) left out; paused with marks kept');
+  assert.equal(out.days, 3);
+});
+
+test('export: month letters follow the Spanish initials and the range can cross months', () => {
+  const out = S.buildSheet([], {}, { from: '2026-12-31', to: '2027-01-02', expectedHours: 8, doubleDates: [] });
+  assert.equal(out.text.split('\n')[0], 'No.\tDescripcion\tOCUPACION\tD31\tE01\tE02');
+});
+
+test('export -> import round trip: re-importing what Mini exported changes nothing', () => {
+  const doubles = ['2026-09-20'];
+  const out = S.buildSheet(exportUsers, exportAttendance, { from: '2026-09-19', to: '2026-09-21', expectedHours: 8, doubleDates: doubles });
+  const parsed = S.parseSheet(out.text, { today: TODAY });
+  assert.deepEqual(parsed.problems, []);
+  const getRecord = (id, date) => {
+    const rec = (exportAttendance[date] || {})[id] || null;
+    return rec && { ...rec, position: undefined };
+  };
+  const plan = S.planSheetImport(parsed, exportUsers, { expectedHours: 8, doubleDates: doubles, getRecord });
+  assert.deepEqual(plan.entries.map(e => [e.employee.id, e.changes.length]), [['b', 0], ['c', 0], ['a', 0]]);
+});
