@@ -8,12 +8,12 @@ const SHEET = fs.readFileSync(path.join(__dirname, 'fixtures', 'sheet-2026-09.ts
 const TODAY = '2026-10-01';
 
 const users = [
-  { id: 'u1', number: '001', name: 'Franklin Henrriquez', position: 'Albañil', extraPositions: [{ name: 'Plomero' }] },
-  { id: 'u2', number: '002', name: 'Pauliny Buchamps', position: 'Capataz' },
-  { id: 'u3', number: '003', name: 'Grand Pierre Vernet', position: 'Ayudante' },
-  { id: 'u4', number: '004', name: 'Wadne Exilien', position: 'Ayudante' },
+  { id: 'u1', number: '001', name: 'Ramón Gutiérrez', position: 'Albañil', extraPositions: [{ name: 'Plomero' }] },
+  { id: 'u2', number: '002', name: 'Marysol Betancourt', position: 'Capataz' },
+  { id: 'u3', number: '003', name: 'Tomas Rivera Luna', position: 'Ayudante' },
+  { id: 'u4', number: '004', name: 'Elena Paredes', position: 'Ayudante' },
   { id: 'u5', number: '005', name: 'María López', position: 'Ayudante' },
-  { id: 'u34', number: '034', name: 'Andrés Sánchez', position: 'Chofer' }
+  { id: 'u34', number: '034', name: 'Alonso Suárez', position: 'Chofer' }
 ];
 
 function memoryRepository(initial = {}) {
@@ -46,7 +46,7 @@ test('parse: the pasted sheet gives 21 consecutive days S11..O01 and one row per
   assert.equal(sheet.columns[20].date, '2026-10-01');
   assert.equal(sheet.rows.length, 34);
   assert.deepEqual(sheet.rows[0], {
-    line: 2, number: '1', name: 'Franklin Henriquez',
+    line: 2, number: '1', name: 'Ramon Gutierez',
     values: [0, 0, null, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, null, null, null, null, null]
   });
   assert.equal(sheet.rows[2].values[6], 1.25);
@@ -91,7 +91,7 @@ test('plan: matched by number with a tolerant name check; blank untouched, 0 cle
 
   const franklin = byNumber['1'];
   assert.equal(franklin.employee.id, 'u1');
-  assert.equal(franklin.nameOk, true, 'Henriquez ~ Henrriquez');
+  assert.equal(franklin.nameOk, true, 'Gutierez ~ Gutiérrez');
   assert.equal(franklin.include, true);
   assert.deepEqual(franklin.changes.find(c => c.date === '2026-09-11'), { date: '2026-09-11', action: 'clear', hours: 0 });
   assert.equal(franklin.changes.some(c => c.date === '2026-09-12'), false, '0 without a mark: nothing to clear');
@@ -99,7 +99,7 @@ test('plan: matched by number with a tolerant name check; blank untouched, 0 cle
   assert.deepEqual(franklin.changes.find(c => c.date === '2026-09-24'), { date: '2026-09-24', action: 'set', hours: 4 }, '1.00 on the holiday = half a day');
   assert.equal(franklin.changes.some(c => c.date === '2026-09-28'), false, 'blank cell leaves the mark (and its position) alone');
 
-  assert.equal(byNumber['2'].nameOk, true, 'Paulny Beauchamps ~ Pauliny Buchamps');
+  assert.equal(byNumber['2'].nameOk, true, 'Marisol Betancur ~ Marysol Betancourt');
   const grand = byNumber['3'].changes;
   assert.deepEqual(grand.find(c => c.date === '2026-09-17'), { date: '2026-09-17', action: 'set', hours: 10 });
   assert.deepEqual(grand.find(c => c.date === '2026-09-23'), { date: '2026-09-23', action: 'set', hours: 9 });
@@ -113,7 +113,7 @@ test('plan: matched by number with a tolerant name check; blank untouched, 0 cle
 });
 
 test('plan: unknown number falls back to an identical name; duplicates are skipped', () => {
-  const sheet = S.parseSheet('No\tNombre\tS11\n99\tWadne Exilien\t1\n4\tWadne Exilien\t1', { today: TODAY });
+  const sheet = S.parseSheet('No\tNombre\tS11\n99\tElena Paredes\t1\n4\tElena Paredes\t1', { today: TODAY });
   const plan = S.planSheetImport(sheet, users, { expectedHours: 8, doubleDates: [], getRecord: () => null });
   assert.equal(plan.entries[0].employee.id, 'u4');
   assert.equal(plan.entries[0].match, 'name');
@@ -123,7 +123,7 @@ test('plan: unknown number falls back to an identical name; duplicates are skipp
 });
 
 test('plan: unchanged days are not rewritten', () => {
-  const sheet = S.parseSheet('No\tNombre\tS11\tS12\n4\tWadne Exilien\t1\t1', { today: TODAY });
+  const sheet = S.parseSheet('No\tNombre\tS11\tS12\n4\tElena Paredes\t1\t1', { today: TODAY });
   const repo = memoryRepository({ '2026-09-11': { u4: { status: 'present', hours: 8 } } });
   const plan = S.planSheetImport(sheet, users, { expectedHours: 8, doubleDates: [], getRecord: repo.getRecord });
   assert.deepEqual(plan.entries[0].changes, [{ date: '2026-09-12', action: 'set', hours: 8 }]);

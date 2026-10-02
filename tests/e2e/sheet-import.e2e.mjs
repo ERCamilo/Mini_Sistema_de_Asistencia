@@ -25,9 +25,9 @@ async function device() {
   await page.goto(base + 'manifest.json');
   await page.evaluate(() => {
     localStorage.setItem('users', JSON.stringify([
-      { id: 'u1', name: 'Franklin Henrriquez', number: '001', position: 'Albañil', extraPositions: [{ name: 'Plomero' }] },
-      { id: 'u2', name: 'Pauliny Buchamps', number: '002', position: 'Capataz' },
-      { id: 'u4', name: 'Wadne Exilien', number: '004', position: 'Ayudante' },
+      { id: 'u1', name: 'Ramón Gutiérrez', number: '001', position: 'Albañil', extraPositions: [{ name: 'Plomero' }] },
+      { id: 'u2', name: 'Marysol Betancourt', number: '002', position: 'Capataz' },
+      { id: 'u4', name: 'Elena Paredes', number: '004', position: 'Ayudante' },
       { id: 'u5', name: 'María López', number: '005', position: 'Ayudante' }
     ]));
     localStorage.setItem('tutorialsSeen', '["marcar-asistencia"]');
@@ -66,9 +66,9 @@ test('pasted sheet: preview, only confirmed employees, doubles halved, then undo
     assert.match(summary, /21 días · 1\.00 = 8h/);
     assert.deepEqual(await page.locator('.sheet-day.is-on').allTextContents(), ['dom 13/9', 'dom 20/9', 'jue 24/9', 'dom 27/9']);
     assert.equal(await page.locator('.sheet-rows li').count(), 4);
-    assert.equal(await page.locator('.sheet-rows li', { hasText: 'Erlin' }).locator('input').isChecked(), false, 'number 005 is María in Mini');
-    assert.match(await page.textContent('.sheet-rows li:has-text("Erlin")'), /En Mini el 005 es María López/);
-    assert.match(await page.textContent('.sheet-hint'), /3\. Grand Pierre Vernet/);
+    assert.equal(await page.locator('.sheet-rows li', { hasText: 'Julio' }).locator('input').isChecked(), false, 'number 005 is María in Mini');
+    assert.match(await page.textContent('.sheet-rows li:has-text("Julio")'), /En Mini el 005 es María López/);
+    assert.match(await page.textContent('.sheet-hint'), /3\. Tomas Rivera Luna/);
     assert.match(await page.textContent('#btn-sheet-import-run'), /Actualizar \d+ días de 3 empleados/);
 
     await page.click('#btn-sheet-import-run');
@@ -103,7 +103,7 @@ test('toggling a double day and confirming a row change the plan before applying
   try {
     await openSheetImport(page);
     await page.click('.sheet-day:has-text("jue 24/9")');
-    await page.locator('.sheet-rows li', { hasText: 'Erlin' }).locator('input').check();
+    await page.locator('.sheet-rows li', { hasText: 'Julio' }).locator('input').check();
     assert.match(await page.textContent('#btn-sheet-import-run'), /de 4 empleados/);
     await page.click('#btn-sheet-import-run');
     await page.waitForTimeout(300);
@@ -119,7 +119,7 @@ test('a text that is not a sheet shows what is wrong and enables nothing', async
     await page.click('#nav-more');
     await page.click('#btn-more-tab-data');
     await page.click('#btn-sheet-import');
-    await page.fill('#sheet-import-textarea', 'Franklin 8 horas');
+    await page.fill('#sheet-import-textarea', 'Ramón 8 horas');
     await page.click('#btn-sheet-import-review');
     assert.match(await page.textContent('.sheet-problems'), /tabulaciones/);
     assert.equal(await page.isDisabled('#btn-sheet-import-run'), true);

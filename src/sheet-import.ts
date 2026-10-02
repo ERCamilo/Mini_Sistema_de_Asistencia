@@ -169,7 +169,7 @@ interface SheetRepository {
     return prev[b.length];
   }
 
-  // Same person if any name word matches allowing small typos (Paulny ~ Pauliny).
+  // Same person if any name word matches allowing small typos (Marisol ~ Marysol).
   function similarNames(a: unknown, b: unknown): boolean {
     const left = nameTokens(a);
     const right = nameTokens(b);
