@@ -21,3 +21,12 @@ test('sheet import: writes through the attendance repository and can be undone',
   assert.match(block, /snapshotBefore = \{ users: employeeRepository\.getAll\(\), attendance: attendanceRepository\.getAll\(\) \}/);
   assert.match(block, /catch \(error\)/, 'a failed import is reported, never silent');
 });
+
+test('sheet export: reachable from Ajustes, builds from the repositories, copies with a fallback', () => {
+  assert.match(html, /id="btn-sheet-export" onclick="openSheetExportModal\(\)"/);
+  assert.match(html, /'modal-sheet-export'/, 'registered as a big modal');
+  const block = html.slice(html.indexOf('// --- EXPORTAR PLANILLA DE DÍAS ---'), html.indexOf('// --- END EXPORTAR PLANILLA ---'));
+  assert.ok(block.length > 0);
+  assert.match(block, /SheetImport\.buildSheet\(employeeRepository\.getAll\(\), attendanceRepository\.getDateRange\(st\.from, st\.to\)/);
+  assert.match(block, /copyTextToClipboard\(area\.value\)[\s\S]*\.catch\(/, 'a failed copy leaves the text selected');
+});

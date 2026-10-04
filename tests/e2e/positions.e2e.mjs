@@ -21,9 +21,9 @@ async function device() {
   await page.goto(base + 'manifest.json');
   await page.evaluate(() => {
     localStorage.setItem('users', JSON.stringify([
-      { id: 'u1', name: 'Franklin Henrriquez', number: '001', position: 'Albañil', positionSaId: 'POS-1', extraPositions: [{ name: 'Plomero', saPositionId: 'POS-7' }] },
-      { id: 'u2', name: 'Pauliny Buchamps', number: '002', position: 'Ayudante' },
-      { id: 'u3', name: 'Jean Michel', number: '018', position: 'Albañil', extraPositions: [{ name: 'Pintor' }] }
+      { id: 'u1', name: 'Ramón Gutiérrez', number: '001', position: 'Albañil', positionSaId: 'POS-1', extraPositions: [{ name: 'Plomero', saPositionId: 'POS-7' }] },
+      { id: 'u2', name: 'Marysol Betancourt', number: '002', position: 'Ayudante' },
+      { id: 'u3', name: 'Javier Molina', number: '018', position: 'Albañil', extraPositions: [{ name: 'Pintor' }] }
     ]));
     localStorage.setItem('tutorialsSeen', '["marcar-asistencia"]');
     localStorage.setItem('lastUpdateTimestamp', '12:05 a. m.');
@@ -42,16 +42,16 @@ const sent = page => page.evaluate(() => window.__sent.map(u => decodeURICompone
 test('chips: only for employees with more than one position; tapping one marks present with that position', async () => {
   const { context, page, errors } = await device();
   try {
-    assert.equal(await card(page, 'Pauliny').locator('.pos-chip').count(), 0, 'one position: plain role text');
-    assert.deepEqual(await card(page, 'Franklin').locator('.pos-chip').allTextContents(), ['Albañil', 'Plomero']);
-    await card(page, 'Franklin').locator('.pos-chip', { hasText: 'Plomero' }).click();
+    assert.equal(await card(page, 'Marysol').locator('.pos-chip').count(), 0, 'one position: plain role text');
+    assert.deepEqual(await card(page, 'Ramón').locator('.pos-chip').allTextContents(), ['Albañil', 'Plomero']);
+    await card(page, 'Ramón').locator('.pos-chip', { hasText: 'Plomero' }).click();
     await page.waitForTimeout(200);
     assert.deepEqual(await page.evaluate(() => { const r = getRecord('u1'); return [r.hours, r.position]; }), [8, 'Plomero']);
-    assert.equal(await card(page, 'Franklin').locator('.pos-chip.is-on').textContent(), 'Plomero');
-    await card(page, 'Franklin').locator('.pos-chip', { hasText: 'Albañil' }).click();
+    assert.equal(await card(page, 'Ramón').locator('.pos-chip.is-on').textContent(), 'Plomero');
+    await card(page, 'Ramón').locator('.pos-chip', { hasText: 'Albañil' }).click();
     await page.waitForTimeout(200);
     assert.equal(await page.evaluate(() => 'position' in getRecord('u1')), false, 'principal = no stored override');
-    await card(page, 'Franklin').locator('.pos-chip', { hasText: 'Plomero' }).click();
+    await card(page, 'Ramón').locator('.pos-chip', { hasText: 'Plomero' }).click();
     // Storage v2 writes the day to IndexedDB asynchronously: reload only once it landed.
     await page.waitForFunction(async () => {
       const all = await (await window.MiniData.openIdbBackend(indexedDB)).readAll();
@@ -60,7 +60,7 @@ test('chips: only for employees with more than one position; tapping one marks p
     }, null, { timeout: 5000 });
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForTimeout(500);
-    assert.equal(await card(page, 'Franklin').locator('.pos-chip.is-on').textContent(), 'Plomero', 'survives reload');
+    assert.equal(await card(page, 'Ramón').locator('.pos-chip.is-on').textContent(), 'Plomero', 'survives reload');
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
@@ -68,9 +68,9 @@ test('chips: only for employees with more than one position; tapping one marks p
 test('WhatsApp: " _Position_" after the hours for multi-position employees (principal included); others unchanged', async () => {
   const { context, page, errors } = await device();
   try {
-    await card(page, 'Franklin').locator('.pos-chip', { hasText: 'Plomero' }).click();
-    await card(page, 'Pauliny').locator('.check-box').click();
-    await card(page, 'Jean').locator('.check-box').click();
+    await card(page, 'Ramón').locator('.pos-chip', { hasText: 'Plomero' }).click();
+    await card(page, 'Marysol').locator('.check-box').click();
+    await card(page, 'Javier').locator('.check-box').click();
     await page.waitForTimeout(200);
     await page.click('.whatsapp-cta');
     await page.waitForTimeout(200);
@@ -79,9 +79,9 @@ test('WhatsApp: " _Position_" after the hours for multi-position employees (prin
     assert.match(lines[0], /^\*Asistencia de hoy .+\*$/);
     assert.match(lines[1], /^_Última actualización: \d{1,2}:\d{2}\s[ap]\.\sm\._$/);
     assert.deepEqual(lines.slice(3, 6), [
-      '001. Franklin Henrriquez  *8h* _Plomero_',
-      '002. Pauliny Buchamps  *8h*',
-      '018. Jean Michel  *8h* _Albañil_'
+      '001. Ramón Gutiérrez  *8h* _Plomero_',
+      '002. Marysol Betancourt  *8h*',
+      '018. Javier Molina  *8h* _Albañil_'
     ]);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
@@ -98,7 +98,7 @@ test('form: add and remove extra positions; the SA id of an unchanged principal 
     let u1 = await page.evaluate(() => users.find(u => u.id === 'u1'));
     assert.equal(u1.positionSaId, 'POS-1');
     assert.deepEqual(u1.extraPositions, [{ name: 'Plomero', saPositionId: 'POS-7' }, { name: 'Pintor' }]);
-    assert.equal(await card(page, 'Franklin').locator('.pos-chip').count(), 3);
+    assert.equal(await card(page, 'Ramón').locator('.pos-chip').count(), 3);
 
     await page.evaluate(() => editUser('u1'));
     await page.fill('#user-position-2', '');
@@ -107,7 +107,7 @@ test('form: add and remove extra positions; the SA id of an unchanged principal 
     await page.waitForTimeout(200);
     u1 = await page.evaluate(() => users.find(u => u.id === 'u1'));
     assert.deepEqual(u1.extraPositions, []);
-    assert.equal(await card(page, 'Franklin').locator('.pos-chip').count(), 0, 'back to one position');
+    assert.equal(await card(page, 'Ramón').locator('.pos-chip').count(), 0, 'back to one position');
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

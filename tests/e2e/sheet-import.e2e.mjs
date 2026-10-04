@@ -25,9 +25,9 @@ async function device() {
   await page.goto(base + 'manifest.json');
   await page.evaluate(() => {
     localStorage.setItem('users', JSON.stringify([
-      { id: 'u1', name: 'Franklin Henrriquez', number: '001', position: 'Albañil', extraPositions: [{ name: 'Plomero' }] },
-      { id: 'u2', name: 'Pauliny Buchamps', number: '002', position: 'Capataz' },
-      { id: 'u4', name: 'Wadne Exilien', number: '004', position: 'Ayudante' },
+      { id: 'u1', name: 'Ramón Gutiérrez', number: '001', position: 'Albañil', extraPositions: [{ name: 'Plomero' }] },
+      { id: 'u2', name: 'Marysol Betancourt', number: '002', position: 'Capataz' },
+      { id: 'u4', name: 'Elena Paredes', number: '004', position: 'Ayudante' },
       { id: 'u5', name: 'María López', number: '005', position: 'Ayudante' }
     ]));
     localStorage.setItem('tutorialsSeen', '["marcar-asistencia"]');
@@ -66,9 +66,9 @@ test('pasted sheet: preview, only confirmed employees, doubles halved, then undo
     assert.match(summary, /21 días · 1\.00 = 8h/);
     assert.deepEqual(await page.locator('.sheet-day.is-on').allTextContents(), ['dom 13/9', 'dom 20/9', 'jue 24/9', 'dom 27/9']);
     assert.equal(await page.locator('.sheet-rows li').count(), 4);
-    assert.equal(await page.locator('.sheet-rows li', { hasText: 'Erlin' }).locator('input').isChecked(), false, 'number 005 is María in Mini');
-    assert.match(await page.textContent('.sheet-rows li:has-text("Erlin")'), /En Mini el 005 es María López/);
-    assert.match(await page.textContent('.sheet-hint'), /3\. Grand Pierre Vernet/);
+    assert.equal(await page.locator('.sheet-rows li', { hasText: 'Julio' }).locator('input').isChecked(), false, 'number 005 is María in Mini');
+    assert.match(await page.textContent('.sheet-rows li:has-text("Julio")'), /En Mini el 005 es María López/);
+    assert.match(await page.textContent('.sheet-hint'), /3\. Tomas Rivera Luna/);
     assert.match(await page.textContent('#btn-sheet-import-run'), /Actualizar \d+ días de 3 empleados/);
 
     await page.click('#btn-sheet-import-run');
@@ -103,7 +103,7 @@ test('toggling a double day and confirming a row change the plan before applying
   try {
     await openSheetImport(page);
     await page.click('.sheet-day:has-text("jue 24/9")');
-    await page.locator('.sheet-rows li', { hasText: 'Erlin' }).locator('input').check();
+    await page.locator('.sheet-rows li', { hasText: 'Julio' }).locator('input').check();
     assert.match(await page.textContent('#btn-sheet-import-run'), /de 4 empleados/);
     await page.click('#btn-sheet-import-run');
     await page.waitForTimeout(300);
@@ -119,9 +119,72 @@ test('a text that is not a sheet shows what is wrong and enables nothing', async
     await page.click('#nav-more');
     await page.click('#btn-more-tab-data');
     await page.click('#btn-sheet-import');
-    await page.fill('#sheet-import-textarea', 'Franklin 8 horas');
+    await page.fill('#sheet-import-textarea', 'Ramón 8 horas');
     await page.click('#btn-sheet-import-review');
     assert.match(await page.textContent('.sheet-problems'), /tabulaciones/);
+    assert.equal(await page.isDisabled('#btn-sheet-import-run'), true);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+async function openSheetExport(page, from, to) {
+  await page.click('#nav-more');
+  await page.click('#btn-more-tab-data');
+  await page.click('#btn-sheet-export');
+  await page.waitForSelector('#modal-sheet-export.active');
+  await page.fill('#sheet-export-from', from);
+  await page.fill('#sheet-export-to', to);
+  await page.dispatchEvent('#sheet-export-to', 'change');
+}
+
+test('export: the sheet the office uses, holidays remembered, copied to the clipboard', async () => {
+  const { context, page, errors } = await device();
+  try {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+    await page.evaluate(() => {
+      attendanceRepository.setRecord('u4', '2026-09-23', 'present', 9);
+      attendanceRepository.setRecord('u4', '2026-09-24', 'present', 8);
+      attendanceRepository.setRecord('u4', '2026-09-27', 'present', 8);
+      attendanceRepository.setRecord('u2', '2026-09-25', 'present', 4);
+    });
+    await openSheetExport(page, '2026-09-23', '2026-09-27');
+    assert.deepEqual(await page.locator('#modal-sheet-export .sheet-day.is-on').allTextContents(), ['dom 27/9'], 'only Sundays by default');
+    await page.click('#modal-sheet-export .sheet-day:has-text("jue 24/9")');
+    const lines = (await page.inputValue('#sheet-export-text')).split('\n');
+    assert.deepEqual(lines.slice(0, 1), ['No.\tDescripcion\tOCUPACION\tS23\tS24\tS25\tS26\tS27']);
+    assert.ok(lines.includes('2\tMarysol Betancourt\tCapataz\t\t\t0.50\t\t'));
+    assert.ok(lines.includes('4\tElena Paredes\tAyudante\t1.125\t2.00\t\t\t2.00'));
+    assert.match(await page.textContent('#sheet-export-preview .sheet-summary'), /4 empleados · 5 días/);
+    await page.click('#btn-sheet-export-copy');
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), lines.join('\n'));
+
+    // The holiday is remembered: opening again doubles it by default.
+    await page.evaluate(() => closeModal('modal-sheet-export'));
+    await page.click('#btn-sheet-export');
+    await page.fill('#sheet-export-from', '2026-09-23');
+    await page.fill('#sheet-export-to', '2026-09-27');
+    await page.dispatchEvent('#sheet-export-to', 'change');
+    assert.deepEqual(await page.locator('#modal-sheet-export .sheet-day.is-on').allTextContents(), ['jue 24/9', 'dom 27/9']);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('export -> import round trip in the app: nothing to update', async () => {
+  const { context, page, errors } = await device();
+  try {
+    await page.evaluate(() => {
+      attendanceRepository.setRecord('u1', '2026-09-26', 'present', 10);
+      attendanceRepository.setRecord('u4', '2026-09-27', 'present', 8);
+    });
+    await openSheetExport(page, '2026-09-21', '2026-09-27');
+    const text = await page.inputValue('#sheet-export-text');
+    await page.evaluate(() => closeModal('modal-sheet-export'));
+    await page.click('#btn-sheet-import');
+    await page.waitForSelector('#modal-sheet-import.active');
+    await page.fill('#sheet-import-textarea', text);
+    await page.click('#btn-sheet-import-review');
+    assert.match(await page.textContent('#btn-sheet-import-run'), /No hay días para actualizar/);
     assert.equal(await page.isDisabled('#btn-sheet-import-run'), true);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }

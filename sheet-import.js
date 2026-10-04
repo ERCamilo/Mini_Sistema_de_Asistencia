@@ -150,7 +150,7 @@
         }
         return prev[b.length];
     }
-    // Same person if any name word matches allowing small typos (Paulny ~ Pauliny).
+    // Same person if any name word matches allowing small typos (Marisol ~ Marysol).
     function similarNames(a, b) {
         const left = nameTokens(a);
         const right = nameTokens(b);
@@ -232,5 +232,46 @@
         }
         return { employees: done.size, set, cleared, dates: [...dates].sort() };
     }
-    return { parseSheet, planSheetImport, applySheetImport, similarNames };
+    // --- Export: the same sheet, built from Mini (round-trips through parseSheet) ---
+    const MONTH_LETTERS = ['E', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    function listDates(from, to) {
+        const [y, m, d] = from.split('-').map(Number);
+        const cur = new Date(y, m - 1, d);
+        const dates = [];
+        for (let key = from; key <= to && dates.length < 400;) {
+            dates.push(key);
+            cur.setDate(cur.getDate() + 1);
+            key = dateKey(cur.getFullYear(), cur.getMonth() + 1, cur.getDate());
+        }
+        return dates;
+    }
+    // 1.00, 0.50, 1.125: two decimals, a third only when it carries information.
+    function formatWorkdays(value) {
+        const fixed = (Math.round(value * 1000) / 1000).toFixed(3);
+        return fixed.endsWith('0') ? fixed.slice(0, -1) : fixed;
+    }
+    function buildSheet(users, attendance, options) {
+        const dates = listDates(options.from, options.to);
+        const doubles = new Set(options.doubleDates);
+        const expected = options.expectedHours > 0 ? options.expectedHours : 8;
+        const header = dates.map(date => MONTH_LETTERS[Number(date.slice(5, 7)) - 1] + date.slice(8, 10));
+        const lines = [['No.', 'Descripcion', 'OCUPACION', ...header].join('\t')];
+        const sorted = [...users].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
+        for (const user of sorted) {
+            const cells = dates.map(date => {
+                const rec = (attendance[date] || {})[user.id];
+                if (!rec || rec.status !== 'present' || !Number.isFinite(Number(rec.hours)))
+                    return '';
+                return formatWorkdays(Number(rec.hours) / expected * (doubles.has(date) ? 2 : 1));
+            });
+            // Paused employees without marks in the range are left out, as in the SA export.
+            if (user.paused && cells.every(c => c === ''))
+                continue;
+            const number = String(user.number || '').trim();
+            const label = /^\d+$/.test(number) ? String(Number(number)) : number;
+            lines.push([label, clean(String(user.name || '')), clean(String(user.position || '')), ...cells].join('\t'));
+        }
+        return { text: lines.join('\n'), rows: lines.length - 1, days: dates.length };
+    }
+    return { parseSheet, planSheetImport, applySheetImport, similarNames, buildSheet };
 });

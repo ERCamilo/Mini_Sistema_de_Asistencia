@@ -43,4 +43,15 @@ de **empleados que ya existen**.
 ## Tareas
 1. Tests del módulo (parse, fechas, dobles, plan, apply) → módulo.
 2. Cableado en `index.html` + `sw.js` precache + test de wiring.
-3. E2E con la tabla real del usuario.
+3. E2E con la planilla de septiembre (valores reales, nombres ficticios).
+
+## Exportación (v2.17)
+- Ajustes → Datos → "Exportar planilla de días": rango Desde/Hasta (por defecto las
+  últimas 3 semanas), días dobles (domingos + feriados recordados) y "Copiar planilla".
+- `SheetImport.buildSheet(users, attendance, {from, to, expectedHours, doubleDates})`:
+  mismo formato que se importa (`No.`, `Descripcion`, `OCUPACION`, `S11`…), valores en
+  jornadas (`horas / horasEsperadas`, ×2 en días dobles), vacío sin marca, empleados
+  ordenados por número; pausados sin marcas en el rango quedan fuera (como en SA).
+- Ida y vuelta: importar lo exportado no cambia nada (test unitario + e2e).
+- Feriados: los días de semana marcados como doble (al importar o exportar) se
+  recuerdan en `localStorage.sheetHolidays`, así ambos lados coinciden.

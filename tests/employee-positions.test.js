@@ -2,9 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const P = require('../employee-positions.js');
 
-const single = { id: 'u1', name: 'Pauliny Buchamps', number: '002', position: 'Ayudante' };
+const single = { id: 'u1', name: 'Marysol Betancourt', number: '002', position: 'Ayudante' };
 const multi = {
-  id: 'u2', name: 'Franklin Henrriquez', number: '001',
+  id: 'u2', name: 'Ramón Gutiérrez', number: '001',
   position: 'Albañil', positionSaId: 'POS-1',
   extraPositions: [{ name: 'Plomero', saPositionId: 'POS-7' }, { name: 'Pintor' }]
 };
