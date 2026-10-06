@@ -1,0 +1,6 @@
+/* Google Identity branding: official local icon, classic light button. */
+:root {--connection-qr-paper:#fff;}
+.connections-task .connection-google-button,.connections-account .connection-google-button {display:flex;align-items:center;justify-content:center;gap:10px;min-height:44px;padding:10px 12px;border:1px solid #747775;border-radius:4px;background:#fff;color:#1f1f1f;font-family:Arial,sans-serif;font-size:14px;font-weight:500;cursor:pointer;}
+.connection-google-button img {display:block;width:20px;height:20px;object-fit:contain;flex:none;}
+.connection-google-button:focus-visible {outline:2px solid var(--connection-accent);outline-offset:3px;}
+.connection-google-button:disabled {opacity:.6;cursor:wait;}

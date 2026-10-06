@@ -32,3 +32,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Firebase JavaScript SDK 12.19.0 (Auth y App compat)
+
+Archivos vendor/firebase-app-compat.js y vendor/firebase-auth-compat.js copiados sin modificar del paquete oficial firebase@12.19.0. Licencia Apache-2.0 en vendor/FIREBASE_LICENSE. Fuente https://github.com/firebase/firebase-js-sdk . SDK local; Google OAuth requiere conexión al proveedor al iniciar sesión.
