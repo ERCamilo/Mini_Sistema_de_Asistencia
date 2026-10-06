@@ -356,3 +356,21 @@ test('version banner has dedicated styles for every outcome', () => {
   }
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}/, 'banner must use tokens, not raw colors');
 });
+
+// Regression: a stale applied receipt must not prevent restoring an empty Mini.
+test('empty Mini can review the identical applied roster without forgetting freshness', () => {
+  const storage = createMemoryStorage();
+  const guard = Guard.createSaRosterVersionGuard({ storage });
+  const roster = rosterObj('proj-1', T2, 'v1');
+  guard.markApplied(roster);
+  const recovery = guard.classifyIncoming(roster, 0);
+  assert.equal(recovery.outcome, 'first');
+  assert.equal(recovery.reason, 'local-personnel-missing');
+  assert.equal(guard.getLastApplied('proj-1').generatedAt, T2);
+  for (const count of [undefined, 1, -1, NaN]) {
+    assert.equal(guard.classifyIncoming(roster, count).outcome, 'equal');
+  }
+  assert.equal(guard.classifyIncoming(rosterObj('proj-1', T1, 'old'), 0).outcome, 'older');
+  assert.equal(guard.classifyIncoming(rosterObj('proj-1', T2, 'conflict'), 0).outcome, 'ambiguous');
+  assert.equal(guard.classifyIncoming(rosterObj('proj-1', undefined, 'v1'), 0).outcome, 'ambiguous');
+});

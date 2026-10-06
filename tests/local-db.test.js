@@ -166,3 +166,22 @@ test('legacy snapshot reads the repository key "attendance" first, weeklyAttenda
   const both = { ...legacy, attendance: JSON.stringify({ '2026-09-01': { u1: { status: 'present', hours: 8 } } }) };
   assert.deepEqual(Object.keys(LocalDb.readLegacySnapshot(storage(both)).attendance), ['2026-09-01']);
 });
+
+
+test('an interrupted full reset restores the empty reset snapshot, never the older database copy', async () => {
+ const values={...legacy};const kv={getItem:key=>values[key]??null,setItem:(key,value)=>{values[key]=value;},removeItem:key=>{delete values[key];}};
+ const adapter=atomicAdapter();const db=LocalDb.createLocalDb({storage:kv,adapter});await db.migrateLegacyData();
+ const empty={schemaVersion:1,users:[],attendance:{},settings:{appTheme:'dark'},lastUpdateTimestamp:'',requests:[],templates:[]};
+ db.prepareReset(empty);assert.equal(adapter.inspect().snapshot.users.length,1);
+ const restored=LocalDb.createLocalDb({storage:kv,adapter});assert.deepEqual(await restored.readState(),empty);
+ assert.deepEqual(adapter.inspect().snapshot,empty);assert.equal(values[LocalDb.RESET_SNAPSHOT_KEY],undefined);
+});
+
+test('a failed reset repair keeps its durable guard and never returns the old personnel', async () => {
+ const values={...legacy};const kv={getItem:key=>values[key]??null,setItem:(key,value)=>{values[key]=value;},removeItem:key=>{delete values[key];}};
+ const adapter=atomicAdapter();const db=LocalDb.createLocalDb({storage:kv,adapter});await db.migrateLegacyData();
+ const empty={schemaVersion:1,users:[],attendance:{},settings:{},lastUpdateTimestamp:''};db.prepareReset(empty);
+ const write=adapter.writeSnapshot;adapter.writeSnapshot=async()=>{throw new Error('disk full');};
+ await assert.rejects(db.readState,/disk full/);assert.ok(values[LocalDb.RESET_SNAPSHOT_KEY]);
+ adapter.writeSnapshot=write;assert.deepEqual(await db.readState(),empty);
+});

@@ -222,3 +222,22 @@ test('isVerified tells whether a device has v2 data', async () => {
   await MiniData.migrateFromV1({ backend, readSource: async () => ({ attendanceRaw: null, tombstonesRaw: null }) });
   assert.equal(await MiniData.isVerified(backend), true);
 });
+
+
+test('full reset leaves a synchronous marker so a launch before the queued delete cannot restore attendance', async () => {
+ const backend=spyBackend();const fallback=localStore();
+ await backend.write({puts:Object.keys(v1).map(date=>({date,records:v1[date]})),deletes:[],meta:{attendanceTombstones:'[]'}});
+ const storage=MiniData.createDayStorage({backend,fallback});await storage.hydrate();storage.reset();
+ assert.equal(fallback.getItem(MiniData.RESET_KEY),'true');
+ const next=MiniData.createDayStorage({backend,fallback});await next.hydrate();
+ assert.equal(next.getItem('attendance'),null);assert.deepEqual((await backend.readAll()).days,{});
+ await storage.flush();assert.equal(fallback.getItem(MiniData.RESET_KEY),null);
+});
+
+test('reset write failure retains the marker and the next successful launch finishes deletion', async () => {
+ const options={};const backend=spyBackend(options);const fallback=localStore();
+ await backend.write({puts:[{date:'2026-09-01',records:day()}],deletes:[]});
+ const storage=MiniData.createDayStorage({backend,fallback});await storage.hydrate();options.failWrites=1;storage.reset();await storage.flush();
+ assert.equal(fallback.getItem(MiniData.RESET_KEY),'true');
+ const next=MiniData.createDayStorage({backend,fallback});await next.hydrate();assert.equal(next.getItem('attendance'),null);assert.equal(fallback.getItem(MiniData.RESET_KEY),null);
+});
