@@ -1,14 +1,18 @@
 # Mini: candidato de vinculación por Firebase
 
 createdAt: 2026-10-03T06:39:08.214644+00:00
-updatedAt: 2026-10-06T12:01:01.000Z
+updatedAt: 2026-10-06T17:04:24.000Z
 completedAt: pendiente
-Responsable de la actualización local: Codex. Estado: Slice M3 preparado; revisión nativa pendiente.
+Responsable de la actualización local: Codex. Estado: M3 revisado; integración local M8 preparada, verificación independiente pendiente.
 Base del slice M3: c2f930de49e1c40e54381c74e636834f12fdf8b6.
 Rama: review/mini-connections-20261006. Worktree: mini-native-review-20261006.
 El candidato de origen y sus evidencias del 2026-10-03 son históricos; no constituyen validación de este slice.
 
-## Comportamiento
+## Integración local M8
+
+El menú de Conexiones, sus rutas directa e internet y los assets locales se incorporan a `index.html` y al precache. La configuración conserva el mismo bloqueo por hostname: en localhost no se inicia Google ni el gateway. Las pruebas de cableado y recuperación ejercitan la UI mediante fixtures; no certifican OAuth humano, permisos efectivos ni servicios externos. Las coberturas Firebase y conexiones ampliadas quedan para M9/M10 y la preparación SA.
+
+## Comportamiento histórico del slice M3
 Este slice incorpora la API de vinculación, sus pruebas puras y scripts de laboratorio; no activa el flujo en `index.html` ni en el precache. El cableado de Ajustes y sus pruebas de integración se reservan para M8. Con configuración revisada: Google → código → revisar organización/obra/grupos → confirmar. SDK Auth/App compat oficial 12.19.0 servido desde vendor, sin CDN. El SDK usa la persistencia local ya implementada (`setPersistence('local')`); este slice no cambia esa política ni exige login tras cada recarga. Elegir cuenta al abrir Google. Cerrar limpia la invitación y no revoca permisos ya concedidos. Cerrar durante una petición está bloqueado para evitar una falsa cancelación; timeout de fetch 15 segundos.
 
 Preview no escribe. Confirmación revalida en gateway/servicio. UID procede del Firebase ID token verificado por Admin. Cambiar cuenta invalida resultados tardíos. Un canje adicional conserva grupos anteriores del servidor. Códigos/tokens no entran en localStorage ni backups de Mini. No se cambia personal/asistencia/contexto/P2P al vincular.

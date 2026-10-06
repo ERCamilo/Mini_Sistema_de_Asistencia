@@ -16,3 +16,7 @@ Pruebas M4: reset interrumpido y fallido en las dos capas de almacenamiento; gua
 Pruebas diferidas M8: restauración de un roster aceptado y bloqueo de duplicado; revisión del recuento vivo en UI; cancelación/confirmación del borrado y limpieza de guardias cacheadas. Borrado real en navegador, recarga y recuperación Firebase requieren el slice integrado; no se ejecutan aquí. No hay permiso de publicación, push, merge ni despliegue. SA, backend, originales y main permanecen sin cambios.
 
 Corrección nativa acotada R3-reset-inflight-write: cada reset avanza una generación en memoria; `persistLatest` sólo retira el marcador durable si la generación de la operación sigue vigente. Una escritura anterior pendiente no confirma un reset posterior. El test determinista retiene la escritura anterior, falla las limpiezas de uno o dos resets y comprueba recuperación vacía en el siguiente hydrate. Sin cambios de esquema ni nuevas superficies.
+
+## Integración M8
+
+El HTML incorpora el borrado coordinado y la UI P2P revisa el recuento vivo de personal. Se incorporan ahora los tres casos antes diferidos: restaurar roster aceptado y bloquear duplicados, recuento vivo y cancelación/confirmación con limpieza de guardias. Se preserva la corrección M4 del marcador durable ante una escritura anterior en vuelo. Estas pruebas sintéticas no borran datos reales ni certifican recuperación Firebase o un backend remoto.

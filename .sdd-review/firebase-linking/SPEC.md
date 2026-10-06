@@ -3,7 +3,11 @@
 Creación: 2026-10-03. Actualización: 2026-10-06. Responsable de esta revisión local: Codex.
 Estado: Candidato; revisión independiente y validación pendientes. Conclusión: pendiente.
 
-## Alcance
+## Integración M8
+
+M8 activa el menú de Conexiones y las rutas directa/internet en el HTML, con SDK, módulos y estilos locales en precache. Mantiene la configuración de preview sin habilitar servicios en otros hosts. El cableado ya no está diferido; OAuth humano, gateway, permisos efectivos y cobertura ampliada M9/M10/SA siguen sin certificarse en este slice.
+
+## Alcance histórico M3
 API de vinculación con SDK oficial Firebase Auth 12.19.0 vendorizado, Google popup y persistencia local del SDK (`setPersistence('local')`), retenida del candidato existente: no es una nueva decisión de producto. En este slice M3 la API está disponible pero no se incorpora a `index.html` ni al precache; la activación desde Ajustes queda para M8. La configuración existente sólo se habilita en `firebase-circuit-test.mini-sistema-asistencia-preview.pages.dev`; usa el endpoint `https://firebase-bridge-test.erlin.do` y metadatos públicos de Auth del proyecto `phoenix-asistencia-ab641`. Fuera de ese hostname queda en `null`, salvo una configuración previamente inyectada. Este slice no cambia proyecto, credenciales ni despliega. Observar cambios de identidad, revisar invitación de un solo uso y confirmar mediante gateway anterior. Mostrar organización/obra/grupos con textContent. Cancelar preview no escribe permisos. Confirmación vuelve a validar en servidor. No cambiar empleados, asistencia, P2P o contexto local; vincular concede permisos y no descarga roster todavía.
 
 ## Contratos

@@ -51,7 +51,8 @@ test('offers are buffered from channel open and released only after authenticati
 });
 
 test('the Mini inbox heals itself: modal close, foreground return and a watchdog', () => {
-  assert.match(between('function closeTransferModal', '\n  }\n'), /startMiniBackupInbox\(\)/);
+  assert.match(between('function closeTransferModal', '\n  }\n'), /startPassiveInbox\(\)/);
+  assert.match(between('async function startPassiveInbox', 'function stopPeerListener'), /startMiniBackupInbox\(\)/);
   assert.match(ui, /addEventListener\('visibilitychange'[\s\S]{0,200}refreshMiniBackupInbox/);
   const refresh = between('function refreshMiniBackupInbox', 'async function startMiniBackupInbox');
   assert.match(refresh, /MINI_BACKUP_MAX_AGE_MS/);
