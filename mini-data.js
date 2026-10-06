@@ -105,6 +105,7 @@
         let persistedTombstones = null;
         const persisted = new Map();
         let queue = Promise.resolve();
+        let resetGeneration = 0;
         async function hydrate() {
             var _a;
             let all = await backend.readAll();
@@ -126,6 +127,7 @@
         }
         async function persistLatest() {
             var _a, _b, _c;
+            const generation = resetGeneration;
             let next = {};
             try {
                 next = attendanceRaw ? JSON.parse(attendanceRaw) : {};
@@ -137,7 +139,8 @@
             const tombstones = tombstonesRaw;
             const meta = tombstones !== persistedTombstones ? { attendanceTombstones: tombstones } : undefined;
             if (!puts.length && !deletes.length && !meta) {
-                (_a = fallback.removeItem) === null || _a === void 0 ? void 0 : _a.call(fallback, RESET_KEY);
+                if (generation === resetGeneration)
+                    (_a = fallback.removeItem) === null || _a === void 0 ? void 0 : _a.call(fallback, RESET_KEY);
                 return;
             }
             try {
@@ -146,7 +149,8 @@
                 deletes.forEach(d => persisted.delete(d));
                 if (meta)
                     persistedTombstones = tombstones;
-                (_b = fallback.removeItem) === null || _b === void 0 ? void 0 : _b.call(fallback, RESET_KEY);
+                if (generation === resetGeneration)
+                    (_b = fallback.removeItem) === null || _b === void 0 ? void 0 : _b.call(fallback, RESET_KEY);
             }
             catch (error) {
                 // Memory keeps the change; the next write retries every unsaved day.
@@ -161,6 +165,7 @@
             hydrate,
             reset() {
                 fallback.setItem(RESET_KEY, 'true');
+                resetGeneration += 1;
                 attendanceRaw = null;
                 tombstonesRaw = null;
                 schedule();

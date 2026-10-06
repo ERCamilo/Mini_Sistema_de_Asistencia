@@ -241,3 +241,43 @@ test('reset write failure retains the marker and the next successful launch fini
  assert.equal(fallback.getItem(MiniData.RESET_KEY),'true');
  const next=MiniData.createDayStorage({backend,fallback});await next.hydrate();assert.equal(next.getItem('attendance'),null);assert.equal(fallback.getItem(MiniData.RESET_KEY),null);
 });
+
+test('an older in-flight write cannot clear one or more newer reset intents', async () => {
+  for (const resetCount of [1, 2]) {
+    const inner = MiniData.createMemoryBackend();
+    const fallback = localStore();
+    const errors = [];
+    let releaseWrite, signalStarted, writes = 0;
+    const blocked = new Promise(resolve => { releaseWrite = resolve; });
+    const started = new Promise(resolve => { signalStarted = resolve; });
+    const backend = {
+      readAll: () => inner.readAll(),
+      async write(batch) {
+        writes += 1;
+        if (writes === 1) {
+          signalStarted();
+          await blocked;
+        } else if (writes <= resetCount + 1) {
+          throw new Error('reset cleanup interrupted');
+        }
+        return inner.write(batch);
+      }
+    };
+    const storage = MiniData.createDayStorage({ backend, fallback, onError: error => errors.push(error.message) });
+    await storage.hydrate();
+    storage.setItem('attendance', JSON.stringify(v1));
+    await started;
+    for (let reset = 0; reset < resetCount; reset += 1) storage.reset();
+    assert.equal(fallback.getItem(MiniData.RESET_KEY), 'true');
+    releaseWrite();
+    await storage.flush();
+    assert.equal(errors.length, resetCount);
+    assert.deepEqual((await inner.readAll()).days, v1, 'the older write completed before failed cleanup');
+    assert.equal(fallback.getItem(MiniData.RESET_KEY), 'true', 'older completion must retain the reset intent');
+    const next = MiniData.createDayStorage({ backend, fallback });
+    await next.hydrate();
+    assert.equal(next.getItem('attendance'), null);
+    assert.deepEqual((await inner.readAll()).days, {});
+    assert.equal(fallback.getItem(MiniData.RESET_KEY), null, 'successful reset recovery clears the marker');
+  }
+});

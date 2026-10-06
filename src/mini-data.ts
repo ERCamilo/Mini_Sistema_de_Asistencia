@@ -133,6 +133,7 @@ type MiniDataMigrationResult =
     let persistedTombstones: string | null = null;
     const persisted = new Map<string, string>();
     let queue: Promise<void> = Promise.resolve();
+    let resetGeneration = 0;
 
     async function hydrate() {
       let all = await backend.readAll();
@@ -154,13 +155,14 @@ type MiniDataMigrationResult =
     }
 
     async function persistLatest() {
+      const generation = resetGeneration;
       let next: Record<string, unknown> = {};
       try { next = attendanceRaw ? JSON.parse(attendanceRaw) : {}; } catch { next = {}; }
       const { puts, deletes } = diffDays(persisted, isRecord(next) ? next : {});
       const tombstones = tombstonesRaw;
       const meta = tombstones !== persistedTombstones ? { attendanceTombstones: tombstones } : undefined;
       if (!puts.length && !deletes.length && !meta) {
-        fallback.removeItem?.(RESET_KEY);
+        if (generation === resetGeneration) fallback.removeItem?.(RESET_KEY);
         return;
       }
       try {
@@ -168,7 +170,7 @@ type MiniDataMigrationResult =
         puts.forEach(p => persisted.set(p.date, JSON.stringify(p.records)));
         deletes.forEach(d => persisted.delete(d));
         if (meta) persistedTombstones = tombstones;
-        fallback.removeItem?.(RESET_KEY);
+        if (generation === resetGeneration) fallback.removeItem?.(RESET_KEY);
       } catch (error) {
         // Memory keeps the change; the next write retries every unsaved day.
         console.warn('Mini: no se pudo guardar la asistencia en IndexedDB.', error);
@@ -184,6 +186,7 @@ type MiniDataMigrationResult =
       hydrate,
       reset() {
         fallback.setItem(RESET_KEY, 'true');
+        resetGeneration += 1;
         attendanceRaw = null;
         tombstonesRaw = null;
         schedule();
