@@ -28,3 +28,58 @@ test('request errors explain offline and timeout without replacing authorization
  assert.match(field.requestError(new SyntaxError('Unexpected token')).message,/respuesta.*Reintenta/);
  const denied=new Error('SA debe permitir compartir a ambos Minis.');assert.equal(field.requestError(denied),denied);
 });
+
+function deferredNoticeWork() {
+ let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};
+}
+function noticeMountFixture({allowNavigation=true}={}) {
+ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+ const elements=new Map(),reviews=[],preparation=deferredNoticeWork(),started=deferredNoticeWork();
+ function element() {
+  const listeners=new Map();return {dataset:{},value:'',disabled:false,textContent:'',options:[],
+   addEventListener(type,listener){listeners.set(type,listener);},
+   dispatchEvent(event){listeners.get(event.type)?.(event);},
+   append(child){if(child.id)elements.set(child.id,child);},
+   replaceChildren(...children){this.options=children;this.value=children.length?'0':'';}};
+ }
+ const document={getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);},
+  createElement:element,querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){},dispatchEvent(){}};
+ const scope={orgId:'org',projectId:'work',groupId:'crew',deviceId:'cloud-local',shareId:'received-42'};
+ const event={id:'attendance',kind:'attendance',revision:'revision-42',scope};
+ let user={uid:'leader',getIdToken:async()=> 'synthetic-token'},subscriber,events=[event],view,preparing;
+ const storage=new Map([['mini-cloud-device-v1','local']]);
+ const root={module:{exports:{}},window:{addEventListener(){}},localStorage:{getItem:key=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
+  CustomEvent:class {constructor(type){this.type=type;}},AbortController,setTimeout,clearTimeout,queueMicrotask,
+  MiniAttendanceDays:{mount:({input})=>({dates:()=>[input.value],setDisabled(){},multiple:()=>false}),validateDates:values=>values},
+  ConnectionNotifications:{createTracker:()=>({}),createMonitor:()=>({poll:async()=>{},reset(){events=[];},snapshot:()=>events})},
+  indexedDB:{open(){const request={};queueMicrotask(()=>{request.result={transaction(){return {objectStore(){return {getAll(){const result={};queueMicrotask(()=>{result.result=[];result.onsuccess();});return result;}};}};}};request.onsuccess();});return request;}},
+  fetch:async url=>({ok:true,json:async()=>url.endsWith('/bindings')?[{...scope,ownerUid:'owner',projectName:'Work',devicePrefix:'cloud-',groups:[{id:'crew',name:'Crew'},{id:'other',name:'Other'}]}]:{roster:{}}})};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../cloud-field.js'),'utf8'),root);
+ view=root.module.exports.mount({document,endpoint:'http://localhost',hooks:{
+  user:()=>user,subscribe(fn){subscriber=fn;return()=>{};},build:async()=>null,review:async()=>assert.fail('not a roster notice'),
+  organization(adapter){return {reset(){},async open(shareId){if(!shareId){started.resolve();await preparation.promise;}else reviews.push({shareId,scope:JSON.parse(JSON.stringify(adapter.context()))});}};},
+  async openNotice(){if(!allowNavigation)return false;preparing=view.openMembers();return true;}
+ }});
+ return {view,event,reviews,started:started.promise,release:preparation.resolve,
+  async finishPreparation(){await preparing;await view.whenIdle();},
+  changeScope(){document.getElementById('cloud-field-binding').value='1';},
+  replaceNotice(){events=[{...event,revision:'new-revision',scope:{...scope,shareId:'new-share'}}];},
+  logout(){user=null;subscriber(null);},switchAccount(){user={uid:'other-leader',getIdToken:async()=> 'other-token'};subscriber(user);}};
+}
+
+test('notice waits for menu preparation then opens its exact received share once',async()=>{
+ const f=noticeMountFixture();await f.view.refresh();
+ const opening=f.view.openUpdate(f.event);await f.started;
+ assert.equal(f.view.isBusy(),true);assert.deepEqual(f.reviews,[]);
+ f.release();await f.finishPreparation();await opening;
+ assert.equal(f.reviews.length,1);assert.equal(f.reviews[0].shareId,'received-42');
+ assert.equal(f.reviews[0].scope.projectId,'work');assert.equal(f.reviews[0].scope.groupId,'crew');
+});
+test('rejected notice navigation never opens a received review',async()=>{
+ const f=noticeMountFixture({allowNavigation:false});await f.view.refresh();const preparing=f.view.openMembers();await f.started;
+ await f.view.openUpdate(f.event);assert.deepEqual(f.reviews,[]);f.release();await preparing;
+});
+for(const change of ['logout','switchAccount','changeScope','replaceNotice'])test('notice preparation cannot open stale review after '+change,async()=>{
+ const f=noticeMountFixture();await f.view.refresh();const opening=f.view.openUpdate(f.event);await f.started;
+ f[change]();f.release();await f.finishPreparation();await opening;assert.deepEqual(f.reviews,[]);
+});

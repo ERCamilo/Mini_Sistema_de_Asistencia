@@ -101,11 +101,16 @@ interface CloudFieldHooks {user():CloudFieldSession|null;subscribe(fn:(user:Clou
    open:event=>{void openUpdate(event);}
   });
   async function openUpdate(event:ConnectionNoticeEvent){
-   const user=options.hooks.user();if(!user)return;
+   const user=options.hooks.user();if(!user)return;const generation=epoch;
    try{
-    const present=notices.snapshot().find(e=>e.kind===event.kind&&e.scope.projectId===event.scope.projectId&&e.scope.groupId===event.scope.groupId);
+    const present=notices.snapshot().find(e=>e.kind===event.kind&&e.scope.orgId===event.scope.orgId&&e.scope.projectId===event.scope.projectId&&e.scope.groupId===event.scope.groupId);
     if(!present)throw new Error('Este pendiente ya no está disponible. Actualiza las novedades.');
     if(!await options.hooks.openNotice?.(present))return;
+    // Menu activation starts member preparation; its review must wait for that work.
+    while(busy)await whenIdle();
+    if(generation!==epoch||options.hooks.user()?.uid!==user.uid)return;
+    const current=notices.snapshot().find(e=>e.kind===present.kind&&e.scope.orgId===present.scope.orgId&&e.scope.projectId===present.scope.projectId&&e.scope.groupId===present.scope.groupId);
+    if(!current||current.revision!==present.revision||current.scope.shareId!==present.scope.shareId)return;
     await action(async()=>{
      const b=chosen();if(b.orgId!==event.scope.orgId||b.projectId!==event.scope.projectId||b.groupId!==event.scope.groupId)throw new Error('Selecciona la obra correspondiente.');
      if(event.kind==='roster'){
@@ -119,6 +124,7 @@ interface CloudFieldHooks {user():CloudFieldSession|null;subscribe(fn:(user:Clou
   for(const type of ['online','focus','pageshow'])window.addEventListener(type,()=>{void notices.poll();});
   d.addEventListener('visibilitychange',()=>{if(d.visibilityState!=='hidden')void notices.poll();});
   d.addEventListener('connection-data-applied',()=>{void notices.poll();});
+  function whenIdle(){return busy?new Promise<void>(resolve=>waiters.push(resolve)):Promise.resolve();}
   function chosen(){const b=bindings[Number(select.value)];if(!b)throw new Error('Selecciona una obra y un grupo.');return b;}
   async function action(fn:()=>Promise<void>,reportResult=false){if(busy)return;busy=true;const quiet=fn===refresh,previous=status.textContent;let failed=false;status.dataset.operationState='busy';const generation=epoch;actions.forEach(b=>b.disabled=true);d.querySelectorAll<HTMLButtonElement>('#cloud-field-members button').forEach(b=>b.disabled=true);select.disabled=true;daySelector.setDisabled(true);el('members').inert=true;try{await fn();}catch(e){if(generation===epoch){failed=true;status.textContent=e instanceof Error?e.message:'No se pudo completar.';}}finally{busy=false;status.dataset.operationState=failed?'error':!quiet&&(reportResult||status.textContent!==previous)?'success':'idle';waiters.splice(0).forEach(resolve=>resolve());queueMicrotask(()=>{void notices.poll();});actions.forEach(b=>b.disabled=false);select.disabled=false;daySelector.setDisabled(false);el('members').inert=false;(el('send') as HTMLButtonElement).disabled=!previewReady();d.querySelectorAll<HTMLButtonElement>('#cloud-field-members button').forEach(b=>{b.disabled=b.dataset.sharingDisabled==='true';});if(generation!==epoch)void action(refresh);}}
   async function refresh(){const user=options.hooks.user();if(!user){status.textContent='Inicia sesión para consultar tus obras.';return;}const selected=bindings[Number(select.value)];const generation=epoch;const resolvedName=resolveDeviceName(identity.deviceName,user);deviceName.dataset.resolvedName=resolvedName;const value=await request('bindings',{deviceId:identity.deviceId,deviceName:resolvedName},user.uid);if(generation!==epoch)return;if(!Array.isArray(value))throw new Error('Respuesta no válida.');shareView?.reset();bindings=[];for(const raw of value){const b=raw as Record<string,unknown>;if(!Array.isArray(b.groups))throw new Error('Permisos no válidos.');for(const g of b.groups){const group=g as Record<string,unknown>;const entry={orgId:String(b.orgId),ownerUid:String(b.ownerUid),projectId:String(b.projectId),projectName:String(b.projectName),groupId:String(group.id),groupName:String(group.name),devicePrefix:String(b.devicePrefix),deviceId:String(b.deviceId)};if(!entry.devicePrefix.startsWith('cloud-')||entry.deviceId!==entry.devicePrefix+identity.deviceId)throw new Error('Permisos no válidos.');bindings.push(entry);}}el('leave-review').hidden=true;select.replaceChildren(...bindings.map((b,i)=>{const o=d.createElement('option');o.value=String(i);o.textContent=b.projectName+' · '+b.groupName;o.dataset.orgId=b.orgId;o.dataset.projectId=b.projectId;o.dataset.groupId=b.groupId;return o;}));if(selected){const index=bindings.findIndex(b=>b.orgId===selected.orgId&&b.projectId===selected.projectId&&b.groupId===selected.groupId);if(index>=0)select.value=String(index);}roster=null;options.hooks.bindingsChanged?.(user.uid,bindings.length);status.textContent=bindings.length?bindings.length+' grupo(s) autorizado(s). '+(await queue.pending(user.uid)).length+' envío(s) pendiente(s).':'No hay obras autorizadas para este dispositivo. Confirma una invitación o solicita autorización a SA.';}
@@ -162,7 +168,7 @@ interface CloudFieldHooks {user():CloudFieldSession|null;subscribe(fn:(user:Clou
    await request('leave',{orgId:b.orgId,projectId:b.projectId,deviceId:b.deviceId},user.uid);
    await refresh();status.textContent='Este Mini salió de la obra. El personal, la asistencia y los envíos pendientes se conservan.';
   },true);});
-  return {refresh:()=>action(refresh),isBusy:()=>busy,whenIdle:()=>busy?new Promise<void>(resolve=>waiters.push(resolve)):Promise.resolve(),pollUpdates:()=>notices.poll(),getUpdates:()=>notices.snapshot(),openUpdate,previewSend,openMembers};
+  return {refresh:()=>action(refresh),isBusy:()=>busy,whenIdle,pollUpdates:()=>notices.poll(),getUpdates:()=>notices.snapshot(),openUpdate,previewSend,openMembers};
  }
  return {requestError,resolveDeviceName,createOutbox,createIndexedStore,getDeviceIdentity,makeSendPreview,makeBatchPreview,batchFingerprint,mount};
 });

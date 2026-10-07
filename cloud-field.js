@@ -177,15 +177,24 @@
             open: event => { void openUpdate(event); }
         });
         async function openUpdate(event) {
-            var _a, _b;
+            var _a, _b, _c;
             const user = options.hooks.user();
             if (!user)
                 return;
+            const generation = epoch;
             try {
-                const present = notices.snapshot().find(e => e.kind === event.kind && e.scope.projectId === event.scope.projectId && e.scope.groupId === event.scope.groupId);
+                const present = notices.snapshot().find(e => e.kind === event.kind && e.scope.orgId === event.scope.orgId && e.scope.projectId === event.scope.projectId && e.scope.groupId === event.scope.groupId);
                 if (!present)
                     throw new Error('Este pendiente ya no está disponible. Actualiza las novedades.');
                 if (!await ((_b = (_a = options.hooks).openNotice) === null || _b === void 0 ? void 0 : _b.call(_a, present)))
+                    return;
+                // Menu activation starts member preparation; its review must wait for that work.
+                while (busy)
+                    await whenIdle();
+                if (generation !== epoch || ((_c = options.hooks.user()) === null || _c === void 0 ? void 0 : _c.uid) !== user.uid)
+                    return;
+                const current = notices.snapshot().find(e => e.kind === present.kind && e.scope.orgId === present.scope.orgId && e.scope.projectId === present.scope.projectId && e.scope.groupId === present.scope.groupId);
+                if (!current || current.revision !== present.revision || current.scope.shareId !== present.scope.shareId)
                     return;
                 await action(async () => {
                     var _a;
@@ -212,6 +221,7 @@
         d.addEventListener('visibilitychange', () => { if (d.visibilityState !== 'hidden')
             void notices.poll(); });
         d.addEventListener('connection-data-applied', () => { void notices.poll(); });
+        function whenIdle() { return busy ? new Promise(resolve => waiters.push(resolve)) : Promise.resolve(); }
         function chosen() { const b = bindings[Number(select.value)]; if (!b)
             throw new Error('Selecciona una obra y un grupo.'); return b; }
         async function action(fn, reportResult = false) { if (busy)
@@ -355,7 +365,7 @@
                 status.textContent = 'Este Mini salió de la obra. El personal, la asistencia y los envíos pendientes se conservan.';
             }, true);
         });
-        return { refresh: () => action(refresh), isBusy: () => busy, whenIdle: () => busy ? new Promise(resolve => waiters.push(resolve)) : Promise.resolve(), pollUpdates: () => notices.poll(), getUpdates: () => notices.snapshot(), openUpdate, previewSend, openMembers };
+        return { refresh: () => action(refresh), isBusy: () => busy, whenIdle, pollUpdates: () => notices.poll(), getUpdates: () => notices.snapshot(), openUpdate, previewSend, openMembers };
     }
     return { requestError, resolveDeviceName, createOutbox, createIndexedStore, getDeviceIdentity, makeSendPreview, makeBatchPreview, batchFingerprint, mount };
 });
