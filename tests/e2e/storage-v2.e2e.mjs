@@ -3,14 +3,15 @@
 // without losing a single mark, free localStorage and keep working after reloads.
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadPlaywright, serve, PHONE } from '../tutorials/lib.mjs';
+import { loadPlaywright, serve, PHONE, ROOT } from '../tutorials/lib.mjs';
 
 let browser, server, base;
 
 before(async () => {
   const { chromium } = await loadPlaywright();
-  server = await serve();
-  base = `http://localhost:${server.address().port}/`;
+  server = await serve(ROOT);
+  console.log('M10B_ROOT', ROOT);
+  base = `http://127.0.0.1:${server.address().port}/`;
   browser = await chromium.launch();
 });
 
@@ -229,8 +230,8 @@ test('if the data does not fit in the old storage, Mini stays on v2 and loses no
     // Grow v2 beyond what localStorage can hold (~5 MB).
     const total = await page.evaluate(async () => {
       const extra = {};
-      for (let m = 1; m <= 12; m++) for (let d = 1; d <= 26; d++) {
-        const date = `2019-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      for (let year = 2018; year <= 2019; year++) for (let m = 1; m <= 12; m++) for (let d = 1; d <= 26; d++) {
+        const date = `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         extra[date] = {};
         for (let i = 0; i < 60; i++) extra[date]['u' + i] = { status: 'present', hours: 8 };
       }
