@@ -43,3 +43,72 @@ uses a relay candidate and verify exact bidirectional data-channel payloads.
 Gathering a relay candidate alone is not sufficient. Trusted HTTPS/Auth origin,
 API expiry serialization and explicit remote session/traffic authorization
 remain prerequisites. Do not record credentials in logs, HAR, traces or images.
+
+
+## P2 delivery: dormant provider and private development proxy
+
+`PrivateTurn.createProvider` is a strict UMD module; `private-turn.js` is derived
+from `src/private-turn.ts` through the official build. It is not registered in
+production HTML or service-worker precache. The development bootstrap is P3,
+not this delivery. No code here starts micro3, opens a tunnel or signs in.
+
+An explicitly enabled provider requires a HTTPS loopback origin and an explicit
+contract `{ ttlUnit: 'seconds', expiresAtFormat: ... }`. Supported expiry formats
+are `unix-seconds`, `unix-milliseconds`, or canonical UTC ISO8601 with milliseconds
+(`Date.toISOString()` shape). There is no unit inference or default contract.
+The live API serialization remains unconfirmed. Numeric TTL is bounded to
+1–300 seconds, and expiry must be later than the refresh margin and no later
+than the reported TTL from the local clock. Real use requires synchronized clocks.
+
+The provider obtains an ID token from an injected current-account getter and
+POSTs only to `/api/turn-creds`, with cookies omitted, no-store and redirects
+disallowed. Tokens and replies are bounded, operations time out, server errors
+are replaced by safe codes, and STUN/TURN URI/credential fields are validated.
+Returned configurations are independent copies. The cache is UID/generation
+bound and refreshed within a default 15-second margin before a new connection.
+Call `invalidate()` on every logout/account lifecycle event, including a new
+session with the same UID. Every asynchronous boundary verifies current account.
+Guests and disabled providers return `null` without token or credential requests.
+Signed-in credential failure rejects; it is not a successful direct fallback.
+
+The exported Node tool factory starts only on IPv4 loopback. Its upstream host
+is always `127.0.0.1`; only the local forwarded port is configurable and the
+path is always `/turn-creds`. The credential route requires exact Host/Origin,
+POST JSON, a single ID-token field, and no ambient Cookie/Authorization headers.
+Requests/replies are bounded, timed out and never redirected. Responses use
+no-store and no-referrer; errors contain only fixed codes, never upstream bodies.
+Static serving is optional, requires an explicit asset allowlist, and rejects
+hidden files, traversal, unlisted extensions and symlink escapes from appRoot.
+The tool does not log request/response payloads or credentials.
+
+### Local verification commands
+
+With temporary links to the existing compiler and Node typings (no install):
+
+```sh
+node node_modules/typescript/bin/tsc -p scripts/private-turn/tsconfig.json --outDir /tmp/private-turn-test-build
+node --test tests/private-turn.test.js
+PRIVATE_TURN_TOOL_OUTPUT=/tmp/private-turn-test-build node --test tests/private-turn-proxy.test.js
+PRIVATE_TURN_TOOL_OUTPUT=/tmp/private-turn-test-build npm test
+```
+
+The full test command requires that compiled tool path; missing output fails
+rather than skipping the proxy checks. `.mts` output stays outside the repo.
+Proxy tests explicitly use HTTP synthetic loopback fixtures to verify transport
+controls; this does NOT bypass or prove trusted HTTPS or real Firebase Auth.
+All fixtures close their owned listeners and capture no HAR, traces or images.
+
+### Later operator-controlled steps, not executed
+
+The CLI requires operator-provided trusted certificate/key paths and a local
+forwarded port. It has no insecure HTTP CLI option. A future command has the form
+`node <compiled-tool> --forward-port <local-port> --port 9443 --cert <trusted-cert-path> --key <key-path>`.
+An optional `--root <app-root>` with repeated `--asset <relative-file>` serves
+only explicitly owned assets. Do not supply credentials as CLI arguments.
+The P3 bootstrap will resolve the existing Mini named account or SA primary
+modular account after SDK initialization; no new account is created by P2.
+
+Live acceptance remains pending: API serialization, trusted HTTPS/Auth origin,
+operator-started private API and explicit remote session/traffic authorization.
+Neither mocked credentials nor HTTP fixture success proves HMAC validity,
+selected relay connectivity, data-channel delivery or production readiness.

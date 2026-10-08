@@ -1,0 +1,115 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const Turn = require('../private-turn.js');
+const contract = { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' };
+const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+function fixture(overrides = {}) {
+  let time = 1700000000000, user = { uid: 'one', getIdToken: async () => 'synthetic-token' }, calls = 0;
+  const payload = () => ({ username: 'synthetic-user', credential: 'synthetic-password', ttl: 300, expiresAt: time + 300000,
+    iceServers: [{ urls: 'stun:turn.test.invalid:3478' }, { urls: ['turn:turn.test.invalid:3478?transport=udp', 'turns:turn.test.invalid:5349?transport=tcp'], username: 'synthetic-user', credential: 'synthetic-password' }] });
+  const options = { enabled: true, origin: 'https://127.0.0.1:9443', contract, getUser: () => user, now: () => time,
+    fetcher: async () => { calls++; return Response.json(payload()); }, ...overrides };
+  const provider = Turn.createProvider(options);
+  return { provider, options, payload, calls: () => calls, setUser: value => { user = value; }, advance: value => { time += value; }, time: () => time };
+}
+test('guest and disabled provider do not acquire credentials', async () => {
+  const f = fixture(); f.setUser(null); assert.equal(await f.provider.getConfiguration(), null); assert.equal(f.calls(), 0);
+  const disabled = fixture({ enabled: false }); assert.equal(await disabled.provider.getConfiguration(), null); assert.equal(disabled.calls(), 0);
+});
+test('requires explicit units and trusted HTTPS loopback when enabled', () => {
+  for (const change of [{ contract: undefined }, { contract: { expiresAtFormat: 'unix-milliseconds' } }, { contract: { ttlUnit: 'milliseconds', expiresAtFormat: 'unix-milliseconds' } }, { origin: 'http://127.0.0.1' }, { origin: 'https://remote.invalid' }]) {
+    assert.throws(() => fixture(change), /TURN_CONFIGURATION_INVALID/);
+  }
+});
+test('uses fixed same-origin POST without cookies or redirects', async () => {
+  const f = fixture({ fetcher: async (url, init) => {
+    assert.equal(url, '/api/turn-creds'); assert.equal(init.method, 'POST'); assert.equal(init.credentials, 'omit');
+    assert.equal(init.redirect, 'error'); assert.equal(init.cache, 'no-store'); assert.deepEqual(JSON.parse(init.body), { idToken: 'synthetic-token' });
+    return Response.json(f.payload());
+  } });
+  const result = await f.provider.getConfiguration(); assert.equal(result.iceTransportPolicy, 'relay'); assert.equal(result.iceServers.length, 2);
+});
+test('deduplicates in flight and returns isolated cached configurations', async () => {
+  const pending = deferred(); let calls = 0;
+  const f = fixture({ fetcher: () => { calls++; return pending.promise; } });
+  const one = f.provider.getConfiguration(), two = f.provider.getConfiguration();
+  await Promise.resolve(); pending.resolve(Response.json(f.payload()));
+  const [a, b] = await Promise.all([one, two]); assert.equal(calls, 1); assert.notEqual(a, b);
+  a.iceServers[1].urls[0] = 'turn:mutated.invalid'; a.iceServers[1].credential = 'changed';
+  const c = await f.provider.getConfiguration(); assert.equal(c.iceServers[1].credential, 'synthetic-password'); assert.equal(b.iceServers[1].urls[0], f.payload().iceServers[1].urls[0]);
+});
+test('renews before a new session near expiry and after expiry', async () => {
+  const f = fixture(); await f.provider.getConfiguration(); f.advance(284999); await f.provider.getConfiguration(); assert.equal(f.calls(), 1);
+  f.advance(1); await f.provider.getConfiguration(); assert.equal(f.calls(), 2); f.advance(300001); await f.provider.getConfiguration(); assert.equal(f.calls(), 3);
+});
+for (const boundary of ['token', 'fetch', 'body']) {
+  for (const change of ['different account', 'logout', 'same UID new generation']) {
+    test(`rejects stale ${change} during ${boundary}`, async () => {
+      const gate = deferred(), entered = deferred();
+      const f = fixture({ fetcher: async () => {
+        if (boundary === 'fetch') { entered.resolve(); return gate.promise; }
+        if (boundary === 'body') return new Response(new ReadableStream({ start(controller) { entered.resolve(); gate.promise.then(() => { controller.enqueue(new TextEncoder().encode(JSON.stringify(f.payload()))); controller.close(); }); } }), { headers: { 'Content-Type': 'application/json' } });
+        return Response.json(f.payload());
+      } });
+      if (boundary === 'token') f.setUser({ uid: 'one', getIdToken: () => { entered.resolve(); return gate.promise; } });
+      const pending = f.provider.getConfiguration(); const rejected = assert.rejects(pending, /TURN_ACCOUNT_CHANGED/); await entered.promise;
+      if (change === 'logout') f.setUser(null);
+      else if (change === 'different account') f.setUser({ uid: 'two', getIdToken: async () => 'synthetic-second-token' });
+      else f.provider.invalidate();
+      gate.resolve(boundary === 'token' ? 'synthetic-token' : boundary === 'fetch' ? Response.json(f.payload()) : undefined); await rejected;
+    });
+  }
+}
+test('old request finalizer cannot clear a new generation request', async () => {
+  const old = deferred(), fresh = deferred(), oldEntered = deferred(), freshEntered = deferred(); let calls = 0;
+  const f = fixture({ fetcher: () => { if (++calls === 1) { oldEntered.resolve(); return old.promise; } freshEntered.resolve(); return fresh.promise; } });
+  const first = f.provider.getConfiguration(); const rejected = assert.rejects(first, /TURN_ACCOUNT_CHANGED/); await oldEntered.promise;
+  f.provider.invalidate(); const second = f.provider.getConfiguration(); await freshEntered.promise; old.resolve(Response.json(f.payload())); await rejected;
+  const third = f.provider.getConfiguration(); fresh.resolve(Response.json(f.payload())); await Promise.all([second, third]); assert.equal(calls, 2);
+});
+for (const expiresAtFormat of ['unix-seconds', 'unix-milliseconds', 'iso8601']) {
+  test(`decodes declared ${expiresAtFormat} without guessing`, async () => {
+    const f = fixture({ contract: { ttlUnit: 'seconds', expiresAtFormat }, fetcher: async () => {
+      const body = f.payload(); body.expiresAt = expiresAtFormat === 'unix-seconds' ? body.expiresAt / 1000 : expiresAtFormat === 'iso8601' ? new Date(body.expiresAt).toISOString() : body.expiresAt;
+      return Response.json(body);
+    } }); assert.ok(await f.provider.getConfiguration());
+  });
+}
+for (const [label, mutate] of [
+  ['wrong units', body => { body.expiresAt /= 1000; }], ['expired', body => { body.expiresAt -= 400000; }],
+  ['excess TTL', body => { body.ttl = 301; }], ['missing credentials', body => { delete body.credential; }],
+  ['unsafe URI', body => { body.iceServers[1].urls = 'https://unsafe.invalid'; }],
+  ['credential mismatch', body => { body.iceServers[1].username = 'wrong'; }],
+  ['invalid port', body => { body.iceServers[1].urls = 'turn:host.invalid:65536'; }],
+  ['no TURN', body => { body.iceServers = [body.iceServers[0]]; }]
+]) test(`rejects ${label}`, async () => { const f = fixture({ fetcher: async () => { const body = f.payload(); mutate(body); return Response.json(body); } }); await assert.rejects(f.provider.getConfiguration(), /TURN_INVALID_RESPONSE/); });
+for (const [label, response] of [
+  ['malformed JSON', () => new Response('synthetic-secret-not-json', { headers: { 'Content-Type': 'application/json' } })],
+  ['server error', () => Response.json({ error: 'synthetic-secret-message' }, { status: 403 })],
+  ['oversized body', () => new Response('x'.repeat(32769), { headers: { 'Content-Type': 'application/json' } })]
+]) test(`redacts ${label}`, async () => { const f = fixture({ fetcher: async () => response() }); await assert.rejects(f.provider.getConfiguration(), error => /^TURN_(UNAVAILABLE|INVALID_RESPONSE)$/.test(error.message)); });
+test('token failures are redacted and observed after account change', async () => {
+  const f = fixture(); f.setUser({ uid: 'one', getIdToken: async () => { f.setUser(null); throw new Error('synthetic-secret-token-error'); } });
+  await assert.rejects(f.provider.getConfiguration(), /TURN_ACCOUNT_CHANGED/);
+});
+test('token and fetch timeouts fail closed without retaining in-flight work', async () => {
+  const f = fixture({ timeoutMs: 15, fetcher: () => new Promise(() => {}) });
+  await assert.rejects(f.provider.getConfiguration(), /TURN_UNAVAILABLE/);
+  const g = fixture({ timeoutMs: 15 }); g.setUser({ uid: 'one', getIdToken: () => new Promise(() => {}) });
+  await assert.rejects(g.provider.getConfiguration(), /TURN_UNAVAILABLE/);
+});
+
+test('copies the expiry contract and does not allow mutable options to enable an unsafe provider', async () => {
+  const units = { ...contract }; const f = fixture({ contract: units }); units.expiresAtFormat = 'unix-seconds'; assert.ok(await f.provider.getConfiguration());
+  const disabled = fixture({ enabled: false, origin: 'http://127.0.0.1' }); disabled.options.enabled = true;
+  assert.equal(await disabled.provider.getConfiguration(), null); assert.equal(disabled.calls(), 0);
+});
+test('does not log credentials or raw token/server errors', async () => {
+  const logs = [], originalLog = console.log, originalError = console.error;
+  console.log = (...args) => logs.push(args); console.error = (...args) => logs.push(args);
+  try {
+    const f = fixture(); await f.provider.getConfiguration(); f.provider.invalidate();
+    const failed = fixture({ fetcher: async () => { throw new Error('synthetic-secret-error'); } });
+    await assert.rejects(failed.provider.getConfiguration(), /TURN_UNAVAILABLE/); assert.deepEqual(logs, []);
+  } finally { console.log = originalLog; console.error = originalError; }
+});
