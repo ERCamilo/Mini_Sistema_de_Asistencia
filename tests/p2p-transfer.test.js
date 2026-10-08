@@ -105,7 +105,8 @@ class CountingDataChannel {
 
 class CountingRtcPeerConnection {
   static last = null;
-  constructor() {
+  constructor(configuration) {
+    this.configuration = configuration;
     this.connectionState = 'new';
     this.iceConnectionState = 'new';
     this.channel = null;
@@ -776,3 +777,27 @@ test('unexpected DataChannel close or error tears down once while clean close is
     assert.equal(cleanStates.filter(({ status }) => status === 'error').length, 0, 'clean close reports no error');
   });
 });
+
+
+const customIceServers = [{ urls: 'stun:rtc-test.invalid:3478' }];
+for (const [label, options, expected] of [
+  ['explicit relay', { iceServers: customIceServers, iceTransportPolicy: 'relay' }, { iceServers: customIceServers, iceTransportPolicy: 'relay' }],
+  ['explicit all', { iceServers: customIceServers, iceTransportPolicy: 'all' }, { iceServers: customIceServers, iceTransportPolicy: 'all' }],
+  ['omitted policy', {}, { iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] }],
+  ['undefined policy', { iceTransportPolicy: undefined }, { iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] }],
+  ['omitted policy with custom servers', { iceServers: customIceServers }, { iceServers: customIceServers }],
+  ['undefined policy with empty servers', { iceServers: [], iceTransportPolicy: undefined }, { iceServers: [] }]
+]) {
+  test(`RTC configuration preserves ${label}`, async () => {
+    await withFakeRtcEnvironment(async () => {
+      const signaling = new Core.SignalingClient({ room: 'room', peerId: 'mini', proof: 'a'.repeat(64) });
+      const session = await Core.createRtcSession({ signaling, initiator: true, ...options });
+      try {
+        assert.deepEqual(session.pc.configuration, expected);
+        if (options.iceServers) assert.equal(session.pc.configuration.iceServers, options.iceServers);
+      } finally {
+        session.close();
+      }
+    });
+  });
+}

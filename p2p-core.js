@@ -491,8 +491,8 @@
     }
   }
 
-  async function createRtcSession({ signaling, initiator, iceServers = ICE_SERVERS, onChannel, onState }) {
-    const pc = new RTCPeerConnection({ iceServers });
+  async function createRtcSession({ signaling, initiator, iceServers = ICE_SERVERS, iceTransportPolicy, onChannel, onState }) {
+    const pc = new RTCPeerConnection(iceTransportPolicy === undefined ? { iceServers } : { iceServers, iceTransportPolicy });
     let channel = null;
     let offerSent = false;
     let closed = false;
