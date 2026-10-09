@@ -75,11 +75,28 @@
         const store = node('div');
         store.hidden = true;
         store.dataset.connectionsStore = '';
-        const add = button('Vincular', () => { task('link'); });
+        const add = button(app === 'mini' ? 'Asociar a una obra' : 'Vincular', () => { task('link'); });
         add.dataset.connectionsAdd = '';
+        if (app === 'mini') {
+            const device = button('Asociar a otro dispositivo', () => {
+                if (!guard())
+                    return;
+                const backup = extras.querySelector('[data-open-backup-hub-btn]') || directBody.querySelector('[data-open-backup-hub-btn]');
+                if (!backup) {
+                    options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Conexiones.');
+                    return;
+                }
+                showDirect();
+                backup.click();
+            });
+            device.dataset.connectionsDevice = '';
+            device.prepend(icon('phone'));
+            toolbar.append(device);
+        }
         const refresh = button('Actualizar conexiones', () => { if (!guard())
             return; void refreshCloud(); });
-        toolbar.append(add, refresh);
+        toolbar.prepend(add);
+        toolbar.append(refresh);
         if (app === 'mini') {
             refresh.prepend(icon('refresh'));
             add.prepend(icon('link'));

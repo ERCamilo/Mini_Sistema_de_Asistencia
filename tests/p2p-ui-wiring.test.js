@@ -889,3 +889,16 @@ test('confirm dialogs stack above the P2P overlay, notices and welcome gate', ()
   const overlayZ = Number(/\.mini-p2p-overlay\s*\{[^}]*z-index:\s*(\d+)/.exec(css)[1]);
   assert.ok(confirmZ > overlayZ, `confirm ${confirmZ} must be above P2P overlay ${overlayZ}`);
 });
+
+test('independent Mini device association preserves backup adapter and touch target',()=>{
+  const menu=read('src/connection-menu.ts'),css=read('connection-screens.css'),ui=read('p2p-roster-ui.js');
+  assert.ok(menu.includes("app==='mini'?'Asociar a una obra':'Vincular'"));
+  const action=menu.slice(menu.indexOf("const device=button('Asociar a otro dispositivo'"),menu.indexOf("device.dataset.connectionsDevice"));
+  assert.ok(action.includes('if(!guard())return;'));
+  assert.ok(action.includes('[data-open-backup-hub-btn]'));
+  assert.ok(action.includes('showDirect();backup.click();'));
+  assert.ok(!action.includes('cloud-field-binding'));
+  assert.ok(/\[data-connections-device\][^{]*\{[^}]*min-height:48px/.test(css));
+  assert.ok(ui.includes("renderQrScanner({ allowSameApp: true })"));
+  assert.ok(ui.includes("renderManualPair({ allowSameApp: true })"));
+});

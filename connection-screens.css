@@ -213,3 +213,8 @@
 .connections-preview-day summary .mini-connection-icon:last-child{margin-left:auto;flex-shrink:0}.connections-preview-day[open] summary .mini-connection-icon:last-child{transform:rotate(90deg)}
 
 .mini-p2p-shell #cloud-members-apply{background:var(--accent-color);color:var(--connection-on-accent);font-weight:700}
+
+/* Independent Mini backup association stays visible outside hidden extras. */
+.mini-p2p-shell .connections-home [data-connections-device] {display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius-md,12px);background:var(--card-bg);color:var(--text-color);font-size:15px;font-weight:700;}
+.mini-p2p-shell .connections-home [data-connections-device] svg {width:22px;height:22px;stroke:currentColor;}
+.mini-p2p-shell .connections-home [data-connections-device]:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}

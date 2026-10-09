@@ -50,9 +50,18 @@ interface ConnectionMenuOptions {
   taskBack.dataset.connectionsBack='';
   const taskContent=node('div','connections-task-content');taskHost.append(taskBack,taskTitle,taskContent);
   const store=node('div');store.hidden=true;store.dataset.connectionsStore='';
-  const add=button('Vincular',()=>{task('link');});add.dataset.connectionsAdd='';
+  const add=button(app==='mini'?'Asociar a una obra':'Vincular',()=>{task('link');});add.dataset.connectionsAdd='';
+  if(app==='mini'){
+   const device=button('Asociar a otro dispositivo',()=>{
+    if(!guard())return;
+    const backup=extras.querySelector<HTMLButtonElement>('[data-open-backup-hub-btn]')||directBody.querySelector<HTMLButtonElement>('[data-open-backup-hub-btn]');
+    if(!backup){options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Conexiones.');return;}
+    showDirect();backup.click();
+   });
+   device.dataset.connectionsDevice='';device.prepend(icon('phone'));toolbar.append(device);
+  }
   const refresh=button('Actualizar conexiones',()=>{if(!guard())return;void refreshCloud();});
-  toolbar.append(add,refresh);if(app==='mini'){refresh.prepend(icon('refresh'));add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(priorities,toolbar,heading,list,empty,extras,account);
+  toolbar.prepend(add);toolbar.append(refresh);if(app==='mini'){refresh.prepend(icon('refresh'));add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(priorities,toolbar,heading,list,empty,extras,account);
   shell.insertBefore(home,directBody);shell.insertBefore(feedback,directBody);shell.insertBefore(taskHost,directBody);shell.append(store);
   const header=shell.querySelector('header');if(header)move(account,header);
   const parts=new Map<string,HTMLElement>();

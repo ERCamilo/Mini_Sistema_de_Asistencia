@@ -189,3 +189,22 @@ Full-page Mini QR/manual pairing, persistent device trust, native modal user
 interaction and integrated real TURN remain separate acceptance boundaries.
 An operator-confirmed expiry contract and renewed authorized API window are
 required before real integrated TURN. Pause before any Mini-to-SA work.
+
+## MM-MENU delivery: independent connection entry points
+
+Mini's connections home exposes two separate actions: work association keeps
+its current SA invitation/direct flow; device association opens the existing
+backup hub even without a work binding or Google session. The hidden legacy
+backup button remains the adapter into production backup UI. The new action
+must honor the existing active-operation guard and fail safely if the adapter
+is unavailable. SA's shared menu retains its existing association action.
+
+This changes navigation only. Same-app backup-purpose pairing, user consent,
+staging and explicit restoration stay unchanged. Employee merging, selective
+attendance, automatic trust/synchronization and private TURN are out of scope.
+Regression checks include visible touch-size actions with actual CSS, existing
+Mini backup QR/manual navigation, the work route, blocked navigation while
+busy and a shared-menu SA negative control. The browser uses fresh synthetic
+identity/data and denies external requests; it does not capture camera data,
+perform pairing/restore, authenticate accounts or claim integrated relay proof.
+No connections tutorial exists in the current recorded catalog.
