@@ -148,3 +148,44 @@ fixtures, not network relay proof. The separate native host-only Mini/SA data
 circuit and all browser fixtures remain **unexecuted successfully** because the
 current browser launch capability is unavailable. No managed-browser download is
 authorized by this change; do not mark P3 complete or claim browser/live PASS.
+
+## MM delivery: existing Mini-to-Mini backup component acceptance
+
+This independent unit adds coverage, not a new synchronization feature. Two
+fresh browser contexts load actual Mini core, pairing, consent, backup bridge
+and summary modules through the opted-in development server. Synthetic named
+`mini-field` Auth checks ordinary `all` and explicit `relay` constructor policy;
+these configurations use a mocked RTC constructor, not live TURN traffic.
+Guests then use actual native WebRTC with empty ICE servers and in-memory
+signaling. Same-app pairing performs the production SAS/link-token handshake
+with distinct synthetic device IDs and a fixture peer store enforcing backup
+purpose. This is a production-module component fixture, NOT full-page QR,
+manual-entry or persistent IndexedDB UI acceptance.
+
+The receiver starts with data distinct from the sender. A declined offer sends
+no backup and leaves staging and receiver fixture data unchanged.
+An accepted offer sends a real nonempty `mini-backup/v1` payload, verifies its
+SHA-256 through the production receiver, stages it and returns the actual
+backup-staged acknowledgement; the received text matches the sender exactly,
+while the receiver's distinct existing fixture data remains unchanged. Explicit review calls the production bridge
+with owned restore-modal DOM fixtures. It populates the review textarea and
+requests existing validation; no import, restore, merge or attendance write is
+executed. Same-app roster/attendance trust remains rejected. Controlled mocked
+selected-relay stats are separate from native host-only backup transport.
+
+Existing behavior already supports this flow; this test-only coverage unit has
+no meaningful failing production regression to reproduce (coverage-addition
+TDD exception). Run the focused wiring test and the explicit browser runner:
+
+```sh
+node --test tests/private-turn-mini-backup-wiring.test.js
+PLAYWRIGHT_BROWSERS_PATH=/tmp/private-turn-playwright-cache \
+PLAYWRIGHT_MODULE=/home/ubuntu/worktrees/sa-firebase-live-test-20261003/node_modules/playwright/index.mjs \
+PRIVATE_TURN_TOOL_OUTPUT=/tmp/private-turn-p3-build \
+node tests/integration/private-turn-mini-backup.browser.cjs
+```
+
+Full-page Mini QR/manual pairing, persistent device trust, native modal user
+interaction and integrated real TURN remain separate acceptance boundaries.
+An operator-confirmed expiry contract and renewed authorized API window are
+required before real integrated TURN. Pause before any Mini-to-SA work.
