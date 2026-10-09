@@ -4,11 +4,21 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+interface PrivateTurnDevBootstrap {
+    enabled: boolean;
+    appIdentity: 'mini' | 'sa';
+    contract: { ttlUnit: 'seconds'; expiresAtFormat: 'unix-seconds' | 'unix-milliseconds' | 'iso8601' };
+    canonicalRoot: string;
+    forceRelay?: boolean;
+}
 interface PrivateTurnDevOptions {
     forwardPort: number;
     port?: number;
     tls?: { key: Buffer; cert: Buffer };
     httpForTests?: boolean;
+    publicOrigin?: string;
+    reverseProxy?: boolean;
+    bootstrap?: PrivateTurnDevBootstrap;
     appRoot?: string;
     assets?: readonly string[];
     maxRequestBytes?: number;
@@ -119,7 +129,42 @@ function forward(idToken: string, port: number, max: number, timeout: number): P
         request.end(body);
     });
 }
-async function serveAsset(req: IncomingMessage, res: ServerResponse, root: string | undefined, assets: ReadonlySet<string>): Promise<void> {
+const privateOrigins = ['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'];
+function bootstrapOptions(value: PrivateTurnDevBootstrap | undefined, secure: boolean): PrivateTurnDevBootstrap | undefined {
+    if (!value || value.enabled === false) return undefined;
+    if (!secure || value.enabled !== true || !['mini', 'sa'].includes(value.appIdentity) || typeof value.canonicalRoot !== 'string' || !value.canonicalRoot || !value.contract || value.contract.ttlUnit !== 'seconds' || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(value.contract.expiresAtFormat) || (value.forceRelay !== undefined && typeof value.forceRelay !== 'boolean')) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    return { enabled: true, appIdentity: value.appIdentity, canonicalRoot: value.canonicalRoot, forceRelay: value.forceRelay === true, contract: { ...value.contract } };
+}
+function scriptJson(value: unknown): string { return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029'); }
+async function miniPublicConfig(root: string): Promise<unknown> {
+    const canonical = await realpath(root), file = await realpath(path.join(canonical, 'firebase-field-config.js'));
+    if (!file.startsWith(canonical + path.sep)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const source = await readFile(file, 'utf8');
+    const match = /\?\s*(\{[^\n]+\})\s*:\s*null/.exec(source);
+    if (!match || source.length > 20000) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const config: unknown = JSON.parse(match[1]);
+    if (!config || typeof config !== 'object' || !('firebase' in config) || !('endpoint' in config)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const row = config as { firebase: Record<string, unknown>; endpoint: unknown };
+    if (!row.firebase || row.firebase.projectId !== 'phoenix-asistencia-ab641' || row.firebase.authDomain !== 'phoenix-asistencia-ab641.firebaseapp.com' || typeof row.firebase.apiKey !== 'string' || typeof row.firebase.appId !== 'string' || typeof row.endpoint !== 'string') throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const endpoint = new URL(row.endpoint);
+    if (endpoint.protocol !== 'https:' || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.pathname !== '/') throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    return config;
+}
+async function injectHtml(body: Buffer, bootstrap: PrivateTurnDevBootstrap, origin: string): Promise<Buffer> {
+    let html = body.toString('utf8');
+    const core = bootstrap.appIdentity === 'mini' ? '<script src="./p2p-core.js"></script>' : '<script src="js/p2p/P2PCore.js"></script>';
+    if (html.split(core).length !== 2) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    if (bootstrap.appIdentity === 'mini') {
+        const configAnchor = '<script src="./firebase-field-config.js"></script>';
+        if (html.split(configAnchor).length !== 2 || html.indexOf(configAnchor) > html.indexOf(core)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+        html = html.replace(configAnchor, '<script>window.MiniFirebaseFieldConfig=' + scriptJson(await miniPublicConfig(bootstrap.canonicalRoot)) + ';</script>' + configAnchor);
+    }
+    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: bootstrap.contract, forceRelay: bootstrap.forceRelay, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
+    const saLoader = bootstrap.appIdentity === 'sa' ? ',loadSaAuth:async()=>{const m=await import("/js/modules/data/firebase.js");if(!m.auth||typeof m.onAuthStateChanged!=="function")throw new Error("TURN_BOOTSTRAP_UNAVAILABLE");return {get currentUser(){return m.auth.currentUser;},onAuthStateChanged:fn=>m.onAuthStateChanged(m.auth,fn)};}' : '';
+    const install = 'window.privateTurnTest=PrivateTurnBootstrap.install({' + scriptJson(options).slice(1, -1) + saLoader + '});';
+    return Buffer.from(html.replace(core, core + '<script src="/__private-turn/provider.js"></script><script src="/__private-turn/bootstrap.js"></script><script>' + install + '</script>'));
+}
+async function serveAsset(req: IncomingMessage, res: ServerResponse, root: string | undefined, assets: ReadonlySet<string>, bootstrap?: PrivateTurnDevBootstrap, origin = ''): Promise<void> {
     if (req.method !== 'GET' || !root) throw new PrivateTurnProxyError(404, 'TURN_ASSET_UNAVAILABLE');
     let name: string;
     try { name = decodeURIComponent((req.url || '').split('?')[0]); } catch { throw new PrivateTurnProxyError(400, 'TURN_REQUEST_INVALID'); }
@@ -131,23 +176,35 @@ async function serveAsset(req: IncomingMessage, res: ServerResponse, root: strin
         if (!file.startsWith(canonicalRoot + path.sep)) throw new Error();
         const info = await stat(file);
         if (!info.isFile() || info.size > 8 * 1024 * 1024) throw new Error();
-        const body = await readFile(file);
+        let body: Buffer = await readFile(file);
+        if (name === 'index.html' && bootstrap) body = await injectHtml(body, bootstrap, origin);
         res.writeHead(200, { 'Content-Type': extensions[path.extname(name)], 'Cache-Control': 'no-store' }); res.end(body);
     } catch { throw new PrivateTurnProxyError(404, 'TURN_ASSET_UNAVAILABLE'); }
 }
 export async function startDevServer(options: PrivateTurnDevOptions) {
     const forwardPort = limit(options.forwardPort, 1, 65535), port = limit(options.port ?? 9443, 0, 65535);
     const maxRequest = limit(options.maxRequestBytes ?? 20000, 1, 20000), maxResponse = limit(options.maxResponseBytes ?? 32768, 1, 32768), timeout = limit(options.timeoutMs ?? 10000, 1, 30000);
-    if ((!options.tls && options.httpForTests !== true) || (options.tls && options.httpForTests)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const publicOrigin = options.publicOrigin;
+    if (publicOrigin !== undefined && !privateOrigins.includes(publicOrigin)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const reverse = options.reverseProxy === true;
+    if ((reverse && (!publicOrigin || options.tls || options.httpForTests)) || (!options.tls && options.httpForTests !== true && !reverse) || (options.tls && options.httpForTests)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const bootstrap = bootstrapOptions(options.bootstrap, !!options.tls || reverse);
     const assets = new Set(options.assets || []), appRoot = options.appRoot;
+    let backendHost = '';
     let origin = '';
     const handler = async (req: IncomingMessage, res: ServerResponse) => {
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Referrer-Policy', 'no-referrer');
         try {
-            if (!origin || req.headers.host !== new URL(origin).host) throw new PrivateTurnProxyError(403, 'TURN_ORIGIN_DENIED');
+            if (!origin || ![new URL(origin).host, ...(publicOrigin ? [backendHost, backendHost.replace('127.0.0.1', 'localhost')] : [])].includes(String(req.headers.host))) throw new PrivateTurnProxyError(403, 'TURN_ORIGIN_DENIED');
             if (!req.url?.startsWith('/') || req.url.startsWith('//') || req.url.includes('#')) throw new PrivateTurnProxyError(400, 'TURN_REQUEST_INVALID');
-            if (req.url.split('?')[0] !== '/api/turn-creds') { await serveAsset(req, res, appRoot, assets); return; }
+            if (bootstrap && ['/__private-turn/provider.js', '/__private-turn/bootstrap.js'].includes(req.url)) {
+                const mapped = req.url.endsWith('/provider.js') ? 'private-turn.js' : 'private-turn-bootstrap.js';
+                const originalUrl = req.url; req.url = '/' + mapped;
+                try { await serveAsset(req, res, bootstrap.canonicalRoot, new Set([mapped])); } finally { req.url = originalUrl; }
+                return;
+            }
+            if (req.url.split('?')[0] !== '/api/turn-creds') { await serveAsset(req, res, appRoot, assets, bootstrap, origin); return; }
             if (req.url !== '/api/turn-creds') throw new PrivateTurnProxyError(400, 'TURN_REQUEST_INVALID');
             if (req.headers.origin !== origin) throw new PrivateTurnProxyError(403, 'TURN_ORIGIN_DENIED');
             if (req.method !== 'POST') throw new PrivateTurnProxyError(405, 'TURN_METHOD_DENIED');
@@ -171,18 +228,29 @@ export async function startDevServer(options: PrivateTurnDevOptions) {
     });
     const address = server.address();
     if (!address || typeof address === 'string') { server.close(); throw new Error('TURN_DEV_UNAVAILABLE'); }
-    origin = `${options.tls ? 'https' : 'http'}://127.0.0.1:${address.port}`;
-    return { origin, close: () => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); } };
+    backendHost = `127.0.0.1:${address.port}`;
+    origin = publicOrigin || `${options.tls ? 'https' : 'http'}://${backendHost}`;
+    return { origin, port: address.port, close: () => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); } };
 }
 async function cli(): Promise<void> {
     const args = process.argv.slice(2), values: Record<string, string> = {}, assets: string[] = [];
-    for (let i = 0; i < args.length; i += 2) {
-        if (!['--root', '--asset', '--forward-port', '--port', '--cert', '--key'].includes(args[i]) || !args[i + 1]) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
-        if (args[i] === '--asset') assets.push(args[i + 1]); else values[args[i]] = args[i + 1];
+    let forceRelay = false, reverseProxy = false;
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--force-relay') { forceRelay = true; continue; }
+        if (args[i] === '--reverse-proxy') { reverseProxy = true; continue; }
+        if (!['--root', '--asset', '--forward-port', '--port', '--cert', '--key', '--app', '--canonical-root', '--expiry-format', '--public-origin'].includes(args[i]) || !args[i + 1]) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+        const flag = args[i], value = args[++i];
+        if (flag === '--asset') assets.push(value); else { if (values[flag] !== undefined) throw new Error('TURN_DEV_CONFIGURATION_INVALID'); values[flag] = value; }
     }
-    if (!values['--cert'] || !values['--key'] || !values['--forward-port']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
-    const tls = { cert: await readFile(values['--cert']), key: await readFile(values['--key']) };
-    const dev = await startDevServer({ forwardPort: Number(values['--forward-port']), port: values['--port'] ? Number(values['--port']) : 9443, tls, appRoot: values['--root'], assets });
+    if (!values['--forward-port'] || (!reverseProxy && (!values['--cert'] || !values['--key'])) || (reverseProxy && (values['--cert'] || values['--key']))) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    let bootstrap: PrivateTurnDevBootstrap | undefined;
+    if (values['--app']) {
+        const identity = values['--app'], format = values['--expiry-format'];
+        if (!['mini', 'sa'].includes(identity) || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(format) || !values['--canonical-root'] || !values['--root']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+        bootstrap = { enabled: true, appIdentity: identity as 'mini' | 'sa', forceRelay, canonicalRoot: values['--canonical-root'], contract: { ttlUnit: 'seconds', expiresAtFormat: format as PrivateTurnDevBootstrap['contract']['expiresAtFormat'] } };
+    } else if (forceRelay || values['--expiry-format'] || values['--canonical-root']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    const tls = reverseProxy ? undefined : { cert: await readFile(values['--cert']), key: await readFile(values['--key']) };
+    const dev = await startDevServer({ forwardPort: Number(values['--forward-port']), port: values['--port'] ? Number(values['--port']) : 9443, tls, reverseProxy, publicOrigin: values['--public-origin'], bootstrap, appRoot: values['--root'], assets });
     const stop = () => { void dev.close(); };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
     console.log('private-turn-dev:ready');

@@ -112,3 +112,39 @@ Live acceptance remains pending: API serialization, trusted HTTPS/Auth origin,
 operator-started private API and explicit remote session/traffic authorization.
 Neither mocked credentials nor HTTP fixture success proves HMAC validity,
 selected relay connectivity, data-channel delivery or production readiness.
+
+## P3: explicitly opted-in development integration
+
+Only the development server injects canonical provider/bootstrap scripts. No
+production HTML/config/precache registration is changed. Mini's public config
+is supplied in the served response before its original named-account setup;
+SA uses its primary modular Auth and exported subscription function. Both
+retain their existing SDK versions and no second account is created.
+
+Signed users default to policy `all` with ephemeral TURN available as fallback.
+Separate explicit `forceRelay` enables `relay` only in this development circuit.
+Guests preserve the exact original factory options; no opt-in preserves exact
+HTML bytes and exposes no implicit shared scripts. Credentials remain in memory,
+account-generation bound, with explicit expiry serialization and renewal.
+
+Clients require HTTPS loopback or an explicitly configured exact private origin:
+`https://a2.tail2a0a8e.ts.net:8443` or `:8444`. The server may use supplied trusted
+TLS or an explicit private HTTPS reverse-proxy mode; backend HTTP is not a client
+HTTP Auth exception. No forwarded header grants trust, no arbitrary origins or
+CORS are enabled. Expiry units remain operator-confirmation prerequisites.
+
+Synthetic browser checks mock the correct existing Auth account, deny external
+HTTP requests, inspect factory configuration and verify controlled selected-pair
+stats. Separately, real Mini/SA factories exchange bidirectional host-only data
+with empty ICE servers and guest Auth. This is not live TURN proof. The user's
+standalone PC/Android relay PASS does not yet prove integrated application use.
+
+P3 verification status: provider/bootstrap 59/59 and proxy 28/28, full Mini
+775/775 with zero skipped tests. The browser runner explicitly invokes the actual
+`PrivateTurnBootstrap.verifySelectedRelay` using controlled mock stats with a
+selected connected successful nominated pair and valid relay candidate references,
+plus gathered-only and stale-connection negatives. These are mock browser
+fixtures, not network relay proof. The separate native host-only Mini/SA data
+circuit and all browser fixtures remain **unexecuted successfully** because the
+current browser launch capability is unavailable. No managed-browser download is
+authorized by this change; do not mark P3 complete or claim browser/live PASS.

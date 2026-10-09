@@ -27,7 +27,7 @@ test('uses fixed same-origin POST without cookies or redirects', async () => {
     assert.equal(init.redirect, 'error'); assert.equal(init.cache, 'no-store'); assert.deepEqual(JSON.parse(init.body), { idToken: 'synthetic-token' });
     return Response.json(f.payload());
   } });
-  const result = await f.provider.getConfiguration(); assert.equal(result.iceTransportPolicy, 'relay'); assert.equal(result.iceServers.length, 2);
+  const result = await f.provider.getConfiguration(); assert.equal(result.iceTransportPolicy, 'all'); assert.equal(result.iceServers.length, 2);
 });
 test('deduplicates in flight and returns isolated cached configurations', async () => {
   const pending = deferred(); let calls = 0;
@@ -113,3 +113,6 @@ test('does not log credentials or raw token/server errors', async () => {
     await assert.rejects(failed.provider.getConfiguration(), /TURN_UNAVAILABLE/); assert.deepEqual(logs, []);
   } finally { console.log = originalLog; console.error = originalError; }
 });
+
+test('forced relay requires separate explicit test opt-in', async()=>{const f=fixture({forceRelay:true});assert.equal((await f.provider.getConfiguration()).iceTransportPolicy,'relay');});
+test('private HTTPS origin must be explicitly allowlisted without wildcards',async()=>{const origin='https://a2.tail2a0a8e.ts.net:8443';assert.throws(()=>fixture({origin}),/TURN_CONFIGURATION_INVALID/);const f=fixture({origin,allowedOrigins:[origin]});assert.equal((await f.provider.getConfiguration()).iceTransportPolicy,'all');for(const value of ['https://foreign.invalid','https://*.ts.net','http://a2.tail2a0a8e.ts.net:8443'])assert.throws(()=>fixture({origin:value,allowedOrigins:[value]}),/TURN_CONFIGURATION_INVALID/);});

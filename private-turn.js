@@ -36,9 +36,9 @@
         return { url, turn: match[1] === 'turn' || match[1] === 'turns' };
     }
     function clone(config) {
-        return { iceTransportPolicy: 'relay', iceServers: config.iceServers.map(server => ({ ...server, urls: Array.isArray(server.urls) ? [...server.urls] : server.urls })) };
+        return { iceTransportPolicy: config.iceTransportPolicy, iceServers: config.iceServers.map(server => ({ ...server, urls: Array.isArray(server.urls) ? [...server.urls] : server.urls })) };
     }
-    function parse(value, contract, now, margin) {
+    function parse(value, contract, now, margin, policy) {
         const body = record(value), username = text(body.username, 256), credential = text(body.credential, 1024);
         if (!Number.isSafeInteger(body.ttl) || Number(body.ttl) < 1 || Number(body.ttl) > 300)
             failure('TURN_INVALID_RESPONSE');
@@ -80,7 +80,7 @@
         });
         if (!hasTurn)
             failure('TURN_INVALID_RESPONSE');
-        return { expiresAt, config: { iceServers, iceTransportPolicy: 'relay' } };
+        return { expiresAt, config: { iceServers, iceTransportPolicy: policy } };
     }
     function createProvider(options) {
         var _a, _b;
@@ -88,11 +88,17 @@
         if (typeof options.enabled !== 'boolean' || !supplied || supplied.ttlUnit !== 'seconds' || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(supplied.expiresAtFormat))
             failure('TURN_CONFIGURATION_INVALID');
         const contract = { ttlUnit: 'seconds', expiresAtFormat: supplied.expiresAtFormat };
+        if (options.forceRelay !== undefined && typeof options.forceRelay !== 'boolean')
+            failure('TURN_CONFIGURATION_INVALID');
+        const allowed = [...(options.allowedOrigins || [])], privateOrigins = ['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'];
+        if (allowed.length > 2 || allowed.some(value => !privateOrigins.includes(value)))
+            failure('TURN_CONFIGURATION_INVALID');
+        const policy = options.forceRelay === true ? 'relay' : 'all';
         const enabled = options.enabled, getUser = options.getUser, fetcher = options.fetcher;
         if (enabled) {
             try {
                 const page = new URL(options.origin);
-                if (page.protocol !== 'https:' || !['127.0.0.1', 'localhost', '[::1]'].includes(page.hostname) || page.username || page.password || page.search || page.hash || page.pathname !== '/')
+                if (page.protocol !== 'https:' || (!['127.0.0.1', 'localhost', '[::1]'].includes(page.hostname) && !allowed.includes(page.origin)) || page.username || page.password || page.search || page.hash || page.pathname !== '/')
                     failure('TURN_CONFIGURATION_INVALID');
             }
             catch {
@@ -192,7 +198,7 @@
                 catch {
                     failure('TURN_INVALID_RESPONSE');
                 }
-                const result = parse(raw, contract, time(), margin);
+                const result = parse(raw, contract, time(), margin, policy);
                 guard(user.uid, captured);
                 cache = { uid: user.uid, generation: captured, ...result };
                 return result.config;

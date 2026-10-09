@@ -85,3 +85,44 @@ test('proxy never logs known synthetic credentials or upstream errors', async t 
     await request(dev.origin, { body: 'synthetic-secret-error' }); assert.deepEqual(logs, []);
   } finally { console.log = originalLog; console.error = originalError; }
 });
+
+async function tlsFixture(t, extra = {}) {
+  const https = require('node:https'), { execFileSync } = require('node:child_process');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'private-turn-tls-unit-'));
+  t.after(() => fs.rm(root, { recursive: true }));
+  const keyPath = path.join(root, 'test.key'), certPath = path.join(root, 'test.crt');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-sha256', '-days', '1', '-nodes', '-keyout', keyPath, '-out', certPath, '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1'], { stdio: 'ignore' });
+  const cert = await fs.readFile(certPath), key = await fs.readFile(keyPath);
+  const dev = await startDevServer({ forwardPort: 12345, port: 0, tls: { cert, key }, ...extra });
+  t.after(() => dev.close());
+  const get = target => new Promise((resolve, reject) => {
+    const req = https.get(dev.origin + target, { ca: cert, agent: false }, res => { const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() })); }); req.on('error', reject);
+  }); return { dev, get, root };
+}
+test('HTTPS opt-in injects immediately after the known core without changing source HTML', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'private-turn-html-')); t.after(() => fs.rm(root, { recursive: true }));
+  const html = '<html><body><script src="./firebase-field-config.js"></script><script src="./p2p-core.js"></script><script>window.caller=true</script></body></html>';
+  await fs.writeFile(path.join(root, 'index.html'), html);
+  const f = await tlsFixture(t, { appRoot: root, assets: ['index.html'], bootstrap: { enabled: true, appIdentity: 'mini', contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, canonicalRoot: path.resolve(__dirname, '..') } });
+  const result = await f.get('/'); assert.equal(result.status, 200); assert.match(result.body, /PrivateTurnBootstrap\.install/);
+  assert.ok(result.body.indexOf('/__private-turn/bootstrap.js') < result.body.indexOf('window.caller')); assert.ok(result.body.indexOf('window.MiniFirebaseFieldConfig=') < result.body.indexOf('./firebase-field-config.js')); assert.equal(await fs.readFile(path.join(root, 'index.html'), 'utf8'), html);
+});
+test('no opt-in serves byte-identical HTML and exposes no implicit shared scripts', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'private-turn-html-')); t.after(() => fs.rm(root, { recursive: true }));
+  const html = '<html>  unchanged\n<script src="js/p2p/P2PCore.js"></script></html>'; await fs.writeFile(path.join(root, 'index.html'), html);
+  const f = await tlsFixture(t, { appRoot: root, assets: ['index.html'] }); assert.equal((await f.get('/')).body, html); assert.equal((await f.get('/__private-turn/bootstrap.js')).status, 404);
+});
+test('SA opt-in uses fixed modular Auth import and canonical shared assets', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'private-turn-sa-html-')); t.after(() => fs.rm(root, { recursive: true }));
+  await fs.writeFile(path.join(root, 'index.html'), '<html><script src="js/p2p/P2PCore.js"></script><script type="module" src="js/app.js"></script></html>');
+  const f = await tlsFixture(t, { appRoot: root, assets: ['index.html'], bootstrap: { enabled: true, appIdentity: 'sa', contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, canonicalRoot: path.resolve(__dirname, '..') } });
+  const result = await f.get('/'); assert.match(result.body, /import\("\/js\/modules\/data\/firebase\.js"\)/); assert.doesNotMatch(result.body, /sa-field-only|initializeApp/);
+  assert.equal((await f.get('/__private-turn/provider.js')).body, await fs.readFile(path.resolve(__dirname, '../private-turn.js'), 'utf8'));
+  assert.equal((await f.get('/__private-turn/bootstrap.js')).body, await fs.readFile(path.resolve(__dirname, '../private-turn-bootstrap.js'), 'utf8'));
+});
+test('opt-in rejects HTTP and invalid serialization before exposing HTML', async () => {
+  await assert.rejects(startDevServer({ forwardPort: 12345, port: 0, httpForTests: true, bootstrap: { enabled: true, appIdentity: 'mini', contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, canonicalRoot: path.resolve(__dirname, '..') } }), /TURN_DEV_CONFIGURATION_INVALID/);
+});
+
+test('private reverse proxy requires exact explicit HTTPS origin and ignores forwarded headers',async t=>{const root=await fs.mkdtemp(path.join(os.tmpdir(),'private-turn-reverse-'));t.after(()=>fs.rm(root,{recursive:true}));await fs.writeFile(path.join(root,'index.html'),'<html>unchanged</html>');const origin='https://a2.tail2a0a8e.ts.net:8443';const dev=await startDevServer({forwardPort:12345,port:0,reverseProxy:true,publicOrigin:origin,appRoot:root,assets:['index.html']});t.after(()=>dev.close());const raw=async headers=>new Promise((resolve,reject)=>{const req=http.get({hostname:'127.0.0.1',port:dev.port,path:'/',headers},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.on('error',reject);});assert.equal(await raw({Host:new URL(origin).host}),200);assert.equal(await raw({Host:'evil.invalid','X-Forwarded-Host':new URL(origin).host,'X-Forwarded-Proto':'https'}),403);for(const change of [{reverseProxy:true},{reverseProxy:true,publicOrigin:'https://foreign.invalid'},{reverseProxy:true,publicOrigin:'http://a2.tail2a0a8e.ts.net:8443'}])await assert.rejects(startDevServer({forwardPort:12345,port:0,...change}),/TURN_DEV_CONFIGURATION_INVALID/);});
+test('missing Mini Auth initialization anchor fails closed without changing source',async t=>{const root=await fs.mkdtemp(path.join(os.tmpdir(),'private-turn-anchor-'));t.after(()=>fs.rm(root,{recursive:true}));const html='<html><script src="./p2p-core.js"></script></html>';await fs.writeFile(path.join(root,'index.html'),html);const f=await tlsFixture(t,{appRoot:root,assets:['index.html'],bootstrap:{enabled:true,appIdentity:'mini',contract:{ttlUnit:'seconds',expiresAtFormat:'unix-milliseconds'},canonicalRoot:path.resolve(__dirname,'..')}});assert.equal((await f.get('/')).status,404);assert.equal(await fs.readFile(path.join(root,'index.html'),'utf8'),html);});
