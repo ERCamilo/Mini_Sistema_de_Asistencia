@@ -234,18 +234,39 @@ interface ConnectionMenuOptions {
    const hint=node('p','connections-hint');hint.textContent='Desvincular conserva el personal y la asistencia guardados en este dispositivo.';detailPart.append(hint);
   }
   function renderAccount(){
-   const previous=taskContent.querySelector('[data-account-summary]');previous?.remove();
+   const previous=taskContent.querySelector('[data-account-summary]');
+   if(app==='mini'&&previous?.contains(account))store.append(account);
+   previous?.remove();
    const summary=node('section','connections-account-summary');summary.dataset.accountSummary='';
    const status=el(app==='mini'?'firebase-link-status':'sa-field-status'),email=status?.dataset.accountEmail||'',name=status?.dataset.accountName||email||'Cuenta Google';
    const avatar=node('span','connections-avatar');avatar.textContent=email?(name.trim()[0]||'G').toUpperCase():'G';avatar.setAttribute('aria-hidden','true');
-   const identity=contextCard(name,email||'Inicia sesión para gestionar tus vínculos');identity.prepend(avatar);if(app==='mini'){identity.classList.add('mini-connection-identity');const provider=contextCard('Cuenta Google',email?'Conectada':'Sin iniciar sesión');provider.classList.add('mini-connection-provider');const logo=d.createElement('img');logo.src='./vendor/google-g.png';logo.width=26;logo.height=26;logo.alt='';provider.prepend(logo);identity.append(provider);summary.append(identity);if(!email)summary.append(account);}else summary.append(identity,account);
+   const identity=contextCard(name,email||'Inicia sesión para gestionar tus vínculos');identity.prepend(avatar);
+   if(app==='mini'){
+    const login=el('firebase-link-login') as HTMLButtonElement|null,logout=el('firebase-link-logout') as HTMLButtonElement|null;
+    const available=options.internetAvailable&&Boolean(login&&!login.hidden||logout&&!logout.hidden);
+    const connected=available&&!!email;
+    identity.classList.add('mini-connection-identity','mini-account-card');
+    identity.dataset.accountState=available?(connected?'connected':'signed-out'):'unavailable';
+    const title=identity.querySelector('strong')!,description=identity.querySelector('p')!;
+    title.textContent=connected?name:'Conecta tu cuenta Google';
+    description.textContent=connected?email:available?'Inicia sesión para gestionar tus obras.':'El acceso con Google no está habilitado en esta versión.';
+    description.id='mini-account-description';
+    const state=node('span','mini-account-status');state.textContent=connected?'Conectada':available?'Sin iniciar sesión':'No disponible';identity.append(state);
+    if(available){identity.append(account);for(const control of [login,logout])if(control){control.classList.add('mini-account-action');control.setAttribute('aria-describedby',description.id);}}
+    else{
+     store.append(account);
+     const unavailable=button('Iniciar sesión con Google',()=>{});unavailable.disabled=true;unavailable.dataset.accountUnavailable='';unavailable.classList.add('mini-account-action');unavailable.setAttribute('aria-describedby',description.id);
+     const logo=d.createElement('img');logo.src='./vendor/google-g.png';logo.width=20;logo.height=20;logo.alt='';unavailable.prepend(logo);identity.append(unavailable);
+    }
+    summary.append(identity);
+   }else summary.append(identity,account);
    if(app==='mini'){
     const select=el('cloud-field-binding') as HTMLSelectElement|null,works=new Set([...(select?.options||[])].map(o=>o.dataset.orgId+'|'+o.dataset.projectId));
     const linked=button('Mis obras vinculadas · '+works.size,()=>{show();});const device=button('Este dispositivo · '+((el('cloud-field-device-name') as HTMLInputElement|null)?.dataset.resolvedName||(el('cloud-field-device-name') as HTMLInputElement|null)?.value||'Mini'),()=>{task('settings');});decorateActionRow(device,'Este dispositivo',(el('cloud-field-device-name') as HTMLInputElement|null)?.dataset.resolvedName||'Mini','phone');decorateActionRow(linked,'Mis obras vinculadas',works.size+' obra(s) autorizada(s)','building');summary.append(device,linked);
    }
    const backup=extras.querySelector<HTMLButtonElement>('[data-open-backup-hub-btn]');if(backup)summary.append(button('Respaldos y transferencia directa',()=>{backup.click();}));
    const pendingCount=currentEvents().reduce((total,event)=>total+event.count,0);summary.append(button('Pendientes por revisar · '+pendingCount,()=>{show();}));
-   const hint=node('p','connections-hint');hint.textContent='Cerrar sesión conserva los datos guardados en este dispositivo.';if(app==='mini'&&email)summary.append(account);summary.append(hint);taskContent.prepend(summary);
+   const hint=node('p','connections-hint');hint.textContent='Cerrar sesión conserva los datos guardados en este dispositivo.';summary.append(hint);taskContent.prepend(summary);
   }
   function renderInvitation(){
    if(app!=='mini')return;

@@ -218,3 +218,16 @@
 .mini-p2p-shell .connections-home [data-connections-device] {display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius-md,12px);background:var(--card-bg);color:var(--text-color);font-size:15px;font-weight:700;}
 .mini-p2p-shell .connections-home [data-connections-device] svg {width:22px;height:22px;stroke:currentColor;}
 .mini-p2p-shell .connections-home [data-connections-device]:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+
+/* One truthful Mini account card; existing Auth controls retain their handlers. */
+.mini-p2p-shell .mini-account-card {background:var(--card-bg);color:var(--text-color);min-width:0;}
+.mini-p2p-shell .mini-account-card>strong {font-size:16px;line-height:1.4;overflow-wrap:anywhere;}
+.mini-p2p-shell .mini-account-card>p {font-size:14px;line-height:1.5;color:var(--text-color);overflow-wrap:anywhere;}
+.mini-p2p-shell .mini-account-status {grid-column:2;font-size:13px;font-weight:600;color:var(--text-color);}
+.mini-p2p-shell .mini-account-card>.connections-account {grid-column:1/-1;display:flex;flex-direction:column;padding:0;margin:12px 0 0;background:none;min-width:0;}
+.mini-p2p-shell .mini-account-card>.connections-account>strong,.mini-p2p-shell .mini-account-card [data-connection-account-open] {display:none;}
+.mini-p2p-shell .mini-account-card .mini-account-action {grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px;border:1px solid var(--text-color);border-radius:12px;background:var(--card-bg);color:var(--text-color);font:600 15px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;white-space:normal;opacity:1;}
+.mini-p2p-shell .mini-account-card .mini-account-action[hidden] {display:none!important;}
+.mini-p2p-shell .mini-account-card .mini-account-action:disabled {cursor:not-allowed;background:var(--input-bg);color:var(--text-color);opacity:1;}
+.mini-p2p-shell .mini-account-card .mini-account-action:focus-visible {outline:2px solid var(--accent-color);outline-offset:3px;}
+.mini-p2p-shell .mini-account-card .mini-account-action img {width:20px;height:20px;flex:none;}

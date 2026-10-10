@@ -208,3 +208,19 @@ busy and a shared-menu SA negative control. The browser uses fresh synthetic
 identity/data and denies external requests; it does not capture camera data,
 perform pairing/restore, authenticate accounts or claim integrated relay proof.
 No connections tutorial exists in the current recorded catalog.
+
+## MM-ACCOUNT-UI delivery: truthful Google account presentation
+
+Mini uses one account card, with three distinct states: an available signed-out
+account exposes the original Google sign-in button; a connected account shows
+its name/email/status and original logout button; an unavailable integration
+shows a disabled sign-in action and the reason next to it. Repeated rendering
+must retain original nodes/listeners. UI never enables Firebase for a hostname,
+creates another account/session or changes Auth availability/hidden state.
+
+Mini-scoped semantic-token styles must work in original dark and light themes,
+with minimum 44px targets, visible keyboard focus, no mobile horizontal overflow
+and measured AA text contrast. Browser tests exercise actual unavailable Mini
+HTML/CSS and controlled account DOM lifecycle fixtures; they never sign in to
+Google, read real accounts or make external requests. SA behavior and all work,
+backup, transfer and restoration contracts remain unchanged.

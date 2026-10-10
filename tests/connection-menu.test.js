@@ -10,3 +10,9 @@ test('Mini exposes separate visible work and independent device entry points',()
  assert.ok(source.includes('Asociar a otro dispositivo'));
  assert.ok(source.includes('connectionsDevice'));
 });
+test('Mini account UI has one truthful card with original controls and an unavailable state',()=>{
+ const source=require('node:fs').readFileSync(require.resolve('../connection-menu.js'),'utf8');
+ assert.ok(source.includes('accountState'));
+ assert.ok(source.includes('El acceso con Google no está habilitado en esta versión.'));
+ assert.ok(source.includes('accountUnavailable'));
+});
