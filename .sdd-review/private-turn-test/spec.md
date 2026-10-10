@@ -224,3 +224,17 @@ and measured AA text contrast. Browser tests exercise actual unavailable Mini
 HTML/CSS and controlled account DOM lifecycle fixtures; they never sign in to
 Google, read real accounts or make external requests. SA behavior and all work,
 backup, transfer and restoration contracts remain unchanged.
+
+## MM-GOOGLE-PREVIEW delivery: exact client hostname allowlist
+
+The existing public Firebase field configuration is enabled on the stable
+`mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev` hostname
+as well as the previous `firebase-circuit-test` preview hostname. No wildcard,
+production host, immutable deployment hostname or lookalike is admitted.
+Explicitly injected configuration remains unchanged. Public project/bridge
+metadata is reused without modifying SDK, Auth or the private TURN issuer.
+
+VM tests prove hostname conditions only. Operator-reported Google/Firebase
+console authorization remains pending real sign-in acceptance. This does not
+load private TURN modules or provide `/api/turn-creds` on Cloudflare Pages;
+private issuer connectivity and live acceptance remain separate work.

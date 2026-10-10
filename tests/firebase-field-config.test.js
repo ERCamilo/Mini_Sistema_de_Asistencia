@@ -30,3 +30,29 @@ test('field configuration preserves an explicitly supplied deployment configurat
     vm.runInNewContext(source, root);
     assert.equal(root.MiniFirebaseFieldConfig, injected);
 });
+
+test('stable Mini review preview enables the same existing public configuration', () => {
+    const previous = { location: { hostname: 'firebase-circuit-test.mini-sistema-asistencia-preview.pages.dev' } };
+    const current = { location: { hostname: 'mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev' } };
+    vm.runInNewContext(source, previous);
+    vm.runInNewContext(source, current);
+    assert.ok(current.MiniFirebaseFieldConfig);
+    assert.equal(JSON.stringify(current.MiniFirebaseFieldConfig), JSON.stringify(previous.MiniFirebaseFieldConfig));
+});
+
+test('production, immutable previews, lookalikes and absent hostname stay disabled', () => {
+    for (const hostname of [undefined, '', 'mini-sistema-asistencia-preview.pages.dev', 'db15e8a7.mini-sistema-asistencia-preview.pages.dev', 'mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev.attacker.test', 'other.mini-sistema-asistencia-preview.pages.dev', 'localhost']) {
+        const root = { location: { hostname } };
+        vm.runInNewContext(source, root);
+        assert.equal(root.MiniFirebaseFieldConfig, null);
+    }
+});
+
+test('explicit injected configuration is preserved on the new preview and denied hosts', () => {
+    for (const hostname of ['mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev', 'mini.example.test']) {
+        const injected = { endpoint: 'https://fixture.example.test' };
+        const root = { location: { hostname }, MiniFirebaseFieldConfig: injected };
+        vm.runInNewContext(source, root);
+        assert.equal(root.MiniFirebaseFieldConfig, injected);
+    }
+});
