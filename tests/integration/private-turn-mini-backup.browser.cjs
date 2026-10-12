@@ -9,7 +9,7 @@ const { X509Certificate, createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { browserLaunchReason } = require('./private-turn.browser.cjs');
 const ROOT = path.resolve(__dirname, '../..');
-const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js'];
+const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js', 'p2p-demand-negotiation.js', 'mini-peer-availability.js'];
 let phase = 'CAPABILITY';
 async function main() {
   assert.ok(process.env.PLAYWRIGHT_MODULE); assert.ok(process.env.PRIVATE_TURN_TOOL_OUTPUT);
@@ -52,8 +52,8 @@ async function main() {
       phase = 'MOCK_PAGE_LOAD'; await page.goto(dev.origin); phase = 'BOOTSTRAP_READY'; await page.waitForFunction(() => !!window.privateTurnTest?.active);
       return page;
     }
-    phase = 'SIGNED_POLICY';
     const pages = [await pageFor(false), await pageFor(true)];
+    phase = 'SIGNED_POLICY';
     for (let i = 0; i < pages.length; i++) {
       const before = requests;
       phase = 'SIGNED_FACTORY_' + i; const result = await pages[i].evaluate(async () => {
@@ -68,6 +68,87 @@ async function main() {
       });
       phase = 'SIGNED_ASSERT_' + i; assert.deepEqual(result, { policy: i ? 'relay' : 'all', servers: 1, namedAuth: true, selected: true, gatheredOnly: false }); assert.equal(requests - before, 1);
     }
+    const demandProof = { unilateralRoles: [], simultaneous: false, retirementWake: false, oneSidedRetirementWake: false };
+    let demandMode = 'live', held = [], demandTail = Promise.resolve();
+    let demandCounts = { offer: 0, answer: 0, ice: 0 };
+    async function deliverDemand(message) {
+      await pages[1 - message.i].evaluate(({ type, data }) => window.demandEvent({ type: 'signal', frame: { v: 1, type, data } }), message);
+    }
+    function queueDemand(message) {
+      demandTail = demandTail.then(() => deliverDemand(message));
+      return demandTail;
+    }
+    for (let i = 0; i < 2; i++) await pages[i].exposeFunction('demandBridge', async (type, data) => {
+      if (type === 'ice' && !data.candidate) return;
+      demandCounts[type]++;
+      const message = { i, type, data };
+      if (demandMode === 'live') return queueDemand(message);
+      held.push(message);
+      if (demandMode !== 'collect-offers' || held.filter(row => row.type === 'offer').length !== 2) return;
+      demandMode = 'deliver-offers';
+      const states = await Promise.all(pages.map(page => page.evaluate(() => window.demandOwner.getSession().pc.signalingState)));
+      assert.deepEqual(states, ['have-local-offer', 'have-local-offer']);
+      const offers = held.filter(row => row.type === 'offer');
+      held = held.filter(row => row.type !== 'offer');
+      // Hold every answer and candidate until BOTH offers reach the receivers.
+      await Promise.all(offers.map(deliverDemand));
+      demandMode = 'live';
+      const pending = held; held = [];
+      for (const row of pending) queueDemand(row);
+      await demandTail;
+    });
+    for (let i = 0; i < 2; i++) await pages[i].evaluate(async i => {
+      window.demandCalls = 0; window.demandErrors = []; window.demandMessages = [];
+      const listeners = new Set();
+      const signal = { connect: async () => {}, onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }, send(type, data) { void window.demandBridge(type, data); }, close() {} };
+      window.demandEvent = event => { for (const fn of listeners) fn(event); };
+      window.demandOwner = window.MiniPeerAvailability.create({ signaling: signal, localPeerId: 'demand-' + i, remotePeerId: 'demand-' + (1 - i), validateFrame: window.SaMiniP2P.validateSignalFrameObject,
+        createSession: options => { const generation = ++window.demandCalls; return window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); }, onChannel(channel) { window.demandChannel = channel; channel.addEventListener('message', event => window.demandMessages.push(event.data)); } }); }
+      });
+      await window.demandOwner.start();
+    }, i);
+    for (const page of pages) assert.equal(await page.evaluate(() => window.demandCalls), 0);
+    async function assertDemandChannel(expectedCalls) {
+      try {
+        for (const page of pages) await page.waitForFunction(() => window.demandChannel?.readyState === 'open' || window.demandErrors.includes(window.demandCalls), null, { timeout: 15000 });
+      } catch (error) {
+        const endpoints = await Promise.all(pages.map(page => page.evaluate(async () => {
+          const session = window.demandOwner.getSession(), pc = session?.pc;
+          const stats = pc ? await pc.getStats() : new Map();
+          let localCandidates = 0, remoteCandidates = 0;
+          stats.forEach(row => { if (row.type === 'local-candidate') localCandidates++; if (row.type === 'remote-candidate') remoteCandidates++; });
+          return { factories: window.demandCalls, errors: window.demandErrors.filter(g => g === window.demandCalls).length, retiredErrors: window.demandErrors.filter(g => g !== window.demandCalls).length, connection: pc?.connectionState, ice: pc?.iceConnectionState, gathering: pc?.iceGatheringState, signaling: pc?.signalingState, channel: session?.channel?.readyState, localDescription: !!pc?.localDescription, remoteDescription: !!pc?.remoteDescription, localCandidates, remoteCandidates };
+        })));
+        console.error(JSON.stringify({ scope: 'synthetic-native-demand-counterexample', phase, frameCounts: demandCounts, bufferedFrames: held.length, endpoints }));
+        throw error;
+      }
+      for (const page of pages) {
+        const result = await page.evaluate(() => ({ calls: window.demandCalls, errors: window.demandErrors.filter(g => g === window.demandCalls).length, open: window.demandChannel?.readyState }));
+        if (result.calls !== expectedCalls || result.errors || result.open !== 'open') console.error(JSON.stringify({ scope: 'synthetic-native-demand-assertion', phase, expectedCalls, result, frameCounts: demandCounts }));
+        assert.deepEqual(result, { calls: expectedCalls, errors: 0, open: 'open' });
+      }
+      for (let i = 0; i < 2; i++) await pages[i].evaluate(i => window.demandChannel.send('demand-' + i), i);
+      for (const page of pages) await page.waitForFunction(() => window.demandMessages.length === 1);
+    }
+    for (const role of [0, 1]) {
+      phase = 'NATIVE_UNILATERAL_DEMAND_' + role;
+      await pages[role].evaluate(() => window.demandOwner.demand().then(() => true));
+      await assertDemandChannel(role + 1); demandProof.unilateralRoles.push(role);
+      await demandTail;
+      for (const page of pages) await page.evaluate(() => { window.demandOwner.retire(); window.demandChannel = null; window.demandMessages = []; });
+    }
+    demandProof.retirementWake = true;
+    phase = 'NATIVE_SIMULTANEOUS_DEMAND';
+    demandMode = 'collect-offers'; demandCounts = { offer: 0, answer: 0, ice: 0 };
+    await Promise.all(pages.map(page => page.evaluate(() => window.demandOwner.demand().then(() => true))));
+    await assertDemandChannel(3); demandProof.simultaneous = true;
+    await demandTail;
+    phase = 'NATIVE_ONE_SIDED_RETIREMENT_WAKE';
+    for (const page of pages) await page.evaluate(() => { window.demandChannel = null; window.demandMessages = []; });
+    await pages[0].evaluate(() => window.demandOwner.retire());
+    await pages[0].evaluate(() => window.demandOwner.demand().then(() => true));
+    await assertDemandChannel(4); demandProof.oneSidedRetirementWake = true;
+    for (const page of pages) await page.evaluate(() => window.demandOwner.stop());
     phase = 'MINI_PAIRING';
     const connected = new Set();
     for (let i = 0; i < 2; i++) await pages[i].exposeFunction('signalBridge', async (type, data) => {
@@ -158,7 +239,7 @@ async function main() {
     }
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
-    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
+    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
   } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });
