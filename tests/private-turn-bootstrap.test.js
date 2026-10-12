@@ -536,3 +536,16 @@ test('asynchronous storage boot rendering cannot erase or replace the captured l
   h.dispose(); assert.equal(observers[0].disconnected, true); assert.equal(d.version.textContent, 'v2.17.1');
   observers[0].callback(); assert.equal(d.version.textContent, 'v2.17.1');
 });
+
+test('signed demand reuse rejects a frozen session without credential lease metadata', async () => {
+  let closed = 0; const frozen = Object.freeze({ pc: {}, close() { closed++; } });
+  const f = fixture({ SaMiniP2P: { createRtcSession: async () => frozen } }); const handle = f.install();
+  await assert.rejects(f.root.SaMiniP2P.createRtcSession({ demandNegotiation: {} }), /TURN_LEASE_METADATA_UNAVAILABLE/);
+  assert.equal(closed, 1); handle.dispose();
+});
+
+test('signed demand reuse does not trust preexisting frozen lease metadata', async () => {
+  const frozen = Object.freeze({ pc: {}, close() {}, getLeaseRemainingMs: () => 300000 });
+  const f = fixture({ SaMiniP2P: { createRtcSession: async () => frozen } }); const handle = f.install();
+  await assert.rejects(f.root.SaMiniP2P.createRtcSession({ demandNegotiation: {} }), /TURN_LEASE_METADATA_UNAVAILABLE/); handle.dispose();
+});

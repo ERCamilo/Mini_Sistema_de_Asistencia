@@ -59,6 +59,8 @@ const PRECACHE_ASSETS = [
   './mini-notice.js',
   './mini-notice.css',
   './mini-peer-session-manager.js',
+  './p2p-demand-negotiation.js',
+  './mini-peer-availability.js',
   './p2p-backup-consent.js',
   './mini-backup-summary.js',
   './mini-backup-review.js',

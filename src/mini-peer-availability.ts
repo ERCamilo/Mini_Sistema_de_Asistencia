@@ -62,8 +62,8 @@ interface MiniAvailabilityOptions {
     }
     function ensure(): Promise<MiniAvailabilitySession> {
       if (stopped) return Promise.reject(new Error('Disponibilidad Mini cerrada.'));
-      if (active) return Promise.resolve(active);
       if (setup) return setup;
+      if (active) return Promise.resolve(active);
       const ownGeneration = generation;
       const ownListeners = listeners;
       const borrowed: MiniAvailabilitySignal = {
@@ -75,14 +75,19 @@ interface MiniAvailabilityOptions {
       };
       timer = setTimeout(() => { if (ownGeneration === generation) { retire(); options.onState?.('error', new Error('La preparación Mini excedió el tiempo límite.')); } }, Math.min(30000, Math.max(1, options.setupTimeoutMs ?? 10000)));
       const cancelled = new Promise<MiniAvailabilitySession>((_resolve, reject) => { cancelSetup = reject; });
-      const creation = Promise.resolve().then(() => options.createSession({ signaling: borrowed, initiator: false,
-        demandNegotiation: { localPeerId: options.localPeerId, remotePeerId: options.remotePeerId } })).then(async session => {
+      const creation = Promise.resolve().then(() => {
+        if (stopped || ownGeneration !== generation) throw new Error('Preparación Mini retirada.');
+        return options.createSession({ signaling: borrowed, initiator: false,
+          demandNegotiation: { localPeerId: options.localPeerId, remotePeerId: options.remotePeerId } });
+      }).then(async session => {
         if (stopped || ownGeneration !== generation) { session.close(); throw new Error('Preparación Mini retirada.'); }
-        active = session; setup = null; cancelSetup = null;
-        if (timer) clearTimeout(timer); timer = null;
+        active = session;
         const queue = buffered; buffered = []; bytes = 0;
         for (const event of queue) for (const callback of ownListeners) callback(event);
         if (localDemand && !offerIdentity) await session.startNegotiation?.();
+        if (stopped || ownGeneration !== generation) throw new Error('Preparación Mini retirada.');
+        setup = null; cancelSetup = null;
+        if (timer) clearTimeout(timer); timer = null;
         options.onState?.('connecting');
         return session;
       }).catch(error => {
@@ -96,7 +101,9 @@ interface MiniAvailabilityOptions {
       if (stopped) return;
       if (['peer-left', 'socket-closed', 'socket-error', 'error'].includes(event.type)) {
         for (const callback of listeners) callback(event);
-        retire(); return;
+        retire();
+        if (event.type !== 'peer-left') options.onState?.('signaling-error');
+        return;
       }
       // Membership is availability, not an instruction to allocate TURN.
       if (event.type !== 'signal' || !event.frame) return;
@@ -119,12 +126,20 @@ interface MiniAvailabilityOptions {
       void ensure().catch(() => { /* State callback owns setup failure reporting. */ });
     }
     return {
-      async start() { if (stopped) throw new Error('Disponibilidad Mini cerrada.'); if (!off) off = signaling.onEvent(receive); await signaling.connect(); options.onState?.('available'); },
+      async start() { if (stopped) throw new Error('Disponibilidad Mini cerrada.'); if (!off) off = signaling.onEvent(receive); await signaling.connect(); if (stopped) throw new Error('Disponibilidad Mini cerrada.'); if (!active && !setup) options.onState?.('available'); },
       demand() { localDemand = true; return ensure(); },
       retire,
       stop() { if (stopped) return; stopped = true; retire(); off?.(); off = null; signaling.close('availability-stop'); },
       getSession: () => active
     };
   }
-  return { create };
+  function watchAccount(auth: { currentUser?: { uid?: string } | null; onAuthStateChanged(callback: (user: { uid?: string } | null) => void): () => void }, changed: () => void): () => void {
+    const initialUid = auth.currentUser?.uid || null;
+    let first = true;
+    return auth.onAuthStateChanged(user => {
+      if (first) { first = false; if ((user?.uid || null) === initialUid) return; }
+      changed();
+    });
+  }
+  return { create, watchAccount };
 });

@@ -506,7 +506,7 @@
                 fail('TURN_BOOTSTRAP_STALE');
         }
         const wrapper = async (sessionOptions) => {
-            var _a, _b, _c, _d, _e;
+            var _a, _b, _c, _d, _e, _f;
             const record = { session: ++ordinal, credentials: 'requesting', connection: 'unmeasured', relay: 'unmeasured' };
             const capturedScope = scope(), startEpoch = epoch;
             const started = Date.now();
@@ -609,8 +609,9 @@
                 }
                 // Separate metadata; never pass it to RTCPeerConnection. Frozen
                 // legacy session objects remain valid, but cannot opt into reuse.
+                let ownsLeaseMetadata = false;
                 try {
-                    session.getLeaseRemainingMs = () => {
+                    const leaseRemaining = () => {
                         try {
                             guard(captured, capturedScope);
                             if (!Number.isFinite(leaseStarted))
@@ -621,8 +622,17 @@
                             return 0;
                         }
                     };
+                    session.getLeaseRemainingMs = leaseRemaining;
+                    ownsLeaseMetadata = session.getLeaseRemainingMs === leaseRemaining;
                 }
                 catch { /* Optional lease metadata cannot reject factory creation. */ }
+                if (config && sessionOptions.demandNegotiation && !ownsLeaseMetadata) {
+                    try {
+                        (_f = session.close) === null || _f === void 0 ? void 0 : _f.call(session);
+                    }
+                    catch { /* Reject unsafe reuse without leaking errors. */ }
+                    fail('TURN_LEASE_METADATA_UNAVAILABLE');
+                }
                 return session;
             }
             catch (error) {

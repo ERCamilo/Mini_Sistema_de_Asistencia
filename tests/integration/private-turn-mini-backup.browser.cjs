@@ -98,12 +98,17 @@ async function main() {
       await demandTail;
     });
     for (let i = 0; i < 2; i++) await pages[i].evaluate(async i => {
-      window.demandCalls = 0; window.demandErrors = []; window.demandMessages = [];
+      window.demandCalls = 0; window.demandLeaseClock = 0; window.demandErrors = []; window.demandMessages = [];
       const listeners = new Set();
       const signal = { connect: async () => {}, onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }, send(type, data) { void window.demandBridge(type, data); }, close() {} };
       window.demandEvent = event => { for (const fn of listeners) fn(event); };
       window.demandOwner = window.MiniPeerAvailability.create({ signaling: signal, localPeerId: 'demand-' + i, remotePeerId: 'demand-' + (1 - i), validateFrame: window.SaMiniP2P.validateSignalFrameObject,
-        createSession: options => { const generation = ++window.demandCalls; return window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); }, onChannel(channel) { window.demandChannel = channel; channel.addEventListener('message', event => window.demandMessages.push(event.data)); } }); }
+        createSession: async options => {
+          const generation = ++window.demandCalls, startedAt = window.demandLeaseClock;
+          const session = await window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); }, onChannel(channel) { window.demandChannel = channel; window.demandLease.ready(channel); channel.addEventListener('message', event => window.demandMessages.push(event.data)); } });
+          window.demandLease = window.MiniPeerSessionManager.create({ now: () => window.demandLeaseClock, schedule: () => ({}), cancel() {} }).lease(session, startedAt, () => window.demandOwner.retire(), { transportOwnedExternally: true });
+          return session;
+        }
       });
       await window.demandOwner.start();
     }, i);
@@ -127,8 +132,8 @@ async function main() {
         if (result.calls !== expectedCalls || result.errors || result.open !== 'open') console.error(JSON.stringify({ scope: 'synthetic-native-demand-assertion', phase, expectedCalls, result, frameCounts: demandCounts }));
         assert.deepEqual(result, { calls: expectedCalls, errors: 0, open: 'open' });
       }
-      for (let i = 0; i < 2; i++) await pages[i].evaluate(i => window.demandChannel.send('demand-' + i), i);
-      for (const page of pages) await page.waitForFunction(() => window.demandMessages.length === 1);
+      for (let i = 0; i < 2; i++) await pages[i].evaluate(i => Promise.all([0, 1, 2].map(index => window.demandLease.run(async channel => { if (channel !== window.demandChannel) throw new Error('DEMAND_CHANNEL_REPLACED'); channel.send('demand-' + i + '-' + index); }))), i);
+      for (const page of pages) await page.waitForFunction(() => window.demandMessages.length === 3);
     }
     for (const role of [0, 1]) {
       phase = 'NATIVE_UNILATERAL_DEMAND_' + role;
@@ -145,7 +150,7 @@ async function main() {
     await demandTail;
     phase = 'NATIVE_ONE_SIDED_RETIREMENT_WAKE';
     for (const page of pages) await page.evaluate(() => { window.demandChannel = null; window.demandMessages = []; });
-    await pages[0].evaluate(() => window.demandOwner.retire());
+    assert.equal(await pages[0].evaluate(() => { window.demandLeaseClock = 300000; return window.demandLease.valid(); }), false);
     await pages[0].evaluate(() => window.demandOwner.demand().then(() => true));
     await assertDemandChannel(4); demandProof.oneSidedRetirementWake = true;
     for (const page of pages) await page.evaluate(() => window.demandOwner.stop());
@@ -239,7 +244,7 @@ async function main() {
     }
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
-    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
+    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, managedLeaseExpiryWake: true, managedLeaseMessagesEachDirection: 3, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
   } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });

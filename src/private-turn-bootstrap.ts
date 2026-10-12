@@ -461,15 +461,22 @@ interface PrivateTurnBootstrapRoot {
                 try { observe(session, record, captured, capturedScope, elapsed, stopSignal); } catch { stopSignal(); }
                 // Separate metadata; never pass it to RTCPeerConnection. Frozen
                 // legacy session objects remain valid, but cannot opt into reuse.
+                let ownsLeaseMetadata = false;
                 try {
-                    session.getLeaseRemainingMs = () => {
+                    const leaseRemaining = () => {
                         try {
                             guard(captured, capturedScope);
                             if (!Number.isFinite(leaseStarted)) return 0;
                             return Math.max(0, Math.floor(Math.min(300000, credentialLease) - (leaseClock() - leaseStarted)));
                         } catch { return 0; }
                     };
+                    session.getLeaseRemainingMs = leaseRemaining;
+                    ownsLeaseMetadata = session.getLeaseRemainingMs === leaseRemaining;
                 } catch { /* Optional lease metadata cannot reject factory creation. */ }
+                if (config && sessionOptions.demandNegotiation && !ownsLeaseMetadata) {
+                    try { session.close?.(); } catch { /* Reject unsafe reuse without leaking errors. */ }
+                    fail('TURN_LEASE_METADATA_UNAVAILABLE');
+                }
                 return session;
             } catch (error) {
                 stopSignal(); observations.delete(record.session);

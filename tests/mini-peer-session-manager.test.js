@@ -35,3 +35,27 @@ test('failed operation releases queue while retirement rejects queued operations
   await h.lease.run(async () => {}); assert.equal(h.lease.busy(), false);
   h.lease.retire(); await assert.rejects(h.lease.run(async () => {}));
 });
+
+test('retirement promptly rejects running and queued callers even when work hangs', async () => {
+  const h = fixture(); h.lease.ready({ readyState: 'open' }); let entered;
+  const ready = new Promise(r => { entered = r; });
+  const first = h.lease.run(() => { entered(); return new Promise(() => {}); });
+  const second = h.lease.run(async () => 2); await ready; h.lease.retire();
+  const results = await Promise.race([Promise.all([first, second].map(p => p.then(() => 'resolved', () => 'rejected'))), new Promise(r => setTimeout(() => r('hung'), 20))]);
+  assert.deepEqual(results, ['rejected', 'rejected']);
+});
+
+test('metadata-free sessions require explicit guest eligibility', () => {
+  const manager = Manager.create({ now: () => 0, schedule: () => ({}), cancel() {} });
+  const frozen = Object.freeze({ close() {} });
+  assert.equal(manager.lease(frozen, 0, () => {}).valid(), false);
+  assert.equal(manager.lease(frozen, 0, () => {}, { guest: true }).valid(), true);
+});
+
+test('a retired hung lease promptly rejects future operations too', async () => {
+  const h = fixture(); h.lease.ready({ readyState: 'open' }); let entered;
+  const ready = new Promise(r => { entered = r; }); const first = h.lease.run(() => { entered(); return new Promise(() => {}); });
+  await ready; h.lease.retire(); await assert.rejects(first);
+  const late = h.lease.run(async () => 1);
+  assert.equal(await Promise.race([late.then(() => 'resolved', () => 'rejected'), new Promise(r => setTimeout(() => r('hung'), 20))]), 'rejected');
+});

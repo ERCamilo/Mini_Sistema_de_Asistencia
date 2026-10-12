@@ -61,10 +61,10 @@
             var _a;
             if (stopped)
                 return Promise.reject(new Error('Disponibilidad Mini cerrada.'));
-            if (active)
-                return Promise.resolve(active);
             if (setup)
                 return setup;
+            if (active)
+                return Promise.resolve(active);
             const ownGeneration = generation;
             const ownListeners = listeners;
             const borrowed = {
@@ -80,19 +80,18 @@
                 (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'error', new Error('La preparación Mini excedió el tiempo límite.'));
             } }, Math.min(30000, Math.max(1, (_a = options.setupTimeoutMs) !== null && _a !== void 0 ? _a : 10000)));
             const cancelled = new Promise((_resolve, reject) => { cancelSetup = reject; });
-            const creation = Promise.resolve().then(() => options.createSession({ signaling: borrowed, initiator: false,
-                demandNegotiation: { localPeerId: options.localPeerId, remotePeerId: options.remotePeerId } })).then(async (session) => {
+            const creation = Promise.resolve().then(() => {
+                if (stopped || ownGeneration !== generation)
+                    throw new Error('Preparación Mini retirada.');
+                return options.createSession({ signaling: borrowed, initiator: false,
+                    demandNegotiation: { localPeerId: options.localPeerId, remotePeerId: options.remotePeerId } });
+            }).then(async (session) => {
                 var _a, _b;
                 if (stopped || ownGeneration !== generation) {
                     session.close();
                     throw new Error('Preparación Mini retirada.');
                 }
                 active = session;
-                setup = null;
-                cancelSetup = null;
-                if (timer)
-                    clearTimeout(timer);
-                timer = null;
                 const queue = buffered;
                 buffered = [];
                 bytes = 0;
@@ -101,6 +100,13 @@
                         callback(event);
                 if (localDemand && !offerIdentity)
                     await ((_a = session.startNegotiation) === null || _a === void 0 ? void 0 : _a.call(session));
+                if (stopped || ownGeneration !== generation)
+                    throw new Error('Preparación Mini retirada.');
+                setup = null;
+                cancelSetup = null;
+                if (timer)
+                    clearTimeout(timer);
+                timer = null;
                 (_b = options.onState) === null || _b === void 0 ? void 0 : _b.call(options, 'connecting');
                 return session;
             }).catch(error => {
@@ -115,13 +121,15 @@
             return setup;
         }
         function receive(event) {
-            var _a, _b, _c, _d;
+            var _a, _b, _c, _d, _e;
             if (stopped)
                 return;
             if (['peer-left', 'socket-closed', 'socket-error', 'error'].includes(event.type)) {
                 for (const callback of listeners)
                     callback(event);
                 retire();
+                if (event.type !== 'peer-left')
+                    (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'signaling-error');
                 return;
             }
             // Membership is availability, not an instruction to allocate TURN.
@@ -132,7 +140,7 @@
                 frame = options.validateFrame(event.frame);
             }
             catch (error) {
-                (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'error', error);
+                (_b = options.onState) === null || _b === void 0 ? void 0 : _b.call(options, 'error', error);
                 return;
             }
             const id = identity(frame.data.sdp);
@@ -143,7 +151,7 @@
             if (frame.type === 'offer') {
                 if (!id)
                     return;
-                const currentIdentity = offerIdentity || identity((_c = (_b = active === null || active === void 0 ? void 0 : active.pc) === null || _b === void 0 ? void 0 : _b.remoteDescription) === null || _c === void 0 ? void 0 : _c.sdp);
+                const currentIdentity = offerIdentity || identity((_d = (_c = active === null || active === void 0 ? void 0 : active.pc) === null || _c === void 0 ? void 0 : _c.remoteDescription) === null || _d === void 0 ? void 0 : _d.sdp);
                 if (active && currentIdentity && currentIdentity !== id)
                     retire();
                 offerIdentity = id;
@@ -157,7 +165,7 @@
             const size = JSON.stringify(validated).length;
             if (buffered.length >= 64 || bytes + size > 256 * 1024) {
                 retire();
-                (_d = options.onState) === null || _d === void 0 ? void 0 : _d.call(options, 'error', new Error('Demasiadas señales Mini pendientes.'));
+                (_e = options.onState) === null || _e === void 0 ? void 0 : _e.call(options, 'error', new Error('Demasiadas señales Mini pendientes.'));
                 return;
             }
             buffered.push(validated);
@@ -167,7 +175,9 @@
         return {
             async start() { var _a; if (stopped)
                 throw new Error('Disponibilidad Mini cerrada.'); if (!off)
-                off = signaling.onEvent(receive); await signaling.connect(); (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'available'); },
+                off = signaling.onEvent(receive); await signaling.connect(); if (stopped)
+                throw new Error('Disponibilidad Mini cerrada.'); if (!active && !setup)
+                (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'available'); },
             demand() { localDemand = true; return ensure(); },
             retire,
             stop() { if (stopped)
@@ -175,5 +185,18 @@
             getSession: () => active
         };
     }
-    return { create };
+    function watchAccount(auth, changed) {
+        var _a;
+        const initialUid = ((_a = auth.currentUser) === null || _a === void 0 ? void 0 : _a.uid) || null;
+        let first = true;
+        return auth.onAuthStateChanged(user => {
+            if (first) {
+                first = false;
+                if (((user === null || user === void 0 ? void 0 : user.uid) || null) === initialUid)
+                    return;
+            }
+            changed();
+        });
+    }
+    return { create, watchAccount };
 });

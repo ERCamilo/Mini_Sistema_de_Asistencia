@@ -71,3 +71,16 @@ test('a fresh remote offer replaces only that peer transport while availability 
   f.emit(offer('200')); await new Promise(r => setImmediate(r));
   assert.equal(calls, 2); assert.equal(closes, 1); assert.equal(f.closes, 0); f.owner.stop();
 });
+
+test('stop before factory microtask prevents credential acquisition', async () => {
+  let calls = 0; const f = fixture(async () => { calls++; return { close() {} }; });
+  await f.owner.start(); const pending = f.owner.demand(); f.owner.stop();
+  await assert.rejects(pending); assert.equal(calls, 0);
+});
+test('retirement promptly rejects callers during delayed negotiation', async () => {
+  let finish, entered; const ready = new Promise(r => { entered = r; });
+  const f = fixture(async () => ({ close() {}, startNegotiation() { entered(); return new Promise(r => { finish = r; }); } }));
+  await f.owner.start(); const pending = f.owner.demand(); await ready; f.owner.retire();
+  const result = await Promise.race([pending.then(() => 'resolved', () => 'rejected'), new Promise(r => setTimeout(() => r('hung'), 20))]);
+  assert.equal(result, 'rejected'); finish(); f.owner.stop();
+});
