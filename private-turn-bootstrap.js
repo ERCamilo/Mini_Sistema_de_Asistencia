@@ -7,6 +7,20 @@
         root.PrivateTurnBootstrap = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
     let installed = null;
+    let diagnosticNonce = 0;
+    function diagnosticLabel() {
+        var _a;
+        try {
+            const bytes = new Uint8Array(6);
+            if ((_a = root.crypto) === null || _a === void 0 ? void 0 : _a.getRandomValues) {
+                root.crypto.getRandomValues(bytes);
+                return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+            }
+        }
+        catch { /* Diagnostic labeling must not depend on crypto availability. */ }
+        // Diagnostic-only fallback: not authentication or a persistent device identity.
+        return 'fallback-' + Math.random().toString(36).slice(2, 14) + '-' + (++diagnosticNonce);
+    }
     function fail(code) { throw new Error(code); }
     function install(options) {
         var _a;
@@ -40,13 +54,30 @@
         const history = new Map();
         let ordinal = 0, panel = null, output = null;
         let copyButton = null, copyStatus = null, manualCopy = null;
-        const snapshot = () => [...history.values()].map(item => diagnosticText(item)).join("\n");
+        const instance = options.diagnostics === true ? diagnosticLabel() : '';
+        const snapshot = () => {
+            let utc = 'sin medir';
+            try {
+                const stamp = options.now ? options.now() : Date.now();
+                if (Number.isFinite(stamp))
+                    utc = new Date(stamp).toISOString();
+            }
+            catch { /* Clock failures cannot affect diagnostic copying or RTC. */ }
+            return 'Diagnóstico TURN · app=' + (identity === 'mini' ? 'Mini' : 'SA')
+                + ' · instancia=' + instance + ' · UTC=' + utc + '\n'
+                + [...history.values()].map(item => diagnosticText(item)).join("\n");
+        };
         async function copyDiagnostics() {
             var _a, _b;
             const button = copyButton, owner = panel, captured = epoch;
             if (disposed || !button || button.disabled || !owner)
                 return;
             const content = snapshot();
+            try {
+                if (output)
+                    output.textContent = content;
+            }
+            catch { /* Copy remains available if rendering fails. */ }
             const current = () => !disposed && epoch === captured && panel === owner;
             button.disabled = true;
             try {

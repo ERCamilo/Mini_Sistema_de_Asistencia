@@ -391,3 +391,54 @@ test('late connecting transport stats cannot revive closed diagnostic history', 
   pending.resolve(new Map([['secret', { type: 'transport', dtlsState: 'connected', iceState: 'connected' }]]));
   await flushDiagnostics(); assert.equal(d.records.length, count); assert.equal(pc.listenerCount(), 0); d.handle.dispose();
 });
+
+test('diagnostic origin label is stable per install and distinct across independent consoles', async () => {
+  const consoles = [copyConsoleFixture(), copyConsoleFixture()];
+  const labels = [];
+  for (const c of consoles) {
+    await c.f.root.SaMiniP2P.createRtcSession({});
+    const first = c.output().textContent;
+    assert.match(first, /^Diagnóstico TURN · app=Mini · instancia=[a-z0-9-]{1,48} · UTC=2023-11-14T22:13:20.000Z\n/);
+    labels.push(first.match(/instancia=([a-z0-9-]+)/)[1]);
+    await c.f.root.SaMiniP2P.createRtcSession({});
+    assert.equal(c.output().textContent.match(/instancia=([a-z0-9-]+)/)[1], labels.at(-1));
+  }
+  assert.notEqual(labels[0], labels[1]);
+  consoles.forEach(c => c.h.dispose());
+});
+test('copy refreshes UTC time without a new event and fallback retains exactly that snapshot', async () => {
+  let captured; const c = copyConsoleFixture({ writeText: async value => { captured = value; throw new Error('denied'); } });
+  await c.f.root.SaMiniP2P.createRtcSession({}); c.f.advance(1234);
+  c.button().onclick(); await flushDiagnostics();
+  assert.match(captured, /UTC=2023-11-14T22:13:21.234Z/);
+  assert.equal(c.doc.elements.find(e => e.tag === 'textarea').value, captured);
+  assert.equal(c.output().textContent, captured); c.h.dispose();
+});
+for (const appIdentity of ['mini', 'sa']) test(`export includes only fixed ${appIdentity} app identity and crypto bytes`, async () => {
+  const doc = diagnosticDocument(), f = fixture({ document: doc, crypto: { getRandomValues(bytes) { bytes.fill(171); return bytes; } } });
+  const h = f.install({ diagnostics: true, appIdentity, loadSaAuth: async () => f.auth });
+  await f.root.SaMiniP2P.createRtcSession({ uid: 'PRIVATE_UID', name: 'PRIVATE_DEVICE', room: 'PRIVATE_ROOM', initiator: 'PRIVATE_ROLE' });
+  const text = doc.body.children[0].children[1].textContent;
+  assert.match(text, new RegExp('app=' + (appIdentity === 'mini' ? 'Mini' : 'SA') + ' · instancia=abababababab'));
+  assert.doesNotMatch(text, /PRIVATE_|synthetic-|https:|turn\.test|\bone\b/); h.dispose();
+});
+test('throwing crypto and invalid diagnostic clock do not reject RTC or emit unsafe time text', async () => {
+  const doc = diagnosticDocument(), f = fixture({ document: doc, crypto: { getRandomValues() { throw new Error('PRIVATE_CRYPTO'); } } });
+  const h = f.install({ diagnostics: true, now: () => NaN }); f.auth.currentUser = null;
+  await f.root.SaMiniP2P.createRtcSession({});
+  const text = doc.body.children[0].children[1].textContent;
+  assert.match(text, /instancia=fallback-[a-z0-9-]+ · UTC=sin medir/);
+  assert.doesNotMatch(text, /PRIVATE_CRYPTO|NaN|Invalid Date/); h.dispose();
+});
+
+test('reinstall creates a new temporary console label without accessing persistence', async () => {
+  const doc = diagnosticDocument(); let byte = 0;
+  const f = fixture({ document: doc, crypto: { getRandomValues(bytes) { bytes.fill(++byte); return bytes; } } });
+  Object.defineProperty(f.root, 'localStorage', { get() { throw new Error('PRIVATE_PERSISTENCE'); } });
+  const first = f.install({ diagnostics: true }); await f.root.SaMiniP2P.createRtcSession({});
+  const label = doc.body.children[0].children[1].textContent.match(/instancia=([a-z0-9-]+)/)[1];
+  first.dispose();
+  const second = f.install({ diagnostics: true }); await f.root.SaMiniP2P.createRtcSession({});
+  assert.notEqual(doc.body.children[1].children[1].textContent.match(/instancia=([a-z0-9-]+)/)[1], label);
+  second.dispose();
+});
