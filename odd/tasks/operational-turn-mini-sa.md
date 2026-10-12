@@ -22,7 +22,7 @@ Make TURN operational for real Mini-to-Mini and Mini-to-SA application transfers
 ## Tasks
 - [x] T1: Restore the existing private API and validate non-sensitive reachability. Route: inline, bounded known service operation.
 - [x] T2: Correct documented nested expiry compatibility. Route: delegated writer and independent verifier; focused RED/GREEN observed. Candidate-only native omission authorized.
-- [ ] T3: Add private-only sanitized ICE diagnostics for each application RTC session. Route: delegated; multiple nontrivial files and lifecycle logic. Forecast approximately 300 authored changed lines; delivery strategy ask-on-risk, no PR requested.
+- [x] T3: Add private-only sanitized ICE diagnostics for each application RTC session. Route: delegated; multiple nontrivial files and lifecycle logic. Forecast approximately 300 authored changed lines; delivery strategy ask-on-risk, no PR requested.
 - [ ] T4: Verify real Mini-to-Mini pairing and nonempty backup staging on separate physical devices, with local selected-relay evidence on both sides and unchanged receiver data before explicit restore. Pause for user after Mini acceptance.
 - [ ] T5: Inspect and complete the isolated SA integration, with its existing primary Google/Firebase account; verify real Mini-to-SA transfer without changing production or protected worktrees.
 - [ ] T6: Audit the full operational outcome and determine whether persistence or administration additions are actually required. Additional backend/dashboard work requires precise destination and mutation scope before execution.
@@ -58,3 +58,35 @@ Observe deterministic regression RED, implement GREEN, and compile TypeScript wi
 
 ## Next step
 Review the T3 diagnostic candidate, update the private runtime only after its applicable review outcome, then ask the user to retry both physical Mini clients with observable relay status. Current source and Git state remain authoritative; do not restart healthy services merely because a tool handle is unavailable.
+
+## T3 closure and private runtime activation
+- Work-unit commit: `7f07856` (`feat(turn): expose verified private relay diagnostics`). Commit tree exactly matches the reviewed candidate tree `1fe408990c51b886620db964dfe11092144ad40b`; pinned hook normalization was a no-op.
+- Native consolidated reliability review approved without findings, then acknowledged exactly for lineage `review-0280fd732336e845`; authority burned. No further review of unchanged bytes was started. Post-commit assessment marked the alternate committed-only projection due; the exact tree had already been reviewed and acknowledged in workspace projection.
+- The private runtime now runs as user transient unit `mini-private-turn-diagnostics.service`, loopback port19443, 24-hour maximum, no restart loop or permanent startup. Existing Tailscale Serve8443 and default443 mapping unchanged.
+- HTTPS response injects forceRelay:true and diagnostics:true. Served bootstrap SHA-256 matches the reviewed generated file: `1a7389a7130728ccf2c6431140fb71746ff165fe1680c17772bfc0e12c32efe7`. Empty-token API probe through local19753 returns422. Source worktree was clean after commit and runtime activation; this recovery update is documentation-only.
+- Real two-device Mini pairing/backup staging and both selected relay observations remain pending. Pause before SA modifications is retained; no full-goal completion is claimed.
+- Recovery mirror remains pending: no authoritative registered runtime identity is available.
+
+## T3a: accessible private diagnostic control
+User authorized replacing the bottom bar with a top-left floating control above application overlays. Route: inline mechanical presentation adjustment only; preserve native details/summary keyboard toggling, all observer logic, privacy, and cleanup. Add render assertions before changing styles, compile only the derived bootstrap asset, and run focused checks. Native review and private runtime update remain pending.
+- [x] T3a: Move and style the existing diagnostic toggle as a compact floating control; preserve the expandable sanitized output.
+- Focused render tests: observed RED 35/36, then GREEN 36/36; diff whitespace check passed. No full suite rerun for this presentation-only delta; physical-browser visual acceptance remains pending.
+- User selected candidate-specific review omission (option 2); exact native decline confirmed for target sha256:64b84e56e1750d45cc0ce5922cb5e86fee8962d94d732d6b9a236dbf7e444a1d. No review approval or global mode change claimed.
+- Activated only the private runtime bootstrap asset via atomic replacement in its temporary canonical asset root; no service restart, production change, or commit. HTTPS /__private-turn/bootstrap.js matches tested source hash c60e092423d24df45e02907111a22ed1d2617efffa4b7c89926c686f370977dc. Initial verification used the wrong URL (404), then the actual injected route returned successfully.
+- Next: refresh both physical Mini clients, retry pairing, and collect sanitized per-session credential/connection/relay rows from the floating TURN control. Engram mirror remains pending until host session registration.
+
+## T3b: sanitized private TURN console
+User authorized precise, console-style diagnosis of failed credential acquisition and stalled RTC sessions. Route: delegated writer; provider stages and bootstrap lifecycle require two nontrivial TypeScript modules. Root class: missing observability, not a proven transport defect. Preserve all connection behavior, retries, deadlines, guest P2P, and the floating native control.
+- [ ] T3b: Add allowlisted auth/token/request/response/validation/cache/shared-request events with bounded elapsed time and HTTP status; display bounded per-session chronology and observable RTC states without raw errors, tokens, identities, addresses, SDP, candidates, or attendance data.
+- [ ] Verify deterministic RED/GREEN, privacy, callback isolation, concurrent request sharing, and cleanup with focused provider/bootstrap tests and isolated compilation. Full verification, native review, commit, and private activation remain parent-owned and pending.
+- Scope: `src/private-turn.ts`, `src/private-turn-bootstrap.ts`, their generated root modules, their existing focused tests, and this tracker. No new dependency or remote operation. Engram mirror remains pending until host registration.
+
+### T3b focused verification
+- Writer observed RED 71/76 then GREEN 76/76; after its final diagnostic detail delta, parent observed 77/77 passing via node --test tests/private-turn.test.js tests/private-turn-bootstrap.test.js. Whitespace check passed.
+- Native assessment: medium executable risk, review due. Full-suite/commit/private activation pending; existing private runtime remains on previous assets.
+
+### T3b delivery evidence
+- Independent final isolated TypeScript compilation succeeded and both generated modules matched byte-for-byte. Full deterministic suite: 813/813 passed, zero failures/skips; parent focused spot check: 77/77 passed. E2E and physical-client acceptance remain pending.
+- User declined review only for target sha256:8e819182bdd0c6927cf7a59a41f653c6e32b0c64b30629cb43cca66d4ffd1b7c; exact provider invocation returned declined_this_candidate. No approval claimed and review mode unchanged.
+- Private preview activated using only tested provider/bootstrap assets, both served HTTPS responses matched source bytes. No production deployment, API changes, or transport behavior changes.
+- Next: refresh both physical clients, reproduce pairing, and collect bounded sanitized console events. This diagnostics task does not close the unresolved connectivity task. Memory mirror still pending authoritative host registration.

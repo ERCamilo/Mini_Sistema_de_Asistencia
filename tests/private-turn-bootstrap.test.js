@@ -111,10 +111,10 @@ function diagnosticFixture(pc, changes = {}) {
 test('private diagnostics measure already connected session and preserve only safe scalar fields', async () => {
   const d = diagnosticFixture(diagnosticPeer());
   assert.equal(await d.f.root.SaMiniP2P.createRtcSession({}), d.session); await flushDiagnostics();
-  assert.deepEqual(Object.keys(d.records.at(-1)).sort(), ['connection', 'credentials', 'relay', 'session']);
+  assert.deepEqual(Object.keys(d.records.at(-1)).sort(), ['connection', 'credentials', 'events', 'gathering', 'ice', 'localDescription', 'relay', 'remoteDescription', 'session', 'signaling']);
   assert.equal(d.records[0].credentials, 'requesting'); assert.equal(d.records.at(-1).credentials, 'available');
   assert.equal(d.records.at(-1).relay, 'verified'); assert.equal(d.records.at(-1).session, 1);
-  assert.doesNotMatch(JSON.stringify(d.records), /synthetic|token|password|address|payload|uid/i); d.handle.dispose();
+  assert.doesNotMatch(JSON.stringify(d.records), /synthetic|password|address|payload|uid/i); d.handle.dispose();
 });
 test('connection event verifies relay; missing stats remain unmeasured, not direct transport proof', async () => {
   const pc = diagnosticPeer(false), d = diagnosticFixture(pc); await d.f.root.SaMiniP2P.createRtcSession({});
@@ -124,7 +124,7 @@ test('connection event verifies relay; missing stats remain unmeasured, not dire
 });
 for (const action of ['close', 'dispose', 'account']) test(`diagnostics suppress late stats and clean listeners after ${action}`, async () => {
   const gate = deferred(), pc = diagnosticPeer(), d = diagnosticFixture(pc); pc.getStats = () => gate.promise;
-  await d.f.root.SaMiniP2P.createRtcSession({}); assert.equal(pc.listenerCount(), 2);
+  await d.f.root.SaMiniP2P.createRtcSession({}); assert.equal(pc.listenerCount(), 5);
   if (action === 'close') d.session.close(); else if (action === 'dispose') d.handle.dispose(); else d.f.setUser(null);
   const count = d.records.length; gate.resolve(await statsFixture().getStats()); await flushDiagnostics();
   assert.equal(d.records.length, count); assert.equal(pc.listenerCount(), 0); assert.equal(d.records.some(r => r.relay === 'verified'), false);
@@ -162,10 +162,18 @@ test('private renderer is secret-free, history and observers bounded, disposal r
   for (let i = 0; i < 12; i++) { await f.root.SaMiniP2P.createRtcSession({ credential: 'synthetic-secret' }); await flushDiagnostics(); }
   assert.equal(doc.body.children.length, 1);
   const panel = doc.body.children[0], output = panel.children[1];
-  assert.equal(output.textContent.split('\n').length, 8); assert.match(output.textContent, /Sesión 12/);
+  assert.match(panel.style.cssText, /top:calc\(env\(safe-area-inset-top/);
+  assert.match(panel.style.cssText, /left:calc\(env\(safe-area-inset-left/);
+  assert.match(panel.style.cssText, /z-index:2147483647/);
+  assert.doesNotMatch(panel.style.cssText, /bottom:/);
+  assert.equal(panel.children[0].textContent, "TURN");
+  assert.match(panel.children[0].style.cssText, /min-width:44px/);
+  assert.match(panel.children[0].style.cssText, /min-height:44px/);
+  assert.equal(panel.children[0].attributes["aria-label"], "Abrir o cerrar diagnóstico TURN de prueba");
+  assert.equal((output.textContent.match(/Sesión /g) || []).length, 8); assert.match(output.textContent, /Sesión 12/);
   assert.match(output.textContent, /relay local: verificado durante la conexión/);
-  assert.doesNotMatch(output.textContent, /synthetic|payload|candidate|token|uid|https?:/i);
-  assert.equal(peers.reduce((sum, pc) => sum + pc.listenerCount(), 0), 16);
+  assert.doesNotMatch(output.textContent, /synthetic|payload|candidate|uid|https?:/i);
+  assert.equal(peers.reduce((sum, pc) => sum + pc.listenerCount(), 0), 40);
   h.dispose(); assert.equal(panel.removed, true); assert.equal(peers.reduce((sum, pc) => sum + pc.listenerCount(), 0), 0);
 });
 test('factory errors do not rewrite successful credential acquisition as request failure', async () => {
@@ -202,4 +210,26 @@ test('disposal inside observer cannot recreate diagnostic DOM', async () => {
   handle = f.install({ diagnostics: true, onDiagnostic() { handle.dispose(); } });
   await assert.rejects(f.root.SaMiniP2P.createRtcSession({}), /TURN_BOOTSTRAP_STALE/);
   assert.equal(doc.body.children.length, 0);
+});
+
+test('console shows precise safe HTTP stage and bounded events without raw errors', async () => {
+  const d = diagnosticFixture(diagnosticPeer(false), { fetch: async () => Response.json({ error: 'synthetic-secret' }, { status: 401 }) });
+  await assert.rejects(d.f.root.SaMiniP2P.createRtcSession({}));
+  const last = d.records.at(-1); assert.equal(last.events.at(-1).code, 'HTTP_ERROR');
+  assert.equal(last.events.at(-1).httpStatus, 401); assert.equal(last.events.at(-1).stage, 'response');
+  assert.doesNotMatch(JSON.stringify(last), /synthetic|password|address|uid/); d.handle.dispose();
+});
+test('console records observable ICE gathering and signaling without retaining event contents', async () => {
+  const pc = diagnosticPeer(false), handlers = new Map();
+  const originalAdd = pc.addEventListener; pc.addEventListener = (name, fn) => { handlers.set(name, fn); originalAdd(name, fn); };
+  const d = diagnosticFixture(pc); await d.f.root.SaMiniP2P.createRtcSession({});
+  pc.iceConnectionState = 'checking'; pc.iceGatheringState = 'gathering'; pc.signalingState = 'have-local-offer';
+  pc.localDescription = { sdp: 'synthetic-secret' }; pc.remoteDescription = null;
+  handlers.get('icegatheringstatechange')(); handlers.get('signalingstatechange')();
+  handlers.get('icecandidateerror')({ errorCode: 701, url: 'synthetic-secret', errorText: 'secret' });
+  for (let i = 0; i < 60; i++) handlers.get('icegatheringstatechange')();
+  const last = d.records.at(-1); assert.equal(last.ice, 'checking'); assert.equal(last.gathering, 'gathering');
+  assert.equal(last.signaling, 'have-local-offer'); assert.equal(last.localDescription, true); assert.equal(last.remoteDescription, false);
+  assert.equal(last.events.length, 32); assert.ok(last.events.some(e => e.code === 'RTC_STATE'));
+  assert.doesNotMatch(JSON.stringify(last), /synthetic|sdp|url|errorText/); d.handle.dispose(); assert.equal(pc.listenerCount(), 0);
 });

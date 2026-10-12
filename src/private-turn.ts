@@ -27,11 +27,21 @@ interface PrivateTurnOptions {
     refreshMarginMs?: number;
     timeoutMs?: number;
 }
+interface PrivateTurnDiagnostic {
+    stage: 'token' | 'request' | 'response' | 'body' | 'validation' | 'cache' | 'shared' | 'guest';
+    code: 'START' | 'READY' | 'TOKEN_FAILED' | 'NETWORK_FAILED' | 'HTTP_ERROR' | 'RESPONSE_INVALID' | 'DEADLINE_REACHED' | 'ACCOUNT_CHANGED' | 'CANCELLED';
+    elapsedMs: number;
+    httpStatus?: number;
+    sdkCode?: 'auth/network-request-failed' | 'auth/user-token-expired' | 'auth/invalid-user-token' | 'auth/user-disabled' | 'auth/too-many-requests' | 'auth/internal-error';
+    detail?: 'CONTENT_TYPE_INVALID' | 'BODY_TOO_LARGE' | 'BODY_UNAVAILABLE' | 'JSON_INVALID' | 'CONTRACT_INVALID';
+}
+type PrivateTurnObserver = (event: PrivateTurnDiagnostic) => void;
 interface PrivateTurnFlight {
     uid: string;
     generation: number;
     controller: AbortController;
     promise: Promise<PrivateTurnConfiguration>;
+    observers: Set<PrivateTurnObserver>;
 }
 (function exposePrivateTurn(root: any, factory: () => unknown) {
     const api = factory();
@@ -133,13 +143,19 @@ interface PrivateTurnFlight {
             if (!Number.isSafeInteger(value) || value < 0) failure('TURN_CONFIGURATION_INVALID');
             return value;
         }
-        async function load(user: PrivateTurnUser, captured: number, controller: AbortController): Promise<PrivateTurnConfiguration> {
+        async function load(user: PrivateTurnUser, captured: number, controller: AbortController, notify: PrivateTurnObserver): Promise<PrivateTurnConfiguration> {
+            let stage: PrivateTurnDiagnostic['stage'] = 'token', timedOut = false, httpStatus: number | undefined;
+            let detail: PrivateTurnDiagnostic['detail'], sdkCode: PrivateTurnDiagnostic['sdkCode'];
+            const started = Date.now();
+            function emit(code: PrivateTurnDiagnostic['code'] = 'START'): void {
+                notify({ stage, code, elapsedMs: Math.max(0, Math.min(30000, Math.floor(Date.now() - started))), ...(httpStatus === undefined ? {} : { httpStatus }), ...(detail ? { detail } : {}), ...(sdkCode ? { sdkCode } : {}) });
+            }
             let timer: ReturnType<typeof setTimeout> | undefined;
             let rejectAbort: () => void = () => {};
             const aborted = new Promise<never>((_resolve, reject) => {
                 rejectAbort = () => reject(new PrivateTurnError('TURN_UNAVAILABLE'));
                 controller.signal.addEventListener('abort', rejectAbort, { once: true });
-                timer = setTimeout(() => controller.abort(), timeoutMs);
+                timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
             });
             async function boundary<T>(promise: Promise<T>): Promise<T> {
                 try { const result = await Promise.race([promise, aborted]); guard(user.uid, captured); return result; }
@@ -147,16 +163,22 @@ interface PrivateTurnFlight {
             }
             let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
             try {
+                emit();
                 const idToken = text(await boundary(user.getIdToken()), 16384);
+                stage = 'request'; emit();
                 const response = await boundary(fetcher('/api/turn-creds', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }),
                     credentials: 'omit', redirect: 'error', cache: 'no-store', signal: controller.signal
                 }));
+                stage = 'response';
+                httpStatus = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : undefined;
+                emit();
                 if (!response.ok || response.redirected) failure('TURN_UNAVAILABLE');
-                if (!/^application\/json(?:;|$)/i.test(response.headers.get('content-type') || '')) failure('TURN_INVALID_RESPONSE');
+                if (!/^application\/json(?:;|$)/i.test(response.headers.get('content-type') || '')) { detail = 'CONTENT_TYPE_INVALID'; failure('TURN_INVALID_RESPONSE'); }
                 const declaredLength = response.headers.get('content-length');
-                if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > 32768)) failure('TURN_INVALID_RESPONSE');
-                if (!response.body) failure('TURN_INVALID_RESPONSE');
+                if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > 32768)) { detail = 'BODY_TOO_LARGE'; failure('TURN_INVALID_RESPONSE'); }
+                if (!response.body) { detail = 'BODY_UNAVAILABLE'; failure('TURN_INVALID_RESPONSE'); }
+                stage = 'body'; emit();
                 reader = response.body.getReader();
                 const decoder = new TextDecoder('utf-8', { fatal: true });
                 let bytes = 0, source = '';
@@ -164,17 +186,30 @@ interface PrivateTurnFlight {
                     const chunk = await boundary(reader.read());
                     if (chunk.done) break;
                     bytes += chunk.value.byteLength;
-                    if (bytes > 32768) failure('TURN_INVALID_RESPONSE');
+                    if (bytes > 32768) { detail = 'BODY_TOO_LARGE'; failure('TURN_INVALID_RESPONSE'); }
                     source += decoder.decode(chunk.value, { stream: true });
                 }
                 source += decoder.decode();
+                stage = 'validation'; emit();
                 let raw: unknown;
-                try { raw = JSON.parse(source); } catch { failure('TURN_INVALID_RESPONSE'); }
+                try { raw = JSON.parse(source); } catch { detail = 'JSON_INVALID'; failure('TURN_INVALID_RESPONSE'); }
+                detail = 'CONTRACT_INVALID';
                 const result = parse(raw, contract, time(), margin, policy);
+                detail = undefined;
                 guard(user.uid, captured);
                 cache = { uid: user.uid, generation: captured, ...result };
+                emit('READY');
                 return result.config;
             } catch (error) {
+                if (stage === 'token') {
+                    try {
+                        const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : null;
+                        if (typeof code === 'string' && ['auth/network-request-failed', 'auth/user-token-expired', 'auth/invalid-user-token', 'auth/user-disabled', 'auth/too-many-requests', 'auth/internal-error'].includes(code)) sdkCode = code as PrivateTurnDiagnostic['sdkCode'];
+                    } catch { /* Never inspect SDK messages or arbitrary objects further. */ }
+                }
+                let stale = false;
+                try { guard(user.uid, captured); } catch { stale = true; }
+                emit(stale ? 'ACCOUNT_CHANGED' : timedOut ? 'DEADLINE_REACHED' : controller.signal.aborted ? 'CANCELLED' : stage === 'token' ? 'TOKEN_FAILED' : stage === 'request' ? 'NETWORK_FAILED' : stage === 'response' && httpStatus !== undefined && (httpStatus < 200 || httpStatus >= 300) ? 'HTTP_ERROR' : 'RESPONSE_INVALID');
                 guard(user.uid, captured);
                 if (error instanceof PrivateTurnError) throw error;
                 return failure('TURN_UNAVAILABLE');
@@ -186,20 +221,30 @@ interface PrivateTurnFlight {
                 if (reader) void reader.cancel().catch(() => {});
             }
         }
-        async function getConfiguration(): Promise<PrivateTurnConfiguration | null> {
+        async function getConfiguration(observer?: PrivateTurnObserver): Promise<PrivateTurnConfiguration | null> {
+            const notify: PrivateTurnObserver = event => { try { observer?.({ ...event }); } catch { /* Diagnostic callbacks cannot change acquisition. */ } };
             if (!enabled) return null;
             const user = current();
-            if (!user) return null;
+            if (!user) { notify({ stage: 'guest', code: 'READY', elapsedMs: 0 }); return null; }
             const captured = generation;
-            if (cache && cache.uid === user.uid && cache.generation === captured && cache.expiresAt > time() + margin) return clone(cache.config);
+            if (cache && cache.uid === user.uid && cache.generation === captured && cache.expiresAt > time() + margin) { notify({ stage: 'cache', code: 'READY', elapsedMs: 0 }); return clone(cache.config); }
             if (!flight || flight.uid !== user.uid || flight.generation !== captured) {
                 const controller = new AbortController();
-                const promise = load(user, captured, controller).finally(() => { if (flight?.controller === controller) flight = null; });
-                flight = { uid: user.uid, generation: captured, controller, promise };
+                const observers = new Set<PrivateTurnObserver>([notify]);
+                const broadcast: PrivateTurnObserver = event => { for (const listener of [...observers]) listener(event); };
+                const promise = load(user, captured, controller, broadcast).finally(() => { if (flight?.controller === controller) flight = null; });
+                flight = { uid: user.uid, generation: captured, controller, promise, observers };
             }
-            const config = await flight.promise;
-            guard(user.uid, captured);
-            return clone(config);
+            else {
+                notify({ stage: 'shared', code: 'START', elapsedMs: 0 });
+                if (flight.observers.size < 8) flight.observers.add(notify);
+            }
+            const active = flight;
+            try {
+                const config = await active.promise;
+                guard(user.uid, captured);
+                return clone(config);
+            } finally { active.observers.delete(notify); }
         }
         return { getConfiguration, invalidate };
     }

@@ -116,3 +116,45 @@ test('does not log credentials or raw token/server errors', async () => {
 
 test('forced relay requires separate explicit test opt-in', async()=>{const f=fixture({forceRelay:true});assert.equal((await f.provider.getConfiguration()).iceTransportPolicy,'relay');});
 test('private HTTPS origin must be explicitly allowlisted without wildcards',async()=>{const origin='https://a2.tail2a0a8e.ts.net:8443';assert.throws(()=>fixture({origin}),/TURN_CONFIGURATION_INVALID/);const f=fixture({origin,allowedOrigins:[origin]});assert.equal((await f.provider.getConfiguration()).iceTransportPolicy,'all');for(const value of ['https://foreign.invalid','https://*.ts.net','http://a2.tail2a0a8e.ts.net:8443'])assert.throws(()=>fixture({origin:value,allowedOrigins:[value]}),/TURN_CONFIGURATION_INVALID/);});
+
+test('diagnostic stages identify HTTP failure without response or token contents', async () => {
+  const events = [];
+  const f = fixture({ fetcher: async () => Response.json({ error: 'synthetic-secret-error' }, { status: 403 }) });
+  await assert.rejects(f.provider.getConfiguration(e => events.push(e)), /TURN_UNAVAILABLE/);
+  assert.deepEqual(events.map(e => e.stage), ['token', 'request', 'response', 'response']);
+  assert.equal(events.at(-1).code, 'HTTP_ERROR'); assert.equal(events.at(-1).httpStatus, 403);
+  assert.doesNotMatch(JSON.stringify(events), /synthetic|credential|idToken|one/);
+  assert.ok(events.every(e => Number.isInteger(e.elapsedMs) && e.elapsedMs >= 0 && e.elapsedMs <= 30000));
+});
+test('diagnostics distinguish token error, deadline and invalid response', async () => {
+  for (const [kind, expected] of [['token', 'TOKEN_FAILED'], ['timeout', 'DEADLINE_REACHED'], ['body', 'RESPONSE_INVALID']]) {
+    const events = []; const f = fixture({ timeoutMs: 10 });
+    if (kind === 'token') f.setUser({ uid: 'one', getIdToken: async () => { throw new Error('secret'); } });
+    if (kind === 'timeout') f.setUser({ uid: 'one', getIdToken: () => new Promise(() => {}) });
+    const target = kind === 'body' ? fixture({ fetcher: async () => new Response('secret', { headers: { 'content-type': 'application/json' } }) }) : f;
+    await assert.rejects(target.provider.getConfiguration(e => events.push(e)));
+    assert.equal(events.at(-1).code, expected); assert.doesNotMatch(JSON.stringify(events), /secret/);
+  }
+});
+test('diagnostics identify cache and shared requests and isolate observer failures', async () => {
+  const gate = deferred(); const f = fixture({ fetcher: () => gate.promise }); const a = [], b = [];
+  const first = f.provider.getConfiguration(e => a.push(e));
+  const second = f.provider.getConfiguration(e => b.push(e));
+  gate.resolve(Response.json(f.payload())); await Promise.all([first, second]);
+  assert.equal(b[0].stage, 'shared'); assert.equal(a.at(-1).code, 'READY'); assert.equal(b.at(-1).code, 'READY');
+  const cached = []; await f.provider.getConfiguration(e => cached.push(e)); assert.equal(cached[0].stage, 'cache');
+  await f.provider.getConfiguration(() => { throw new Error('observer'); });
+});
+
+test('diagnostic SDK codes are allowlisted and parsing details never expose bodies', async () => {
+  for (const code of ['auth/network-request-failed', 'synthetic-secret-code']) {
+    const f = fixture(), events = [];
+    f.setUser({ uid: 'one', getIdToken: async () => { throw { code, message: 'synthetic-secret' }; } });
+    await assert.rejects(f.provider.getConfiguration(e => events.push(e)));
+    assert.equal(events.at(-1).sdkCode, code.startsWith('auth/') ? code : undefined);
+    assert.doesNotMatch(JSON.stringify(events), /synthetic/);
+  }
+  const f = fixture({ fetcher: async () => new Response('synthetic-secret', { headers: { 'content-type': 'application/json' } }) }), events = [];
+  await assert.rejects(f.provider.getConfiguration(e => events.push(e)));
+  assert.equal(events.at(-1).detail, 'JSON_INVALID'); assert.doesNotMatch(JSON.stringify(events), /synthetic/);
+});

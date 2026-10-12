@@ -21,18 +21,39 @@ interface PrivateTurnBootstrapDiagnostic {
     credentials: 'requesting' | 'available' | 'guest' | 'failed';
     connection: 'new' | 'connecting' | 'connected' | 'disconnected' | 'failed' | 'closed' | 'unmeasured';
     relay: 'unmeasured' | 'verified';
+    events?: PrivateTurnBootstrapEvent[];
+    ice?: string;
+    gathering?: string;
+    signaling?: string;
+    localDescription?: boolean;
+    remoteDescription?: boolean;
+}
+interface PrivateTurnBootstrapEvent {
+    stage: PrivateTurnDiagnostic['stage'] | 'auth' | 'rtc' | 'relay';
+    code: PrivateTurnDiagnostic['code'] | 'AUTH_START' | 'AUTH_SIGNED_IN' | 'AUTH_GUEST' | 'AUTH_FAILED' | 'RTC_START' | 'RTC_STATE' | 'RTC_FAILED' | 'ICE_ERROR' | 'RELAY_VERIFIED' | 'RELAY_UNMEASURED';
+    elapsedMs: number;
+    httpStatus?: number;
+    sdkCode?: PrivateTurnDiagnostic['sdkCode'];
+    detail?: PrivateTurnDiagnostic['detail'];
+    iceErrorCode?: number;
+    rtcState?: string;
 }
 interface PrivateTurnBootstrapPeer {
     connectionState?: string;
-    addEventListener?(name: string, callback: () => void): void;
-    removeEventListener?(name: string, callback: () => void): void;
+    iceConnectionState?: string;
+    iceGatheringState?: string;
+    signalingState?: string;
+    localDescription?: unknown;
+    remoteDescription?: unknown;
+    addEventListener?(name: string, callback: (event?: { errorCode?: unknown }) => void): void;
+    removeEventListener?(name: string, callback: (event?: { errorCode?: unknown }) => void): void;
 }
 interface PrivateTurnBootstrapHandle { active: boolean; dispose(): void; }
 interface PrivateTurnBootstrapRoot {
     location?: { origin: string };
     document?: Document;
     SaMiniP2P?: PrivateTurnBootstrapCore;
-    PrivateTurn?: { createProvider(options: PrivateTurnOptions): { getConfiguration(): Promise<PrivateTurnConfiguration | null>; invalidate(): void } };
+    PrivateTurn?: { createProvider(options: PrivateTurnOptions): { getConfiguration(observer?: PrivateTurnObserver): Promise<PrivateTurnConfiguration | null>; invalidate(): void } };
     firebase?: { app(name: string): { auth(): PrivateTurnBootstrapAuth } };
     fetch?: typeof fetch;
 }
@@ -71,11 +92,13 @@ interface PrivateTurnBootstrapRoot {
         function publish(value: PrivateTurnBootstrapDiagnostic): void {
             if (options.diagnostics !== true || disposed) return;
             // No input from errors, stats, session options, or identities reaches this record.
-            const record = { session: value.session, credentials: value.credentials, connection: value.connection, relay: value.relay };
+            const record: PrivateTurnBootstrapDiagnostic = { session: value.session, credentials: value.credentials, connection: value.connection, relay: value.relay,
+                events: value.events?.map(event => ({ ...event })), ice: value.ice, gathering: value.gathering, signaling: value.signaling,
+                localDescription: value.localDescription, remoteDescription: value.remoteDescription };
             history.set(record.session, record);
             if (history.size > 8) history.delete(history.keys().next().value!);
             const publishedEpoch = epoch;
-            try { options.onDiagnostic?.({ ...record }); } catch { /* Observers cannot break RTC. */ }
+            try { options.onDiagnostic?.({ ...record, events: record.events?.map(event => ({ ...event })) }); } catch { /* Observers cannot break RTC. */ }
             if (disposed || epoch !== publishedEpoch) return;
             try {
                 const doc = root.document;
@@ -83,25 +106,35 @@ interface PrivateTurnBootstrapRoot {
                 if (!panel) {
                     panel = doc.createElement('details');
                     panel.setAttribute('data-private-turn-diagnostics', '');
-                    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:10000;max-height:35vh;overflow:auto;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);padding:8px;font:14px sans-serif';
+                    panel.style.cssText = 'position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:calc(env(safe-area-inset-left,0px) + 12px);z-index:2147483647;max-width:calc(100vw - 24px);max-height:65vh;overflow:auto;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:12px;padding:0 8px;font:14px sans-serif';
                     const summary = doc.createElement('summary');
-                    summary.textContent = 'TURN · prueba privada';
-                    summary.style.cssText = 'min-height:44px;display:flex;align-items:center;cursor:pointer;outline-color:var(--accent-color)';
+                    summary.textContent = 'TURN';
+                    summary.setAttribute('aria-label', 'Abrir o cerrar diagnóstico TURN de prueba');
+                    summary.style.cssText = 'min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;outline:2px solid var(--accent-color);outline-offset:2px;font-weight:700;list-style:none;position:sticky;top:0;background:var(--card-bg)';
                     output = doc.createElement('div');
                     panel.appendChild(summary); panel.appendChild(output); doc.body.appendChild(panel);
                 }
-                if (panel?.firstChild) panel.firstChild.textContent = 'TURN · prueba privada · ' + (record.credentials === 'requesting' ? 'solicitando credenciales' : record.credentials === 'failed' ? 'solicitud fallida' : record.relay === 'verified' ? 'relay verificado' : 'relay sin verificar');
+                if (panel?.firstChild) (panel.firstChild as HTMLElement).setAttribute('title', 'TURN · prueba privada · ' + (record.credentials === 'requesting' ? 'solicitando credenciales' : record.credentials === 'failed' ? 'solicitud fallida' : record.relay === 'verified' ? 'relay verificado' : 'relay sin verificar'));
                 if (output) output.textContent = [...history.values()].map(item => diagnosticText(item)).join('\n');
-                if (output) output.style.whiteSpace = 'pre-line';
+                if (output) { output.style.cssText = 'white-space:pre-wrap;font:12px ui-monospace,monospace;line-height:1.5;overflow-wrap:anywhere;max-width:80vw'; output.setAttribute('aria-label', 'Consola TURN sanitizada de prueba'); }
             } catch { /* A missing or unavailable DOM is not a connection failure. */ }
         }
+        function append(record: PrivateTurnBootstrapDiagnostic, event: PrivateTurnBootstrapEvent): void {
+            if (options.diagnostics !== true || disposed) return;
+            const events = record.events || (record.events = []);
+            events.push({ ...event });
+            if (events.length > 32) events.shift();
+            publish(record);
+        }
+        const rtcEvents = ['connectionstatechange', 'iceconnectionstatechange', 'icegatheringstatechange', 'signalingstatechange'];
+        function enumState(value: string | undefined, allowed: string[]): string { return allowed.includes(value || '') ? value! : 'unmeasured'; }
         function clearObservations(): void {
             for (const stop of [...observations.values()]) stop();
             observations.clear(); history.clear();
             try { panel?.remove(); } catch { /* Best-effort DOM cleanup. */ }
             panel = null; output = null;
         }
-        function observe(session: PrivateTurnBootstrapSession, record: PrivateTurnBootstrapDiagnostic, captured: number, capturedScope: string): void {
+        function observe(session: PrivateTurnBootstrapSession, record: PrivateTurnBootstrapDiagnostic, captured: number, capturedScope: string, elapsed: () => number): void {
             if (options.diagnostics !== true || disposed || epoch !== captured) return;
             const pc = session.pc as PrivateTurnBootstrapPeer | null;
             if (!pc || typeof pc !== 'object') return;
@@ -114,9 +147,10 @@ interface PrivateTurnBootstrapRoot {
                 if (stopped) return;
                 stopped = true;
                 if (timer !== undefined) clearTimeout(timer);
-                for (const name of ['connectionstatechange', 'iceconnectionstatechange']) {
+                for (const name of rtcEvents) {
                     try { pc?.removeEventListener?.(name, update); } catch { /* Isolated observer. */ }
                 }
+                try { pc?.removeEventListener?.('icecandidateerror', iceError); } catch { /* Isolated observer. */ }
                 if (session.close === close) session.close = originalClose;
                 observations.delete(record.session);
             }
@@ -131,23 +165,37 @@ interface PrivateTurnBootstrapRoot {
                     const relay = await verifySelectedRelay(pc);
                     if (!valid()) { stop(); return; }
                     if (pc?.connectionState !== 'connected') return;
-                    if (relay) { record.relay = 'verified'; publish(record); }
-                    else if (retry++ < 3 && timer === undefined) timer = setTimeout(() => { timer = undefined; void measure(); }, 1000);
+                    if (relay) { record.relay = 'verified'; append(record, { stage: 'relay', code: 'RELAY_VERIFIED', elapsedMs: elapsed() }); }
+                    else {
+                        append(record, { stage: 'relay', code: 'RELAY_UNMEASURED', elapsedMs: elapsed() });
+                        if (retry++ < 3 && timer === undefined) timer = setTimeout(() => { timer = undefined; void measure(); }, 1000);
+                    }
                 } catch { /* Stats cannot change the original session outcome. */ }
                 finally { running = false; }
             }
             function update(): void {
                 if (!valid()) { stop(); return; }
                 record.connection = state(pc?.connectionState);
-                publish(record);
+                record.ice = enumState(pc?.iceConnectionState, ['new', 'checking', 'connected', 'completed', 'disconnected', 'failed', 'closed']);
+                record.gathering = enumState(pc?.iceGatheringState, ['new', 'gathering', 'complete']);
+                record.signaling = enumState(pc?.signalingState, ['stable', 'have-local-offer', 'have-remote-offer', 'have-local-pranswer', 'have-remote-pranswer', 'closed']);
+                record.localDescription = Boolean(pc?.localDescription); record.remoteDescription = Boolean(pc?.remoteDescription);
+                append(record, { stage: 'rtc', code: 'RTC_STATE', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice + ' gathering=' + record.gathering + ' signaling=' + record.signaling + ' local=' + record.localDescription + ' remote=' + record.remoteDescription });
                 if (record.connection === 'closed' || record.connection === 'failed') { stop(); return; }
                 void measure();
+            }
+            function iceError(event?: { errorCode?: unknown }): void {
+                if (!valid()) { stop(); return; }
+                const code = event?.errorCode;
+                append(record, { stage: 'rtc', code: 'ICE_ERROR', elapsedMs: elapsed(),
+                    ...(Number.isInteger(code) && Number(code) >= 300 && Number(code) <= 701 ? { iceErrorCode: Number(code) } : {}) });
             }
             if (observations.size >= 8) observations.values().next().value!();
             observations.set(record.session, stop);
             try {
                 session.close = close;
-                for (const name of ['connectionstatechange', 'iceconnectionstatechange']) pc.addEventListener?.(name, update);
+                for (const name of rtcEvents) pc.addEventListener?.(name, update);
+                pc.addEventListener?.('icecandidateerror', iceError);
                 update();
             } catch { stop(); }
         }
@@ -187,27 +235,37 @@ interface PrivateTurnBootstrapRoot {
         const wrapper: PrivateTurnBootstrapCore['createRtcSession'] = async sessionOptions => {
             const record: PrivateTurnBootstrapDiagnostic = { session: ++ordinal, credentials: 'requesting', connection: 'unmeasured', relay: 'unmeasured' };
             const capturedScope = scope(), startEpoch = epoch;
-            publish(record);
+            const started = Date.now();
+            const elapsed = () => Math.max(0, Math.min(300000, Math.floor(Date.now() - started)));
+            append(record, { stage: 'auth', code: 'AUTH_START', elapsedMs: elapsed() });
             let captured = startEpoch;
+            let authResolved = false;
             try {
                 const next = await resolveAuth();
                 guard(startEpoch, capturedScope);
                 bind(next);
                 captured = epoch;
+                authResolved = true;
+                append(record, { stage: 'auth', code: auth?.currentUser ? 'AUTH_SIGNED_IN' : 'AUTH_GUEST', elapsedMs: elapsed() });
                 const uid = auth?.currentUser?.uid || null, bound = auth;
-                const config = await provider.getConfiguration();
+                const acquisitionOffset = elapsed();
+                const config = await provider.getConfiguration(options.diagnostics === true ? event => {
+                    try { guard(captured, capturedScope); append(record, { ...event, elapsedMs: Math.min(300000, acquisitionOffset + event.elapsedMs) }); } catch { /* Ignore stale acquisition events. */ }
+                } : undefined);
                 guard(captured, capturedScope);
                 if (auth !== bound || (auth?.currentUser?.uid || null) !== uid || (identity === 'mini' && miniAuth() !== bound)) fail('TURN_BOOTSTRAP_STALE');
                 record.credentials = config ? 'available' : 'guest'; publish(record);
+                append(record, { stage: 'rtc', code: 'RTC_START', elapsedMs: elapsed() });
                 const session = await original.call(core, config ? { ...sessionOptions, ...config } : sessionOptions);
                 // Instrumentation is best-effort and cannot reject a successful factory.
-                try { observe(session, record, captured, capturedScope); } catch { /* Isolated observer. */ }
+                try { observe(session, record, captured, capturedScope, elapsed); } catch { /* Isolated observer. */ }
                 return session;
             } catch (error) {
                 try {
                     guard(captured, capturedScope);
                     if (record.credentials === 'requesting') record.credentials = 'failed';
-                    else record.connection = 'failed';
+                    else { record.connection = 'failed'; append(record, { stage: 'rtc', code: 'RTC_FAILED', elapsedMs: elapsed() }); }
+                    if (!authResolved) append(record, { stage: 'auth', code: 'AUTH_FAILED', elapsedMs: elapsed() });
                     publish(record);
                 } catch { /* Suppress stale observations. */ }
                 throw error;
@@ -249,7 +307,15 @@ interface PrivateTurnBootstrapRoot {
         const credentials = { requesting: 'solicitando', available: 'disponibles', guest: 'invitado (sin solicitud)', failed: 'solicitud fallida' };
         const connections = { new: 'nueva', connecting: 'conectando', connected: 'conectada', disconnected: 'desconectada', failed: 'fallida', closed: 'cerrada', unmeasured: 'sin medir' };
         return 'Sesión ' + value.session + ' · credenciales: ' + credentials[value.credentials] + ' · conexión: ' + connections[value.connection]
-            + ' · relay local: ' + (value.relay === 'verified' ? 'verificado durante la conexión' : 'sin verificar');
+            + ' · relay local: ' + (value.relay === 'verified' ? 'verificado durante la conexión' : 'sin verificar')
+            + (value.ice ? '\n  RTC · ICE=' + value.ice + ' · gathering=' + value.gathering + ' · signaling=' + value.signaling
+                + ' · descripción local=' + Boolean(value.localDescription) + ' · remota=' + Boolean(value.remoteDescription) : '')
+            + (value.events || []).map(event => '\n  [' + event.elapsedMs + ' ms] ' + event.stage + ' · ' + event.code
+                + (event.httpStatus === undefined ? '' : ' · HTTP=' + event.httpStatus)
+                + (event.sdkCode === undefined ? '' : ' · SDK=' + event.sdkCode)
+                + (event.detail === undefined ? '' : ' · ' + event.detail)
+                + (event.iceErrorCode === undefined ? '' : ' · ICE_ERROR=' + event.iceErrorCode)
+                + (event.rtcState === undefined ? '' : ' · ' + event.rtcState)).join('');
     }
     function sanitizeReport(value: Record<string, unknown>) {
         const count = (key: string) => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0 && Number(value[key]) <= 100000 ? Number(value[key]) : 0;

@@ -42,17 +42,19 @@
         const state = (value) => ['new', 'connecting', 'connected', 'disconnected', 'failed', 'closed'].includes(value || '')
             ? value : 'unmeasured';
         function publish(value) {
-            var _a;
+            var _a, _b, _c;
             if (options.diagnostics !== true || disposed)
                 return;
             // No input from errors, stats, session options, or identities reaches this record.
-            const record = { session: value.session, credentials: value.credentials, connection: value.connection, relay: value.relay };
+            const record = { session: value.session, credentials: value.credentials, connection: value.connection, relay: value.relay,
+                events: (_a = value.events) === null || _a === void 0 ? void 0 : _a.map(event => ({ ...event })), ice: value.ice, gathering: value.gathering, signaling: value.signaling,
+                localDescription: value.localDescription, remoteDescription: value.remoteDescription };
             history.set(record.session, record);
             if (history.size > 8)
                 history.delete(history.keys().next().value);
             const publishedEpoch = epoch;
             try {
-                (_a = options.onDiagnostic) === null || _a === void 0 ? void 0 : _a.call(options, { ...record });
+                (_b = options.onDiagnostic) === null || _b === void 0 ? void 0 : _b.call(options, { ...record, events: (_c = record.events) === null || _c === void 0 ? void 0 : _c.map(event => ({ ...event })) });
             }
             catch { /* Observers cannot break RTC. */ }
             if (disposed || epoch !== publishedEpoch)
@@ -64,24 +66,38 @@
                 if (!panel) {
                     panel = doc.createElement('details');
                     panel.setAttribute('data-private-turn-diagnostics', '');
-                    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:10000;max-height:35vh;overflow:auto;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);padding:8px;font:14px sans-serif';
+                    panel.style.cssText = 'position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:calc(env(safe-area-inset-left,0px) + 12px);z-index:2147483647;max-width:calc(100vw - 24px);max-height:65vh;overflow:auto;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:12px;padding:0 8px;font:14px sans-serif';
                     const summary = doc.createElement('summary');
-                    summary.textContent = 'TURN · prueba privada';
-                    summary.style.cssText = 'min-height:44px;display:flex;align-items:center;cursor:pointer;outline-color:var(--accent-color)';
+                    summary.textContent = 'TURN';
+                    summary.setAttribute('aria-label', 'Abrir o cerrar diagnóstico TURN de prueba');
+                    summary.style.cssText = 'min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;outline:2px solid var(--accent-color);outline-offset:2px;font-weight:700;list-style:none;position:sticky;top:0;background:var(--card-bg)';
                     output = doc.createElement('div');
                     panel.appendChild(summary);
                     panel.appendChild(output);
                     doc.body.appendChild(panel);
                 }
                 if (panel === null || panel === void 0 ? void 0 : panel.firstChild)
-                    panel.firstChild.textContent = 'TURN · prueba privada · ' + (record.credentials === 'requesting' ? 'solicitando credenciales' : record.credentials === 'failed' ? 'solicitud fallida' : record.relay === 'verified' ? 'relay verificado' : 'relay sin verificar');
+                    panel.firstChild.setAttribute('title', 'TURN · prueba privada · ' + (record.credentials === 'requesting' ? 'solicitando credenciales' : record.credentials === 'failed' ? 'solicitud fallida' : record.relay === 'verified' ? 'relay verificado' : 'relay sin verificar'));
                 if (output)
                     output.textContent = [...history.values()].map(item => diagnosticText(item)).join('\n');
-                if (output)
-                    output.style.whiteSpace = 'pre-line';
+                if (output) {
+                    output.style.cssText = 'white-space:pre-wrap;font:12px ui-monospace,monospace;line-height:1.5;overflow-wrap:anywhere;max-width:80vw';
+                    output.setAttribute('aria-label', 'Consola TURN sanitizada de prueba');
+                }
             }
             catch { /* A missing or unavailable DOM is not a connection failure. */ }
         }
+        function append(record, event) {
+            if (options.diagnostics !== true || disposed)
+                return;
+            const events = record.events || (record.events = []);
+            events.push({ ...event });
+            if (events.length > 32)
+                events.shift();
+            publish(record);
+        }
+        const rtcEvents = ['connectionstatechange', 'iceconnectionstatechange', 'icegatheringstatechange', 'signalingstatechange'];
+        function enumState(value, allowed) { return allowed.includes(value || '') ? value : 'unmeasured'; }
         function clearObservations() {
             for (const stop of [...observations.values()])
                 stop();
@@ -94,8 +110,8 @@
             panel = null;
             output = null;
         }
-        function observe(session, record, captured, capturedScope) {
-            var _a;
+        function observe(session, record, captured, capturedScope, elapsed) {
+            var _a, _b;
             if (options.diagnostics !== true || disposed || epoch !== captured)
                 return;
             const pc = session.pc;
@@ -113,18 +129,22 @@
                 }
             };
             function stop() {
-                var _a;
+                var _a, _b;
                 if (stopped)
                     return;
                 stopped = true;
                 if (timer !== undefined)
                     clearTimeout(timer);
-                for (const name of ['connectionstatechange', 'iceconnectionstatechange']) {
+                for (const name of rtcEvents) {
                     try {
                         (_a = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(pc, name, update);
                     }
                     catch { /* Isolated observer. */ }
                 }
+                try {
+                    (_b = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _b === void 0 ? void 0 : _b.call(pc, 'icecandidateerror', iceError);
+                }
+                catch { /* Isolated observer. */ }
                 if (session.close === close)
                     session.close = originalClose;
                 observations.delete(record.session);
@@ -151,10 +171,13 @@
                         return;
                     if (relay) {
                         record.relay = 'verified';
-                        publish(record);
+                        append(record, { stage: 'relay', code: 'RELAY_VERIFIED', elapsedMs: elapsed() });
                     }
-                    else if (retry++ < 3 && timer === undefined)
-                        timer = setTimeout(() => { timer = undefined; void measure(); }, 1000);
+                    else {
+                        append(record, { stage: 'relay', code: 'RELAY_UNMEASURED', elapsedMs: elapsed() });
+                        if (retry++ < 3 && timer === undefined)
+                            timer = setTimeout(() => { timer = undefined; void measure(); }, 1000);
+                    }
                 }
                 catch { /* Stats cannot change the original session outcome. */ }
                 finally {
@@ -167,20 +190,35 @@
                     return;
                 }
                 record.connection = state(pc === null || pc === void 0 ? void 0 : pc.connectionState);
-                publish(record);
+                record.ice = enumState(pc === null || pc === void 0 ? void 0 : pc.iceConnectionState, ['new', 'checking', 'connected', 'completed', 'disconnected', 'failed', 'closed']);
+                record.gathering = enumState(pc === null || pc === void 0 ? void 0 : pc.iceGatheringState, ['new', 'gathering', 'complete']);
+                record.signaling = enumState(pc === null || pc === void 0 ? void 0 : pc.signalingState, ['stable', 'have-local-offer', 'have-remote-offer', 'have-local-pranswer', 'have-remote-pranswer', 'closed']);
+                record.localDescription = Boolean(pc === null || pc === void 0 ? void 0 : pc.localDescription);
+                record.remoteDescription = Boolean(pc === null || pc === void 0 ? void 0 : pc.remoteDescription);
+                append(record, { stage: 'rtc', code: 'RTC_STATE', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice + ' gathering=' + record.gathering + ' signaling=' + record.signaling + ' local=' + record.localDescription + ' remote=' + record.remoteDescription });
                 if (record.connection === 'closed' || record.connection === 'failed') {
                     stop();
                     return;
                 }
                 void measure();
             }
+            function iceError(event) {
+                if (!valid()) {
+                    stop();
+                    return;
+                }
+                const code = event === null || event === void 0 ? void 0 : event.errorCode;
+                append(record, { stage: 'rtc', code: 'ICE_ERROR', elapsedMs: elapsed(),
+                    ...(Number.isInteger(code) && Number(code) >= 300 && Number(code) <= 701 ? { iceErrorCode: Number(code) } : {}) });
+            }
             if (observations.size >= 8)
                 observations.values().next().value();
             observations.set(record.session, stop);
             try {
                 session.close = close;
-                for (const name of ['connectionstatechange', 'iceconnectionstatechange'])
+                for (const name of rtcEvents)
                     (_a = pc.addEventListener) === null || _a === void 0 ? void 0 : _a.call(pc, name, update);
+                (_b = pc.addEventListener) === null || _b === void 0 ? void 0 : _b.call(pc, 'icecandidateerror', iceError);
                 update();
             }
             catch {
@@ -256,24 +294,37 @@
             var _a, _b;
             const record = { session: ++ordinal, credentials: 'requesting', connection: 'unmeasured', relay: 'unmeasured' };
             const capturedScope = scope(), startEpoch = epoch;
-            publish(record);
+            const started = Date.now();
+            const elapsed = () => Math.max(0, Math.min(300000, Math.floor(Date.now() - started)));
+            append(record, { stage: 'auth', code: 'AUTH_START', elapsedMs: elapsed() });
             let captured = startEpoch;
+            let authResolved = false;
             try {
                 const next = await resolveAuth();
                 guard(startEpoch, capturedScope);
                 bind(next);
                 captured = epoch;
+                authResolved = true;
+                append(record, { stage: 'auth', code: (auth === null || auth === void 0 ? void 0 : auth.currentUser) ? 'AUTH_SIGNED_IN' : 'AUTH_GUEST', elapsedMs: elapsed() });
                 const uid = ((_a = auth === null || auth === void 0 ? void 0 : auth.currentUser) === null || _a === void 0 ? void 0 : _a.uid) || null, bound = auth;
-                const config = await provider.getConfiguration();
+                const acquisitionOffset = elapsed();
+                const config = await provider.getConfiguration(options.diagnostics === true ? event => {
+                    try {
+                        guard(captured, capturedScope);
+                        append(record, { ...event, elapsedMs: Math.min(300000, acquisitionOffset + event.elapsedMs) });
+                    }
+                    catch { /* Ignore stale acquisition events. */ }
+                } : undefined);
                 guard(captured, capturedScope);
                 if (auth !== bound || (((_b = auth === null || auth === void 0 ? void 0 : auth.currentUser) === null || _b === void 0 ? void 0 : _b.uid) || null) !== uid || (identity === 'mini' && miniAuth() !== bound))
                     fail('TURN_BOOTSTRAP_STALE');
                 record.credentials = config ? 'available' : 'guest';
                 publish(record);
+                append(record, { stage: 'rtc', code: 'RTC_START', elapsedMs: elapsed() });
                 const session = await original.call(core, config ? { ...sessionOptions, ...config } : sessionOptions);
                 // Instrumentation is best-effort and cannot reject a successful factory.
                 try {
-                    observe(session, record, captured, capturedScope);
+                    observe(session, record, captured, capturedScope, elapsed);
                 }
                 catch { /* Isolated observer. */ }
                 return session;
@@ -283,8 +334,12 @@
                     guard(captured, capturedScope);
                     if (record.credentials === 'requesting')
                         record.credentials = 'failed';
-                    else
+                    else {
                         record.connection = 'failed';
+                        append(record, { stage: 'rtc', code: 'RTC_FAILED', elapsedMs: elapsed() });
+                    }
+                    if (!authResolved)
+                        append(record, { stage: 'auth', code: 'AUTH_FAILED', elapsedMs: elapsed() });
                     publish(record);
                 }
                 catch { /* Suppress stale observations. */ }
@@ -347,7 +402,15 @@
         const credentials = { requesting: 'solicitando', available: 'disponibles', guest: 'invitado (sin solicitud)', failed: 'solicitud fallida' };
         const connections = { new: 'nueva', connecting: 'conectando', connected: 'conectada', disconnected: 'desconectada', failed: 'fallida', closed: 'cerrada', unmeasured: 'sin medir' };
         return 'Sesión ' + value.session + ' · credenciales: ' + credentials[value.credentials] + ' · conexión: ' + connections[value.connection]
-            + ' · relay local: ' + (value.relay === 'verified' ? 'verificado durante la conexión' : 'sin verificar');
+            + ' · relay local: ' + (value.relay === 'verified' ? 'verificado durante la conexión' : 'sin verificar')
+            + (value.ice ? '\n  RTC · ICE=' + value.ice + ' · gathering=' + value.gathering + ' · signaling=' + value.signaling
+                + ' · descripción local=' + Boolean(value.localDescription) + ' · remota=' + Boolean(value.remoteDescription) : '')
+            + (value.events || []).map(event => '\n  [' + event.elapsedMs + ' ms] ' + event.stage + ' · ' + event.code
+                + (event.httpStatus === undefined ? '' : ' · HTTP=' + event.httpStatus)
+                + (event.sdkCode === undefined ? '' : ' · SDK=' + event.sdkCode)
+                + (event.detail === undefined ? '' : ' · ' + event.detail)
+                + (event.iceErrorCode === undefined ? '' : ' · ICE_ERROR=' + event.iceErrorCode)
+                + (event.rtcState === undefined ? '' : ' · ' + event.rtcState)).join('');
     }
     function sanitizeReport(value) {
         const count = (key) => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0 && Number(value[key]) <= 100000 ? Number(value[key]) : 0;
