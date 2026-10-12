@@ -442,3 +442,29 @@ test('reinstall creates a new temporary console label without accessing persiste
   assert.notEqual(doc.body.children[1].children[1].textContent.match(/instancia=([a-z0-9-]+)/)[1], label);
   second.dispose();
 });
+
+test('private lease is separate from RTC options and retires with auth ownership', async () => {
+  let mono = 100;
+  const f = fixture({ performance: { now: () => mono } }); const handle = f.install();
+  const session = await f.root.SaMiniP2P.createRtcSession({});
+  assert.equal(session.getLeaseRemainingMs(), 300000);
+  assert.equal(f.calls()[0].getLeaseRemainingMs, undefined);
+  assert.equal(f.calls()[0].deadline, undefined);
+  mono += 5000; assert.equal(session.getLeaseRemainingMs(), 295000);
+  f.setUser(null); assert.equal(session.getLeaseRemainingMs(), 0); handle.dispose();
+});
+test('guest proposed lease is five minutes without token acquisition', async () => {
+  let mono = 100; const f = fixture({ performance: { now: () => mono } }); f.auth.currentUser = null;
+  const handle = f.install(); const session = await f.root.SaMiniP2P.createRtcSession({});
+  assert.equal(f.requests(), 0); assert.equal(session.getLeaseRemainingMs(), 300000);
+  mono += 300000; assert.equal(session.getLeaseRemainingMs(), 0); handle.dispose();
+});
+
+test('lease metadata cannot reject a frozen legacy session', async () => {
+  const frozen = Object.freeze({ pc: {}, close() {} }); const f = fixture({ SaMiniP2P: { createRtcSession: async () => frozen }, performance: { now: () => 100 } });
+  const handle = f.install(); assert.equal(await f.root.SaMiniP2P.createRtcSession({}), frozen); handle.dispose();
+});
+test('async factory time reduces the exact configuration lease', async () => {
+  let mono = 100; const f = fixture({ performance: { now: () => mono }, SaMiniP2P: { createRtcSession: async () => { mono += 20000; return { pc: {}, close() {} }; } } });
+  const handle = f.install(); const session = await f.root.SaMiniP2P.createRtcSession({}); assert.equal(session.getLeaseRemainingMs(), 280000); handle.dispose();
+});

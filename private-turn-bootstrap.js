@@ -471,7 +471,7 @@
                 fail('TURN_BOOTSTRAP_STALE');
         }
         const wrapper = async (sessionOptions) => {
-            var _a, _b, _c;
+            var _a, _b, _c, _d, _e;
             const record = { session: ++ordinal, credentials: 'requesting', connection: 'unmeasured', relay: 'unmeasured' };
             const capturedScope = scope(), startEpoch = epoch;
             const started = Date.now();
@@ -559,6 +559,11 @@
                     }
                     catch { /* Unavailable subscription cannot affect RTC. */ }
                 }
+                // Capture this configuration's lease before async factory work; a
+                // concurrent refresh must not lend a newer lease to an older peer.
+                const leaseClock = typeof performance !== 'undefined' ? () => performance.now() : () => Number.POSITIVE_INFINITY;
+                const leaseStarted = leaseClock();
+                const credentialLease = config ? (_e = (_d = provider.getLeaseRemainingMs) === null || _d === void 0 ? void 0 : _d.call(provider)) !== null && _e !== void 0 ? _e : 0 : 300000;
                 const session = await original.call(core, config ? { ...observed, ...config } : observed);
                 // Instrumentation is best-effort and cannot reject a successful factory.
                 try {
@@ -567,6 +572,22 @@
                 catch {
                     stopSignal();
                 }
+                // Separate metadata; never pass it to RTCPeerConnection. Frozen
+                // legacy session objects remain valid, but cannot opt into reuse.
+                try {
+                    session.getLeaseRemainingMs = () => {
+                        try {
+                            guard(captured, capturedScope);
+                            if (!Number.isFinite(leaseStarted))
+                                return 0;
+                            return Math.max(0, Math.floor(Math.min(300000, credentialLease) - (leaseClock() - leaseStarted)));
+                        }
+                        catch {
+                            return 0;
+                        }
+                    };
+                }
+                catch { /* Optional lease metadata cannot reject factory creation. */ }
                 return session;
             }
             catch (error) {

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 interface PrivateTurnDevBootstrap {
     enabled: boolean;
     appIdentity: 'mini' | 'sa';
-    contract: { ttlUnit: 'seconds'; expiresAtFormat: 'unix-seconds' | 'unix-milliseconds' | 'iso8601' };
+    contract: { ttlUnit: 'seconds'; clockSource?: 'issuer'; expiresAtFormat: 'unix-seconds' | 'unix-milliseconds' | 'iso8601' };
     canonicalRoot: string;
     forceRelay?: boolean;
 }
@@ -96,7 +96,7 @@ function normalizeResponse(body: Buffer): string {
         return JSON.stringify({ username: row.username, credential: row.credential, ttl: row.ttl, expiresAt: row.expiresAt, iceServers });
     } catch { throw new PrivateTurnProxyError(502, 'TURN_UPSTREAM_UNAVAILABLE'); }
 }
-function forward(idToken: string, port: number, max: number, timeout: number): Promise<string> {
+function forward(idToken: string, port: number, max: number, timeout: number): Promise<{ body: string; issuedDate?: string }> {
     return new Promise((resolve, reject) => {
         const body = JSON.stringify({ idToken });
         let finished = false;
@@ -117,14 +117,19 @@ function forward(idToken: string, port: number, max: number, timeout: number): P
                 else chunks.push(chunk);
             });
             response.once('end', () => {
-                try { finish(undefined, normalizeResponse(Buffer.concat(chunks))); }
+                try {
+                    const dates = response.rawHeaders.filter((_value, index) => index % 2 === 0 && response.rawHeaders[index].toLowerCase() === 'date');
+                    const date = response.headers.date;
+                    const valid = dates.length === 1 && typeof date === 'string' && Number.isSafeInteger(Date.parse(date)) && new Date(Date.parse(date)).toUTCString() === date;
+                    finish(undefined, { body: normalizeResponse(Buffer.concat(chunks)), ...(valid ? { issuedDate: date } : {}) });
+                }
                 catch { finish(new PrivateTurnProxyError(502, 'TURN_UPSTREAM_UNAVAILABLE')); }
             });
             response.once('error', () => finish(new PrivateTurnProxyError(502, 'TURN_UPSTREAM_UNAVAILABLE')));
             response.once('aborted', () => finish(new PrivateTurnProxyError(502, 'TURN_UPSTREAM_UNAVAILABLE')));
         });
         const timer = setTimeout(() => finish(new PrivateTurnProxyError(504, 'TURN_UPSTREAM_TIMEOUT')), timeout);
-        function finish(error?: Error, value?: string): void {
+        function finish(error?: Error, value?: { body: string; issuedDate?: string }): void {
             if (finished) return;
             finished = true;
             clearTimeout(timer);
@@ -165,7 +170,7 @@ async function injectHtml(body: Buffer, bootstrap: PrivateTurnDevBootstrap, orig
         if (html.split(configAnchor).length !== 2 || html.indexOf(configAnchor) > html.indexOf(core)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
         html = html.replace(configAnchor, '<script>window.MiniFirebaseFieldConfig=' + scriptJson(await miniPublicConfig(bootstrap.canonicalRoot)) + ';</script>' + configAnchor);
     }
-    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: bootstrap.contract, forceRelay: bootstrap.forceRelay, diagnostics: true, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
+    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: { ...bootstrap.contract, clockSource: 'issuer' }, forceRelay: bootstrap.forceRelay, diagnostics: true, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
     const saLoader = bootstrap.appIdentity === 'sa' ? ',loadSaAuth:async()=>{const m=await import("/js/modules/data/firebase.js");if(!m.auth||typeof m.onAuthStateChanged!=="function")throw new Error("TURN_BOOTSTRAP_UNAVAILABLE");return {get currentUser(){return m.auth.currentUser;},onAuthStateChanged:fn=>m.onAuthStateChanged(m.auth,fn)};}' : '';
     const install = 'window.privateTurnTest=PrivateTurnBootstrap.install({' + scriptJson(options).slice(1, -1) + saLoader + '});';
     return Buffer.from(html.replace(core, core + '<script src="/__private-turn/provider.js"></script><script src="/__private-turn/bootstrap.js"></script><script>' + install + '</script>'));
@@ -217,8 +222,8 @@ export async function startDevServer(options: PrivateTurnDevOptions) {
             if (!/^application\/json(?:;|$)/i.test(String(req.headers['content-type'] || ''))) throw new PrivateTurnProxyError(415, 'TURN_CONTENT_TYPE_DENIED');
             if (req.headers.cookie !== undefined || req.headers.authorization !== undefined) throw new PrivateTurnProxyError(400, 'TURN_REQUEST_INVALID');
             const idToken = validateToken(await readRequest(req, maxRequest, timeout));
-            const body = await forward(idToken, forwardPort, maxResponse, timeout);
-            if (!res.destroyed) { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(body); }
+            const forwarded = await forward(idToken, forwardPort, maxResponse, timeout);
+            if (!res.destroyed) { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...(forwarded.issuedDate ? { 'X-Turn-Issued-Date': forwarded.issuedDate } : {}) }); res.end(forwarded.body); }
         } catch (error) {
             if (error instanceof PrivateTurnProxyError) sendError(res, error.status, error.code);
             else sendError(res, 500, 'TURN_DEV_UNAVAILABLE');
@@ -253,7 +258,7 @@ async function cli(): Promise<void> {
     if (values['--app']) {
         const identity = values['--app'], format = values['--expiry-format'];
         if (!['mini', 'sa'].includes(identity) || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(format) || !values['--canonical-root'] || !values['--root']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
-        bootstrap = { enabled: true, appIdentity: identity as 'mini' | 'sa', forceRelay, canonicalRoot: values['--canonical-root'], contract: { ttlUnit: 'seconds', expiresAtFormat: format as PrivateTurnDevBootstrap['contract']['expiresAtFormat'] } };
+        bootstrap = { enabled: true, appIdentity: identity as 'mini' | 'sa', forceRelay, canonicalRoot: values['--canonical-root'], contract: { ttlUnit: 'seconds', clockSource: 'issuer', expiresAtFormat: format as PrivateTurnDevBootstrap['contract']['expiresAtFormat'] } };
     } else if (forceRelay || values['--expiry-format'] || values['--canonical-root']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
     const tls = reverseProxy ? undefined : { cert: await readFile(values['--cert']), key: await readFile(values['--key']) };
     const dev = await startDevServer({ forwardPort: Number(values['--forward-port']), port: values['--port'] ? Number(values['--port']) : 9443, tls, reverseProxy, publicOrigin: values['--public-origin'], bootstrap, appRoot: values['--root'], assets });

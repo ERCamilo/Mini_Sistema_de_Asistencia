@@ -75,7 +75,7 @@
             invalid('EXPIRY_UNSAFE');
         if (expiresAt <= now + margin)
             invalid('EXPIRY_TOO_EARLY');
-        if (expiresAt > now + Number(body.ttl) * 1000 + 5000)
+        if (expiresAt > now + Number(body.ttl) * 1000 + (contract.clockSource === 'issuer' ? 1000 : 5000))
             invalid('EXPIRY_BEYOND_TTL');
         if (!Array.isArray(body.iceServers) || !body.iceServers.length || body.iceServers.length > 8)
             invalid('ICE_SERVERS_INVALID');
@@ -109,7 +109,9 @@
         const supplied = options.contract;
         if (typeof options.enabled !== 'boolean' || !supplied || supplied.ttlUnit !== 'seconds' || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(supplied.expiresAtFormat))
             failure('TURN_CONFIGURATION_INVALID');
-        const contract = { ttlUnit: 'seconds', expiresAtFormat: supplied.expiresAtFormat };
+        if (supplied.clockSource !== undefined && !['client', 'issuer'].includes(supplied.clockSource))
+            failure('TURN_CONFIGURATION_INVALID');
+        const contract = { ttlUnit: 'seconds', expiresAtFormat: supplied.expiresAtFormat, clockSource: supplied.clockSource || 'client' };
         if (options.forceRelay !== undefined && typeof options.forceRelay !== 'boolean')
             failure('TURN_CONFIGURATION_INVALID');
         const allowed = [...(options.allowedOrigins || [])], privateOrigins = ['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'];
@@ -126,6 +128,13 @@
             catch {
                 failure('TURN_CONFIGURATION_INVALID');
             }
+        }
+        const monotonicNow = options.monotonicNow || (() => performance.now());
+        function monotonic() {
+            const value = monotonicNow();
+            if (!Number.isFinite(value) || value < 0)
+                failure('TURN_CONFIGURATION_INVALID');
+            return value;
         }
         const margin = (_a = options.refreshMarginMs) !== null && _a !== void 0 ? _a : 15000, timeoutMs = (_b = options.timeoutMs) !== null && _b !== void 0 ? _b : 10000, now = options.now || Date.now;
         if (!Number.isSafeInteger(margin) || margin < 0 || margin > 300000 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000)
@@ -168,7 +177,7 @@
         async function load(user, captured, controller, notify) {
             let stage = 'token', timedOut = false, httpStatus;
             let detail, sdkCode;
-            const started = Date.now();
+            const started = Date.now(), requestStarted = contract.clockSource === 'issuer' ? monotonic() : 0;
             function emit(code = 'START') {
                 notify({ stage, code, elapsedMs: Math.max(0, Math.min(30000, Math.floor(Date.now() - started))), ...(httpStatus === undefined ? {} : { httpStatus }), ...(detail ? { detail } : {}), ...(sdkCode ? { sdkCode } : {}) });
             }
@@ -246,10 +255,30 @@
                     failure('TURN_INVALID_RESPONSE');
                 }
                 detail = 'CONTRACT_INVALID';
-                const result = parse(raw, contract, time(), margin, policy, reason => { detail = reason; });
+                let reference = time(), reserve = 0;
+                if (contract.clockSource === 'issuer') {
+                    const issuedDate = response.headers.get('X-Turn-Issued-Date');
+                    if (!issuedDate) {
+                        detail = 'CLOCK_MISSING';
+                        failure('TURN_INVALID_RESPONSE');
+                    }
+                    const issued = Date.parse(issuedDate);
+                    if (!Number.isSafeInteger(issued) || issued < 0 || new Date(issued).toUTCString() !== issuedDate) {
+                        detail = 'CLOCK_INVALID';
+                        failure('TURN_INVALID_RESPONSE');
+                    }
+                    // Offset allowance is not a credential lifetime allowance.
+                    if (Math.abs(reference - issued) > 1800000) {
+                        detail = 'CLOCK_SKEW_EXCEEDED';
+                        failure('TURN_INVALID_RESPONSE');
+                    }
+                    reserve = Math.max(0, monotonic() - requestStarted) + 1000;
+                    reference = issued;
+                }
+                const result = parse(raw, contract, reference, margin + reserve, policy, reason => { detail = reason; });
                 detail = undefined;
                 guard(user.uid, captured);
-                cache = { uid: user.uid, generation: captured, ...result };
+                cache = { uid: user.uid, generation: captured, ...result, ...(contract.clockSource === 'issuer' ? { deadline: requestStarted + (result.expiresAt - reference) - 1000 } : {}) };
                 emit('READY');
                 return result.config;
             }
@@ -298,7 +327,7 @@
                 return null;
             }
             const captured = generation;
-            if (cache && cache.uid === user.uid && cache.generation === captured && cache.expiresAt > time() + margin) {
+            if (cache && cache.uid === user.uid && cache.generation === captured && (cache.deadline === undefined ? cache.expiresAt > time() + margin : cache.deadline > monotonic() + margin)) {
                 notify({ stage: 'cache', code: 'READY', elapsedMs: 0 });
                 return clone(cache.config);
             }
@@ -326,7 +355,13 @@
                 active.observers.delete(notify);
             }
         }
-        return { getConfiguration, invalidate };
+        function getLeaseRemainingMs() {
+            const user = current();
+            if (!enabled || !user || !cache || cache.uid !== user.uid || cache.generation !== generation)
+                return 0;
+            return Math.max(0, Math.min(300000, Math.floor((cache.deadline === undefined ? cache.expiresAt - time() : cache.deadline - monotonic()))));
+        }
+        return { getConfiguration, getLeaseRemainingMs, invalidate };
     }
     return { createProvider };
 });

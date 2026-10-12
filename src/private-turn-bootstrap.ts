@@ -2,7 +2,7 @@ interface PrivateTurnBootstrapAuth {
     currentUser: PrivateTurnUser | null;
     onAuthStateChanged(callback: (user: PrivateTurnUser | null) => void): () => void;
 }
-interface PrivateTurnBootstrapSession { pc: unknown; channel?: unknown; close(...args: unknown[]): void; }
+interface PrivateTurnBootstrapSession { pc: unknown; channel?: unknown; close(...args: unknown[]): void; getLeaseRemainingMs?: () => number; }
 interface PrivateTurnBootstrapCore { createRtcSession(options: Record<string, unknown>): Promise<PrivateTurnBootstrapSession>; }
 interface PrivateTurnBootstrapOptions {
     enabled: boolean;
@@ -62,7 +62,7 @@ interface PrivateTurnBootstrapRoot {
     navigator?: { clipboard?: { writeText(value: string): Promise<void> } };
     crypto?: { getRandomValues(value: Uint8Array): Uint8Array };
     SaMiniP2P?: PrivateTurnBootstrapCore;
-    PrivateTurn?: { createProvider(options: PrivateTurnOptions): { getConfiguration(observer?: PrivateTurnObserver): Promise<PrivateTurnConfiguration | null>; invalidate(): void } };
+    PrivateTurn?: { createProvider(options: PrivateTurnOptions): { getConfiguration(observer?: PrivateTurnObserver): Promise<PrivateTurnConfiguration | null>; getLeaseRemainingMs?(): number; invalidate(): void } };
     firebase?: { app(name: string): { auth(): PrivateTurnBootstrapAuth } };
     fetch?: typeof fetch;
 }
@@ -419,9 +419,25 @@ interface PrivateTurnBootstrapRoot {
                         }
                     } catch { /* Unavailable subscription cannot affect RTC. */ }
                 }
+                // Capture this configuration's lease before async factory work; a
+                // concurrent refresh must not lend a newer lease to an older peer.
+                const leaseClock = typeof performance !== 'undefined' ? () => performance.now() : () => Number.POSITIVE_INFINITY;
+                const leaseStarted = leaseClock();
+                const credentialLease = config ? provider.getLeaseRemainingMs?.() ?? 0 : 300000;
                 const session = await original.call(core, config ? { ...observed, ...config } : observed);
                 // Instrumentation is best-effort and cannot reject a successful factory.
                 try { observe(session, record, captured, capturedScope, elapsed, stopSignal); } catch { stopSignal(); }
+                // Separate metadata; never pass it to RTCPeerConnection. Frozen
+                // legacy session objects remain valid, but cannot opt into reuse.
+                try {
+                    session.getLeaseRemainingMs = () => {
+                        try {
+                            guard(captured, capturedScope);
+                            if (!Number.isFinite(leaseStarted)) return 0;
+                            return Math.max(0, Math.floor(Math.min(300000, credentialLease) - (leaseClock() - leaseStarted)));
+                        } catch { return 0; }
+                    };
+                } catch { /* Optional lease metadata cannot reject factory creation. */ }
                 return session;
             } catch (error) {
                 stopSignal(); observations.delete(record.session);

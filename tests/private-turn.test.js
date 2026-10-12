@@ -213,3 +213,61 @@ test('bounded skew allowance preserves the earlier issuer expiry as the cache de
   await f.provider.getConfiguration(); f.advance(4999); await f.provider.getConfiguration(); assert.equal(calls, 1);
   f.advance(1); await f.provider.getConfiguration(); assert.equal(calls, 2);
 });
+
+function issuerFixture(offset = 0, change = {}) {
+  let wall = 1700000000000 + offset, mono = 100, requests = 0;
+  const issued = 1700000000000;
+  const body = { username: 'synthetic-user', credential: 'synthetic-password', ttl: 300, expiresAt: issued + 300000,
+    iceServers: [{ urls: 'turn:turn.test.invalid:3478', username: 'synthetic-user', credential: 'synthetic-password' }] };
+  const options = { enabled: true, origin: 'https://127.0.0.1:9443', contract: { ...contract, clockSource: 'issuer' },
+    getUser: () => ({ uid: 'one', getIdToken: async () => 'synthetic-token' }), now: () => wall, monotonicNow: () => mono,
+    fetcher: async () => { requests++; return Response.json(body, { headers: { 'X-Turn-Issued-Date': new Date(issued).toUTCString() } }); }, ...change };
+  const provider = Turn.createProvider(options);
+  return { provider, body, requests: () => requests, wall: v => { wall += v; }, advance: v => { mono += v; } };
+}
+for (const offset of [-1800000, 1800000]) test(`issuer clock accepts fresh credentials at offset ${offset} without extending lease`, async () => {
+  const f = issuerFixture(offset); assert.ok(await f.provider.getConfiguration()); assert.equal(f.provider.getLeaseRemainingMs(), 299000);
+  f.wall(-3600000); f.advance(299000); assert.equal(f.provider.getLeaseRemainingMs(), 0);
+});
+for (const offset of [-1800001, 1800001]) test(`issuer clock rejects offset ${offset}`, async () => {
+  const f = issuerFixture(offset), events = []; await assert.rejects(f.provider.getConfiguration(e => events.push(e)), /TURN_INVALID_RESPONSE/);
+  assert.equal(events.at(-1).detail, 'CLOCK_SKEW_EXCEEDED');
+});
+for (const header of [null, 'invalid', 'Mon, 12 Oct 2026 00:00:00 GMT, Mon, 12 Oct 2026 00:00:00 GMT']) test(`issuer requires a single canonical Date: ${header}`, async () => {
+  let f; f = issuerFixture(0, { fetcher: async () => Response.json(f.body, { headers: header ? { 'X-Turn-Issued-Date': header } : {} }) });
+  await assert.rejects(f.provider.getConfiguration(), /TURN_INVALID_RESPONSE/);
+});
+test('issuer-expired response is rejected even when client is thirty minutes behind', async () => {
+  const f = issuerFixture(-1800000); f.body.expiresAt -= 301000; await assert.rejects(f.provider.getConfiguration(), /TURN_INVALID_RESPONSE/);
+});
+test('issuer monotonic cache ignores wall clock jumps and expires with elapsed time', async () => {
+  const f = issuerFixture(); await f.provider.getConfiguration(); f.wall(86400000); await f.provider.getConfiguration(); assert.equal(f.requests(), 1);
+  f.wall(-172800000); f.advance(299000); assert.equal(f.provider.getLeaseRemainingMs(), 0);
+});
+test('issuer request delay reduces remaining lease', async () => {
+  let f; f = issuerFixture(0, { fetcher: async () => { f.advance(4000); return Response.json(f.body, { headers: { 'X-Turn-Issued-Date': new Date(1700000000000).toUTCString() } }); } });
+  await f.provider.getConfiguration(); assert.equal(f.provider.getLeaseRemainingMs(), 295000);
+  f.provider.invalidate(); assert.equal(f.provider.getLeaseRemainingMs(), 0);
+});
+test('lease getter returns zero without credentials and guest never requests auth', async () => {
+  const f = issuerFixture(0, { getUser: () => null }); assert.equal(f.provider.getLeaseRemainingMs(), 0); assert.equal(await f.provider.getConfiguration(), null); assert.equal(f.requests(), 0);
+});
+
+test('issuer Date precision allowance does not increase advertised TTL reuse', async () => {
+  const f = issuerFixture(); f.body.expiresAt += 1000; await f.provider.getConfiguration(); assert.equal(f.provider.getLeaseRemainingMs(), 299000);
+  const invalid = issuerFixture(); invalid.body.expiresAt += 1001; await assert.rejects(invalid.provider.getConfiguration(), /TURN_INVALID_RESPONSE/);
+});
+test('issuer mode still rejects TTL above five minutes', async () => {
+  const f = issuerFixture(); f.body.ttl = 301; await assert.rejects(f.provider.getConfiguration(), /TURN_INVALID_RESPONSE/);
+});
+test('issuer body-reading delay is reserved before accepting near-expiry credentials', async () => {
+  let f;
+  f = issuerFixture(0, { fetcher: async () => new Response(new ReadableStream({ start(controller) {
+    f.advance(6000); controller.enqueue(new TextEncoder().encode(JSON.stringify(f.body))); controller.close();
+  } }), { headers: { 'Content-Type': 'application/json', 'X-Turn-Issued-Date': new Date(1700000000000).toUTCString() } }) });
+  f.body.expiresAt = 1700000020000;
+  await assert.rejects(f.provider.getConfiguration(), /TURN_INVALID_RESPONSE/);
+});
+test('issuer observer exceptions cannot change credential or lease acquisition', async () => {
+  const f = issuerFixture(); assert.ok(await f.provider.getConfiguration(() => { throw new Error('synthetic-secret'); })); assert.equal(f.provider.getLeaseRemainingMs(), 299000);
+});
