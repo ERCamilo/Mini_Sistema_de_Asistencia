@@ -91,15 +91,20 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
   // once the channel is authenticated). Each offerId is delivered only once.
   function bufferOffers(channel: ConsentChannel, core: ConsentCore) {
     const seen = new Set<string>();
+    const pending = new Set<string>();
+    let detached = false;
+    const MAX_OFFERS = 64;
     const queued: ConsentOffer[] = [];
     let handler: OfferHandler | null = null;
 
     const deliver = (offer: ConsentOffer) => {
+      if (detached) return;
       if (!handler) { queued.push(offer); return; }
       let answered = false;
       handler(offer, accepted => {
-        if (answered) return;
+        if (answered || detached) return;
         answered = true;
+        pending.delete(offer.offerId);
         try {
           core.sendControl(channel, 'backup-offer-reply', { offerId: offer.offerId, accepted });
         } catch (error) {
@@ -111,18 +116,32 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
       const control = safeParse(core, event.data);
       if (!control || control.type !== 'backup-offer') return;
       const offer = control.data as ConsentOffer;
-      if (seen.has(offer.offerId)) return;
+      if (detached || seen.has(offer.offerId)) return;
+      if (seen.size >= MAX_OFFERS) {
+        // Keep unanswered offers pinned so they cannot be redelivered.
+        const answeredId = [...seen].find(id => !pending.has(id));
+        if (answeredId !== undefined) seen.delete(answeredId);
+        else {
+          try { core.sendControl(channel, 'backup-offer-reply', { offerId: offer.offerId, accepted: false }); } catch { /* Safe rejection. */ }
+          return;
+        }
+      }
       seen.add(offer.offerId);
+      pending.add(offer.offerId);
       deliver(offer);
     };
     channel.addEventListener('message', onMessage);
     return {
       release(onOffer: OfferHandler) {
+        if (detached) return;
         handler = onOffer;
         for (const offer of queued.splice(0)) deliver(offer);
       },
       detach() {
+        detached = true;
         handler = null;
+        seen.clear();
+        pending.clear();
         queued.length = 0;
         channel.removeEventListener('message', onMessage);
       }

@@ -58,6 +58,7 @@ const PRECACHE_ASSETS = [
   './sa-roster-version-guard.js',
   './mini-notice.js',
   './mini-notice.css',
+  './mini-peer-session-manager.js',
   './p2p-backup-consent.js',
   './mini-backup-summary.js',
   './mini-backup-review.js',

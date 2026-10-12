@@ -111,3 +111,15 @@ test('requestConsent resends the offer until the receiver answers (slow handshak
   const offersSent = sender.sent.map(frame => Core.parseControl(frame)).filter(frame => frame && frame.type === 'backup-offer');
   assert.ok(offersSent.length >= 2, 'offer was resent');
 });
+
+test('persistent offer inbox bounds unanswered offers and retired responses cannot send', async () => {
+  const [sender, receiver] = linkedPair();
+  const inbox = Consent.bufferOffers(receiver, Core);
+  for (let i = 0; i < 80; i++) Core.sendControl(sender, 'backup-offer', { ...offer, offerId: 'bounded-' + i });
+  await new Promise(resolve => setImmediate(resolve));
+  let delivered = 0, respond;
+  inbox.release((_offer, reply) => { delivered++; respond = reply; });
+  assert.ok(delivered <= 64);
+  const before = receiver.sent.length; inbox.detach(); respond(true);
+  assert.equal(receiver.sent.length, before);
+});

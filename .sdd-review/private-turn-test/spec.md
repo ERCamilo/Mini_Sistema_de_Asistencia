@@ -281,3 +281,29 @@ update, and physical-device acceptance remain pending.
 
 ## Issuer-relative private credential lifetime
 Private development bootstrap requires clockSource issuer and X-Turn-Issued-Date carrying the validated upstream RFC1123 Date. Missing, duplicate or malformed issuer dates are rejected without a proxy-clock fallback. Client clock offsets up to thirty minutes are accepted only as clock policy; expiry is checked against issuer time and TTL (maximum 300 seconds), with request/body elapsed time and a one-second precision reserve subtracted. Cache and lease use monotonic deadlines; the existing15-second refresh margin applies only to new configuration acquisition. The separately exposed peer lease reports the actual conservative deadline (at most299seconds for a fresh300-second credential), not the early-refresh margin. Exactly1000ms of issuer Date second-resolution discrepancy is permitted above TTL, but effective reuse remains capped by advertised TTL and subtracts that same precision reserve. Browser wall-clock changes cannot extend reuse. Legacy contract callers retain client-relative behavior. Lease metadata is exposed separately from standard RTCIceServer/RTCConfiguration fields for the next peer-reuse unit. Guests request no credentials and have a maximum proposed peer lease of five minutes.
+
+## Unit B: fixed reusable Mini peer connection (pending activation)
+
+Linked Mini backup peers elect exactly one initiator by comparing their already
+known device identifiers in memory. Inbox startup establishes a shared transport;
+this is proactive connection establishment, not automatic attendance sync. One
+trusted handshake releases the offer inbox. The channel supports either direction,
+while every backup still requires a new offer decision and validated staged ACK.
+Outgoing operations are queued locally; an incoming offer is declined when an
+incoming decision/receiver or outgoing operation already owns the channel.
+
+The transport lease has a fixed monotonic maximum of 300000ms from setup start,
+and is capped by the original credential's conservative remaining lifetime.
+Sending, receiving, foreground refresh and modal cleanup never extend that bound.
+Credential/account invalidation is checked at most one second later; explicit
+unlink stops the owner immediately. Expiry retires only that owner and rejects
+queued operations. Existing failure retry ownership guards remain in force.
+Offer history is bounded to 64 entries without evicting unanswered offers; lease
+cleanup clears the history and disables late reply callbacks.
+
+Acceptance is not yet complete after both endpoints expire: with no silent
+renewal and no signaling standby, a new one-sided send cannot awaken an endpoint
+whose inbox has retired. Both inboxes need renewed demand. A carefully owned,
+credential-free signaling standby and buffered event replay may address this
+without changing the signaling protocol; that behavior needs explicit parent
+scope selection and regression/browser proof before activation.

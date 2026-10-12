@@ -30,7 +30,8 @@ test('backup receiver rejects a transfer that does not match the accepted offer'
 test('consent is used with Mini peers while SA keeps the direct protocol', () => {
   const send = between('async function sendBackupToPeer', 'async function waitBackupTransfer');
   assert.match(send, /peer\.peerApp !== 'mini' \? 'accepted' : await root\.P2PBackupConsent\.requestConsent/);
-  assert.match(send, /stopMiniBackupListener\(peerId\)/);
+  assert.match(send, /entry\.lease\.run/);
+  assert.doesNotMatch(send, /stopMiniBackupListener\(peerId\)/);
   const hub = between('async function renderBackupHub', 'async function renderBackupPairing');
   assert.match(hub, /isMini \? '' : uiButton\('Esperar'/);
 });
@@ -55,9 +56,8 @@ test('the Mini inbox heals itself: modal close, foreground return and a watchdog
   assert.match(between('async function startPassiveInbox', 'function stopPeerListener'), /startMiniBackupInbox\(\)/);
   assert.match(ui, /addEventListener\('visibilitychange'[\s\S]{0,200}refreshMiniBackupInbox/);
   const refresh = between('function refreshMiniBackupInbox', 'async function startMiniBackupInbox');
-  assert.match(refresh, /MINI_BACKUP_MAX_AGE_MS/);
-  assert.match(refresh, /readyState/);
-  assert.match(refresh, /activeTransferPeerId/);
+  assert.match(refresh, /entry\.lease\?\.valid/);
+  assert.doesNotMatch(refresh, /stopMiniBackupListener|ensureMiniBackupListener|MAX_AGE/);
 });
 
 test('received Mini backups are reviewed with cards, not raw JSON, and restore via the shared path', () => {
@@ -111,6 +111,7 @@ test('sender setup failure rearms only its owner and never exposes provider erro
     const peer = { peerId: 'same-peer', linkToken: 'test', peerApp: 'mini' };
     const ctx = { activeSendAttempt: null, activeSession: null, activeChannel: null, activeManualPeerId: null, inFlightSendNotice: null,
       cleanupSession() { ctx.activeSendAttempt = null; }, stopMiniBackupListener() {}, shell() {},
+      isMiniBackupPeer: () => true, ensureMiniBackupListener: async () => ({ lease: { run() { entered(); return pending; } } }),
       identityStore: { getSelf: async () => ({ deviceId: 'test' }), getPeer: async () => peer },
       peerName: () => 'Mini', morphShell(fn) { fn(); }, body: () => ({ innerHTML: '', querySelector: () => box }),
       backButton: () => '', vectorIcon: () => '', esc: x => x, secondary: () => '', notices: () => ({ show: () => notice }),
@@ -133,6 +134,7 @@ function inboxHarness(overrides = {}) {
   const timers = [], options = [], sessions = [], signals = [], handshakes = [];
   let detached = 0, released = 0, prompted = 0;
   const ctx = {
+    peerSessionManager: () => require('../mini-peer-session-manager.js').create({ now: () => 0, schedule: () => ({}), cancel() {} }),
     miniBackupListeners: new Map(), MINI_BACKUP_BACKOFF_MS: [1500, 5000], activeManualPeerId: null,
     isNetworkOnline: () => true, isMiniBackupPeer: () => true,
     identityStore: { getSelf: async () => ({ deviceId: 'self' }) },
@@ -149,7 +151,7 @@ function inboxHarness(overrides = {}) {
     clearTimeout(timer) { timer.cancelled = true; }
   };
   Object.assign(ctx, overrides);
-  vm.runInNewContext(between('function stopMiniBackupListener', '// Phones freeze sockets') +
+  vm.runInNewContext(between('function stopMiniBackupListener', '// A live lease') +
     '; this.ensure = ensureMiniBackupListener; this.stop = stopMiniBackupListener;', ctx);
   return { ctx, timers, options, sessions, signals, handshakes,
     counts: () => ({ detached, released, prompted }) };
@@ -234,4 +236,68 @@ test('retired receiver consent actions and expiry cannot arm or respond on an ob
     if (action === 'accept') shown.actions[1].onSelect(); else expiry();
     assert.equal(armed, 0); assert.equal(responded, 0); assert.equal(dismissed, 1);
   }
+});
+
+test('shared Mini inbox elects one initiator, authenticates once and reuses the session', async () => {
+  for (const selfId of ['a', 'z']) {
+    const h = inboxHarness({ identityStore: { getSelf: async () => ({ deviceId: selfId }) } });
+    const entry = await h.ctx.ensure(inboxPeer);
+    assert.equal(h.options[0].initiator, selfId < inboxPeer.peerId);
+    const channel = { readyState: 'open', close() {} };
+    h.options[0].onChannel(channel); h.handshakes[0].onAuthenticated();
+    for (let i = 0; i < 6; i++) {
+      const repeated = await h.ctx.ensure(inboxPeer);
+      assert.equal(repeated, entry); assert.equal(repeated.session, h.sessions[0]);
+      await repeated.lease.run(async value => assert.equal(value, channel));
+    }
+    assert.equal(h.options.length, 1); assert.equal(h.handshakes.length, 1);
+    assert.equal(h.sessions[0].closed, 0); h.ctx.stop(inboxPeer.peerId);
+    assert.equal(h.sessions[0].closed, 1);
+  }
+});
+
+test('incoming offer cannot replace a pending notice, receiver or outgoing operation', () => {
+  const vm = require('node:vm');
+  for (const busy of ['incoming', 'outgoing']) {
+    let replied, shown = 0;
+    const entry = { busy: busy === 'incoming', lease: { busy: () => busy === 'outgoing' } };
+    const ctx = { notices: () => ({ show() { shown++; } }) };
+    vm.runInNewContext(between('function promptIncomingBackup', 'function stopMiniBackupListener') + '; this.prompt = promptIncomingBackup;', ctx);
+    ctx.prompt(inboxPeer, {}, value => { replied = value; }, {}, entry);
+    assert.equal(replied, false); assert.equal(shown, 0);
+  }
+});
+
+test('foreground refresh and modal cleanup do not retire a valid shared lease', () => {
+  const vm = require('node:vm'); let checked = 0, retired = 0;
+  const ctx = { isNetworkOnline: () => true, miniBackupListeners: new Map([['peer', { lease: { valid() { checked++; return true; }, retire() { retired++; } } }]]) };
+  vm.runInNewContext(between('function refreshMiniBackupInbox', 'async function startMiniBackupInbox') + '; this.refresh = refreshMiniBackupInbox;', ctx);
+  ctx.refresh(true); ctx.refresh(false);
+  assert.equal(checked, 2); assert.equal(retired, 0);
+  assert.doesNotMatch(between('function cleanupSession', 'function closeTransferModal'), /miniBackupListeners|stopMiniBackupListener|lease/);
+});
+
+test('actual sender reuses one Mini lease for six consented acknowledged sends without close', async () => {
+  const vm = require('node:vm'), Manager = require('../mini-peer-session-manager.js');
+  let closed = 0, consented = 0, transferred = 0;
+  const channel = { readyState: 'open' }, session = { close() { closed++; } };
+  const lease = Manager.create({ now: () => 0, schedule: () => ({}), cancel() {} }).lease(session, 0, () => {});
+  lease.ready(channel);
+  const entry = { lease, busy: false }, peer = { ...inboxPeer };
+  const box = { classList: { add() {}, remove() {} }, addEventListener() {} };
+  const ctx = { activeSendAttempt: null, activeSession: null, activeChannel: null, activeManualPeerId: null, inFlightSendNotice: null,
+    cleanupSession() { ctx.activeSendAttempt = null; }, shell() {},
+    identityStore: { getSelf: async () => ({ deviceId: 'self', displayName: 'Mini' }), getPeer: async () => peer },
+    peerName: () => 'Mini', morphShell(fn) { fn(); }, body: () => ({ innerHTML: '', querySelector: () => box }),
+    backButton: () => '', vectorIcon: () => '', esc: x => x, secondary: () => '', notices: () => null,
+    isMiniBackupPeer: () => true, ensureMiniBackupListener: async () => entry,
+    statusMessage: () => 'Sent', recordP2PActivity() {}, signalTerminalSuccess() {}, core: {},
+    root: { P2PBackupConsent: { createOfferId: () => 'offer-' + consented, requestConsent: async value => { assert.equal(value, channel); consented++; return 'accepted'; } },
+      SaMiniP2PBackup: { createMiniBackupPayload: async () => ({ size: 1, bytes: new Uint8Array([1]), sha256: 'test' }),
+        sendBackupOnChannel: async value => { assert.equal(value, channel); transferred++; return { transfer: {}, ack: {} }; } } },
+    backupSizeLabel: () => '1 byte', startMiniBackupInbox: async () => {} };
+  vm.runInNewContext(between('async function sendBackupToPeer', 'async function waitBackupTransfer') + '; this.send = sendBackupToPeer;', ctx);
+  for (let i = 0; i < 6; i++) await ctx.send(peer.peerId);
+  assert.equal(consented, 6); assert.equal(transferred, 6); assert.equal(closed, 0);
+  assert.equal(ctx.activeSession, null); assert.equal(entry.lease, lease);
 });

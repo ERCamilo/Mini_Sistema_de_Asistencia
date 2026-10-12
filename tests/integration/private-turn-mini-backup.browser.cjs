@@ -9,7 +9,7 @@ const { X509Certificate, createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { browserLaunchReason } = require('./private-turn.browser.cjs');
 const ROOT = path.resolve(__dirname, '../..');
-const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js'];
+const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js'];
 let phase = 'CAPABILITY';
 async function main() {
   assert.ok(process.env.PLAYWRIGHT_MODULE); assert.ok(process.env.PRIVATE_TURN_TOOL_OUTPUT);
@@ -32,7 +32,7 @@ async function main() {
     for (const name of [...modules, 'firebase-field-config.js']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
     await fs.writeFile(path.join(fixture, 'index.html'), '<html><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
     phase = 'BROWSER_LAUNCH';
-    try { browser = await chromium.launch({ args: ['--ignore-certificate-errors-spki-list=' + spki, '--disable-background-networking'] }); }
+    try { browser = await chromium.launch({ chromiumSandbox: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}), args: ['--ignore-certificate-errors-spki-list=' + spki, '--disable-background-networking'] }); }
     catch (error) { phase += '_' + browserLaunchReason(error); throw new Error('BROWSER_UNAVAILABLE'); }
     const ports = new Set();
     async function pageFor(forceRelay) {
@@ -96,8 +96,14 @@ async function main() {
     assert.equal(await pages[0].evaluate(() => window.candidate.sas), await pages[1].evaluate(() => window.candidate.sas));
     for (const page of pages) await page.evaluate(() => window.candidate.accept());
     for (const page of pages) { await page.waitForFunction(() => !!window.peer || window.failure); assert.deepEqual(await page.evaluate(() => ({ failed: window.failure, authenticated: window.SaMiniP2P.isChannelAuthenticated(window.channel), purpose: window.peer.purpose, app: window.peer.peerApp, connected: window.session.pc.connectionState })), { failed: false, authenticated: true, purpose: 'backup', app: 'mini', connected: 'connected' }); }
+    for (const page of pages) await page.evaluate(() => {
+      window.leaseClock = 0;
+      window.sharedLease = window.MiniPeerSessionManager.create({ now: () => window.leaseClock }).lease(window.session, 0, () => { window.leaseRetired = true; });
+      window.sharedLease.ready(window.channel);
+      window.originalChannel = window.channel;
+    });
     phase = 'CONSENT_DECLINE';
-    await pages[1].evaluate(() => { window.acceptOffer = false; window.offerInbox.release((offer, reply) => {
+    for (const page of pages) await page.evaluate(() => { window.acceptOffer = false; window.offerInbox.release((offer, reply) => {
       if (window.acceptOffer) {
         const core = window.SaMiniP2P, bridge = window.SaMiniP2PBackup;
         const receiver = core.createTransferReceiver({ channel: window.channel, onError: () => { window.failure = true; }, onComplete(result) { const staged = window.stageStore.stageBackup({ ...result, sourceApp: 'mini', sourcePeerId: window.peer.peerId, sourcePeerName: window.peer.displayName }); bridge.sendBackupStagedAck(window.channel, { transferId: result.transferId, sha256: result.sha256, schema: result.schema }); } });
@@ -111,14 +117,15 @@ async function main() {
       }
       reply(window.acceptOffer);
     }); });
-    async function sendBackup() { return pages[0].evaluate(async () => {
+    async function sendBackup(from = 0) { return pages[from].evaluate(async () => window.sharedLease.run(async channel => {
+      if (channel !== window.originalChannel) throw Error('CHANNEL_REPLACED');
       const core = window.SaMiniP2P, bridge = window.SaMiniP2PBackup;
       const payload = await bridge.createMiniBackupPayload(); window.payload = payload;
       const decision = await window.P2PBackupConsent.requestConsent(window.channel, core, { offerId: window.P2PBackupConsent.createOfferId(), schema: 'mini-backup/v1', size: payload.size, senderName: 'Synthetic Mini 1' }, { timeoutMs: 10000 });
       if (decision !== 'accepted') return { decision, sent: false };
       await bridge.sendBackupOnChannel(window.channel, { bytes: payload.bytes, schema: 'mini-backup/v1', timeoutMs: 10000 });
       return { decision, sent: true, size: payload.size, sha256: payload.sha256, expectedText: payload.json };
-    }); }
+    })); }
     assert.deepEqual(await sendBackup(), { decision: 'declined', sent: false });
     assert.deepEqual(await pages[1].evaluate(() => ({ count: window.stageStore.getPendingCount(), unchanged: JSON.stringify(window.data) === window.beforeData })), { count: 0, unchanged: true });
     phase = 'CONSENT_ACCEPT_AND_STAGE'; await pages[1].evaluate(() => { window.acceptOffer = true; }); const sent = await sendBackup();
@@ -137,9 +144,21 @@ async function main() {
       assert.equal(repeated.decision, 'accepted'); assert.equal(repeated.sent, true);
     }
     assert.deepEqual(await pages[1].evaluate(() => ({ count: window.stageStore.getPendingCount(), unchanged: JSON.stringify(window.data) === window.beforeData, failed: window.failure })), { count: 1, unchanged: true, failed: false });
+    phase = 'BIDIRECTIONAL_REUSE';
+    await pages[0].evaluate(() => { window.acceptOffer = true; });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const repeated = await sendBackup(1);
+      assert.equal(repeated.decision, 'accepted'); assert.equal(repeated.sent, true);
+    }
+    for (const page of pages) assert.deepEqual(await page.evaluate(() => ({ sameChannel: window.channel === window.originalChannel, connected: window.session.pc.connectionState, authenticated: window.SaMiniP2P.isChannelAuthenticated(window.channel) })), { sameChannel: true, connected: 'connected', authenticated: true });
+    phase = 'FIXED_LEASE_EXPIRY';
+    for (const page of pages) {
+      assert.equal(await page.evaluate(() => { window.leaseClock = 300000; return window.sharedLease.valid(); }), false);
+      assert.equal(await page.evaluate(() => window.leaseRetired === true), true);
+    }
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
-    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 3, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
+    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
   } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });
