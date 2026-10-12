@@ -30,7 +30,7 @@ interface PrivateTurnBootstrapDiagnostic {
 }
 interface PrivateTurnBootstrapEvent {
     stage: PrivateTurnDiagnostic['stage'] | 'auth' | 'rtc' | 'relay' | 'app' | 'channel' | 'signal';
-    code: PrivateTurnDiagnostic['code'] | 'AUTH_START' | 'AUTH_SIGNED_IN' | 'AUTH_GUEST' | 'AUTH_FAILED' | 'RTC_START' | 'RTC_STATE' | 'RTC_FAILED' | 'ICE_ERROR' | 'RELAY_VERIFIED' | 'RELAY_UNMEASURED' | 'LOCAL_CLOSE' | 'RTC_CLOSED' | 'APP_ERROR' | 'APP_CONNECTED' | 'APP_CONNECTING' | 'APP_DISCONNECTED' | 'APP_FAILED' | 'APP_CLOSED' | 'APP_OTHER' | 'APP_PAIR_EXPIRED' | 'APP_ICE_UNAVAILABLE' | 'APP_CONNECTION_UNAVAILABLE' | 'APP_CHANNEL_FAILED' | 'APP_CHANNEL_CLOSED' | 'CHANNEL_STATE' | 'CHANNEL_OPEN' | 'CHANNEL_CLOSE' | 'CHANNEL_ERROR' | 'SIGNAL_PEER_LEFT' | 'SIGNAL_SOCKET_CLOSED' | 'SIGNAL_SOCKET_ERROR' | 'SIGNAL_ERROR';
+    code: PrivateTurnDiagnostic['code'] | 'AUTH_START' | 'AUTH_SIGNED_IN' | 'AUTH_GUEST' | 'AUTH_FAILED' | 'RTC_START' | 'RTC_STATE' | 'RTC_FAILED' | 'ICE_ERROR' | 'RELAY_VERIFIED' | 'RELAY_UNMEASURED' | 'LOCAL_CLOSE' | 'RTC_CLOSED' | 'APP_ERROR' | 'APP_CONNECTED' | 'APP_CONNECTING' | 'APP_DISCONNECTED' | 'APP_FAILED' | 'APP_CLOSED' | 'APP_OTHER' | 'APP_PAIR_EXPIRED' | 'APP_ICE_UNAVAILABLE' | 'APP_CONNECTION_UNAVAILABLE' | 'APP_CHANNEL_FAILED' | 'APP_CHANNEL_CLOSED' | 'CHANNEL_STATE' | 'CHANNEL_OPEN' | 'CHANNEL_CLOSE' | 'CHANNEL_ERROR' | 'SIGNAL_PEER_LEFT' | 'SIGNAL_SOCKET_CLOSED' | 'SIGNAL_SOCKET_ERROR' | 'SIGNAL_ERROR' | 'TRANSPORT_STATE';
     elapsedMs: number;
     httpStatus?: number;
     sdkCode?: PrivateTurnDiagnostic['sdkCode'];
@@ -39,6 +39,8 @@ interface PrivateTurnBootstrapEvent {
     rtcState?: string;
 }
 interface PrivateTurnBootstrapPeer {
+    sctp?: { state?: string; transport?: { state?: string } } | null;
+    getStats?(): Promise<{ forEach(callback: (value: { type?: string; dtlsState?: string; iceState?: string }) => void): void }>;
     connectionState?: string;
     iceConnectionState?: string;
     iceGatheringState?: string;
@@ -183,6 +185,34 @@ interface PrivateTurnBootstrapRoot {
             if (!pc || typeof pc !== 'object') { stopSignal(); observations.delete(record.session); return; }
             let stopped = false, running = false, retry = 0, timer: ReturnType<typeof setTimeout> | undefined;
             const originalClose = session.close;
+            let transportRunning = false, transportReads = 0, lastTransportRead = -Infinity;
+            function transportState(): void {
+                if (!valid()) return;
+                try {
+                    append(record, { stage: 'rtc', code: 'TRANSPORT_STATE', elapsedMs: elapsed(),
+                        rtcState: 'SCTP=' + enumState(pc?.sctp?.state, ['connecting', 'connected', 'closed']) +
+                            ' DTLS=' + enumState(pc?.sctp?.transport?.state, ['new', 'connecting', 'connected', 'closed', 'failed']) });
+                } catch { /* Native transport access is diagnostic-only. */ }
+            }
+            async function transportStats(): Promise<void> {
+                const stamp = elapsed();
+                if (!valid() || transportRunning || transportReads >= 4 || stamp - lastTransportRead < 1000 || typeof pc?.getStats !== 'function') return;
+                transportRunning = true; transportReads++; lastTransportRead = stamp;
+                try {
+                    const stats = await pc.getStats();
+                    if (!valid()) return;
+                    // One fixed state summary per read; never retain raw stats or identifiers.
+                    let found = false;
+                    stats.forEach(row => {
+                        if (found || row.type !== 'transport') return;
+                        found = true;
+                        append(record, { stage: 'rtc', code: 'TRANSPORT_STATE', elapsedMs: elapsed(),
+                            rtcState: 'stats DTLS=' + enumState(row.dtlsState, ['new', 'connecting', 'connected', 'closed', 'failed']) +
+                                ' ICE=' + enumState(row.iceState, ['new', 'checking', 'connected', 'completed', 'disconnected', 'failed', 'closed']) });
+                    });
+                } catch { /* Failed stats cannot alter the connection or close outcome. */ }
+                finally { transportRunning = false; }
+            }
             const channels = new Map<PrivateTurnBootstrapChannel, () => void>();
             function watchChannel(value: unknown): void {
                 if (!valid() || !value || typeof value !== 'object') return;
@@ -218,7 +248,7 @@ interface PrivateTurnBootstrapRoot {
                 observations.delete(record.session);
             }
             function close(...args: unknown[]): void {
-                if (valid()) { append(record, { stage: 'rtc', code: 'LOCAL_CLOSE', elapsedMs: elapsed() }); record.connection = 'closed'; publish(record); }
+                if (valid()) { transportState(); append(record, { stage: 'rtc', code: 'LOCAL_CLOSE', elapsedMs: elapsed() }); record.connection = 'closed'; publish(record); }
                 stop(); originalClose.apply(session, args);
             }
             async function measure(): Promise<void> {
@@ -244,6 +274,8 @@ interface PrivateTurnBootstrapRoot {
                 record.signaling = enumState(pc?.signalingState, ['stable', 'have-local-offer', 'have-remote-offer', 'have-local-pranswer', 'have-remote-pranswer', 'closed']);
                 record.localDescription = Boolean(pc?.localDescription); record.remoteDescription = Boolean(pc?.remoteDescription);
                 append(record, { stage: 'rtc', code: 'RTC_STATE', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice + ' gathering=' + record.gathering + ' signaling=' + record.signaling + ' local=' + record.localDescription + ' remote=' + record.remoteDescription });
+                transportState();
+                if (record.connection === 'connecting') void transportStats();
                 if (record.connection === 'closed' || record.connection === 'failed') { append(record, { stage: 'rtc', code: 'RTC_CLOSED', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice }); stop(); return; }
                 void measure();
             }

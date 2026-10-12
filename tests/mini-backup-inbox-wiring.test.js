@@ -84,7 +84,8 @@ test('completed transfer timer cannot clear or rearm a newer transfer', () => {
   for (const newer of [false, true]) {
     let callback, closed = 0, rearmed = 0;
     const owner = { close() { closed++; } }, next = {};
-    const context = { activeSession: owner, activeChannel: 'old', activeManualPeerId: 'old',
+    const attempt = {};
+    const context = { attempt, activeSendAttempt: attempt, activeSession: owner, activeChannel: 'old', activeManualPeerId: 'old',
       setTimeout(fn, delay) { assert.equal(delay, 1500); callback = fn; },
       startMiniBackupInbox() { rearmed++; return Promise.resolve(); } };
     vm.runInNewContext(snippet, context);
@@ -95,5 +96,34 @@ test('completed transfer timer cannot clear or rearm a newer transfer', () => {
     assert.equal(context.activeSession, newer ? next : null);
     assert.equal(context.activeChannel, newer ? 'new' : null);
     assert.equal(context.activeManualPeerId, newer ? 'new' : null);
+  }
+});
+
+test('sender setup failure rearms only its owner and never exposes provider errors', async () => {
+  const vm = require('node:vm');
+  const source = between('async function sendBackupToPeer', 'async function waitBackupTransfer');
+  for (const stale of [false, true]) {
+    let reject, entered, rearmed = 0, dismissed = 0;
+    const ready = new Promise(r => { entered = r; });
+    const pending = new Promise((_r, r) => { reject = r; });
+    const box = { classList: { add() {} }, textContent: '', addEventListener() {} };
+    const notice = { dismiss() { dismissed++; }, update(value) { box.textContent = value.description; } };
+    const peer = { peerId: 'same-peer', linkToken: 'test', peerApp: 'mini' };
+    const ctx = { activeSendAttempt: null, activeSession: null, activeChannel: null, activeManualPeerId: null, inFlightSendNotice: null,
+      cleanupSession() { ctx.activeSendAttempt = null; }, stopMiniBackupListener() {}, shell() {},
+      identityStore: { getSelf: async () => ({ deviceId: 'test' }), getPeer: async () => peer },
+      peerName: () => 'Mini', morphShell(fn) { fn(); }, body: () => ({ innerHTML: '', querySelector: () => box }),
+      backButton: () => '', vectorIcon: () => '', esc: x => x, secondary: () => '', notices: () => ({ show: () => notice }),
+      root: { SaMiniP2PBackup: { createMiniBackupPayload: async () => ({}) } },
+      core: { deriveTrustedRoute: async () => ({}), SignalingClient: class { close() {} }, createRtcSession() { entered(); return pending; } },
+      startMiniBackupInbox() { rearmed++; return Promise.resolve(); } };
+    vm.runInNewContext(source + '; this.send = sendBackupToPeer;', ctx);
+    const sending = ctx.send('same-peer'); await ready;
+    const newer = {}; if (stale) { ctx.activeSendAttempt = newer; ctx.activeSession = newer; ctx.activeChannel = newer; }
+    reject(new Error('synthetic-secret-provider-error')); await sending;
+    assert.equal(rearmed, stale ? 0 : 1); assert.equal(dismissed, stale ? 0 : 1);
+    assert.equal(ctx.activeSession, stale ? newer : null); assert.equal(ctx.activeChannel, stale ? newer : null);
+    assert.equal(ctx.activeManualPeerId, stale ? 'same-peer' : null);
+    assert.doesNotMatch(box.textContent, /synthetic-secret/);
   }
 });

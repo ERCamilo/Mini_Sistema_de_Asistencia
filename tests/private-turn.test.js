@@ -169,7 +169,7 @@ for (const [label, mutate, detail] of [
   ['expiry unsafe', b => ({ ...b, expiresAt: Number.MAX_SAFE_INTEGER }), 'EXPIRY_BEYOND_TTL'],
   ['near stale expiry', b => ({ ...b, expiresAt: b.expiresAt - 285000 }), 'EXPIRY_TOO_EARLY'],
   ['expired', b => ({ ...b, expiresAt: b.expiresAt - 400000 }), 'EXPIRY_TOO_EARLY'],
-  ['client two seconds behind', b => ({ ...b, expiresAt: b.expiresAt + 2000 }), 'EXPIRY_BEYOND_TTL'],
+  ['skew beyond five seconds', b => ({ ...b, expiresAt: b.expiresAt + 5001 }), 'EXPIRY_BEYOND_TTL'],
   ['ICE array', b => ({ ...b, iceServers: [] }), 'ICE_SERVERS_INVALID'],
   ['ICE record', b => ({ ...b, iceServers: [null] }), 'ICE_SERVER_INVALID'],
   ['ICE fields', b => ({ ...b, iceServers: [{ ...b.iceServers[1], secret: 'synthetic-secret' }] }), 'ICE_FIELDS_INVALID'],
@@ -197,4 +197,19 @@ test('unix seconds multiplication overflow and invalid ISO use distinct expiry d
     await assert.rejects(f.provider.getConfiguration(e => events.push(e)), /TURN_INVALID_RESPONSE/);
     assert.equal(events.at(-1).detail, detail);
   }
+});
+
+for (const skew of [2000, 5000]) test(`bounded expiry skew ${skew}ms does not extend local cache TTL`, async () => {
+  let calls = 0;
+  const f = fixture({ fetcher: async () => { calls++; return Response.json({ ...f.payload(), expiresAt: f.time() + 300000 + skew }); } });
+  await f.provider.getConfiguration(); f.advance(284999); await f.provider.getConfiguration(); assert.equal(calls, 1);
+  f.advance(1); await f.provider.getConfiguration(); assert.equal(calls, 2);
+  f.provider.invalidate(); await f.provider.getConfiguration(); assert.equal(calls, 3);
+});
+
+test('bounded skew allowance preserves the earlier issuer expiry as the cache deadline', async () => {
+  let calls = 0;
+  const f = fixture({ fetcher: async () => { calls++; return Response.json({ ...f.payload(), expiresAt: f.time() + 20000 }); } });
+  await f.provider.getConfiguration(); f.advance(4999); await f.provider.getConfiguration(); assert.equal(calls, 1);
+  f.advance(1); await f.provider.getConfiguration(); assert.equal(calls, 2);
 });

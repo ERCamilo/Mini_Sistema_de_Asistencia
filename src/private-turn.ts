@@ -99,7 +99,7 @@ interface PrivateTurnFlight {
         }
         if (!Number.isSafeInteger(expiresAt)) invalid('EXPIRY_UNSAFE');
         if (expiresAt <= now + margin) invalid('EXPIRY_TOO_EARLY');
-        if (expiresAt > now + Number(body.ttl) * 1000) invalid('EXPIRY_BEYOND_TTL');
+        if (expiresAt > now + Number(body.ttl) * 1000 + 5000) invalid('EXPIRY_BEYOND_TTL');
         if (!Array.isArray(body.iceServers) || !body.iceServers.length || body.iceServers.length > 8) invalid('ICE_SERVERS_INVALID');
         let hasTurn = false;
         const iceServers = body.iceServers.map((value: unknown): PrivateTurnIceServer => {
@@ -116,7 +116,8 @@ interface PrivateTurnFlight {
             return { urls: Array.isArray(server.urls) ? urls.map(value => value.url) : urls[0].url, ...(isTurn ? { username, credential } : {}) };
         });
         if (!hasTurn) invalid('TURN_SERVER_MISSING');
-        return { expiresAt, config: { iceServers, iceTransportPolicy: policy } };
+        // Tolerate bounded issuer clock skew without extending local credential reuse.
+        return { expiresAt: Math.min(expiresAt, now + Number(body.ttl) * 1000), config: { iceServers, iceTransportPolicy: policy } };
     }
     function createProvider(options: PrivateTurnOptions) {
         const supplied = options.contract;

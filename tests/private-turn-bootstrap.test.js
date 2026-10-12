@@ -369,3 +369,25 @@ test('close diagnostic error reasons are fixed allowlisted classes, never origin
   assert.equal(records.at(-1).events.at(-1).code, 'APP_ERROR'); assert.equal(forwarded, 6);
   handle.dispose();
 });
+
+test('connecting transport states are bounded and preclose snapshot contains no raw stats', async () => {
+  const pc = diagnosticPeer(false);
+  pc.connectionState = 'connecting'; pc.iceConnectionState = 'connected';
+  pc.sctp = { state: 'connecting', transport: { state: 'connecting' } };
+  let calls = 0; pc.getStats = async () => { calls++; return new Map([['secret', { type: 'transport', dtlsState: 'connecting', iceState: 'connected', address: 'secret-address' }]]); };
+  const d = diagnosticFixture(pc); await d.f.root.SaMiniP2P.createRtcSession({}); await flushDiagnostics();
+  for (let i = 0; i < 50; i++) pc.fire('connecting');
+  assert.ok(calls <= 4); assert.ok(d.records.at(-1).events.some(e => e.code === 'TRANSPORT_STATE' && /DTLS=connecting/.test(e.rtcState)));
+  pc.sctp.state = 'closed'; pc.sctp.transport.state = 'failed'; d.session.close();
+  assert.ok(d.records.at(-1).events.some(e => e.code === 'TRANSPORT_STATE' && /SCTP=closed.*DTLS=failed/.test(e.rtcState)));
+  assert.doesNotMatch(JSON.stringify(d.records), /secret-address/); assert.equal(d.records.at(-1).relay, 'unmeasured'); d.handle.dispose();
+});
+
+test('late connecting transport stats cannot revive closed diagnostic history', async () => {
+  const pc = diagnosticPeer(false), pending = deferred();
+  pc.connectionState = 'connecting'; pc.getStats = () => pending.promise;
+  const d = diagnosticFixture(pc); await d.f.root.SaMiniP2P.createRtcSession({});
+  d.session.close(); const count = d.records.length;
+  pending.resolve(new Map([['secret', { type: 'transport', dtlsState: 'connected', iceState: 'connected' }]]));
+  await flushDiagnostics(); assert.equal(d.records.length, count); assert.equal(pc.listenerCount(), 0); d.handle.dispose();
+});

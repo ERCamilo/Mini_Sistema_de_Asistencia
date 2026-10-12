@@ -184,6 +184,45 @@
             }
             let stopped = false, running = false, retry = 0, timer;
             const originalClose = session.close;
+            let transportRunning = false, transportReads = 0, lastTransportRead = -Infinity;
+            function transportState() {
+                var _a, _b, _c;
+                if (!valid())
+                    return;
+                try {
+                    append(record, { stage: 'rtc', code: 'TRANSPORT_STATE', elapsedMs: elapsed(),
+                        rtcState: 'SCTP=' + enumState((_a = pc === null || pc === void 0 ? void 0 : pc.sctp) === null || _a === void 0 ? void 0 : _a.state, ['connecting', 'connected', 'closed']) +
+                            ' DTLS=' + enumState((_c = (_b = pc === null || pc === void 0 ? void 0 : pc.sctp) === null || _b === void 0 ? void 0 : _b.transport) === null || _c === void 0 ? void 0 : _c.state, ['new', 'connecting', 'connected', 'closed', 'failed']) });
+                }
+                catch { /* Native transport access is diagnostic-only. */ }
+            }
+            async function transportStats() {
+                const stamp = elapsed();
+                if (!valid() || transportRunning || transportReads >= 4 || stamp - lastTransportRead < 1000 || typeof (pc === null || pc === void 0 ? void 0 : pc.getStats) !== 'function')
+                    return;
+                transportRunning = true;
+                transportReads++;
+                lastTransportRead = stamp;
+                try {
+                    const stats = await pc.getStats();
+                    if (!valid())
+                        return;
+                    // One fixed state summary per read; never retain raw stats or identifiers.
+                    let found = false;
+                    stats.forEach(row => {
+                        if (found || row.type !== 'transport')
+                            return;
+                        found = true;
+                        append(record, { stage: 'rtc', code: 'TRANSPORT_STATE', elapsedMs: elapsed(),
+                            rtcState: 'stats DTLS=' + enumState(row.dtlsState, ['new', 'connecting', 'connected', 'closed', 'failed']) +
+                                ' ICE=' + enumState(row.iceState, ['new', 'checking', 'connected', 'completed', 'disconnected', 'failed', 'closed']) });
+                    });
+                }
+                catch { /* Failed stats cannot alter the connection or close outcome. */ }
+                finally {
+                    transportRunning = false;
+                }
+            }
             const channels = new Map();
             function watchChannel(value) {
                 var _a;
@@ -253,6 +292,7 @@
             }
             function close(...args) {
                 if (valid()) {
+                    transportState();
                     append(record, { stage: 'rtc', code: 'LOCAL_CLOSE', elapsedMs: elapsed() });
                     record.connection = 'closed';
                     publish(record);
@@ -299,6 +339,9 @@
                 record.localDescription = Boolean(pc === null || pc === void 0 ? void 0 : pc.localDescription);
                 record.remoteDescription = Boolean(pc === null || pc === void 0 ? void 0 : pc.remoteDescription);
                 append(record, { stage: 'rtc', code: 'RTC_STATE', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice + ' gathering=' + record.gathering + ' signaling=' + record.signaling + ' local=' + record.localDescription + ' remote=' + record.remoteDescription });
+                transportState();
+                if (record.connection === 'connecting')
+                    void transportStats();
                 if (record.connection === 'closed' || record.connection === 'failed') {
                     append(record, { stage: 'rtc', code: 'RTC_CLOSED', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice });
                     stop();
