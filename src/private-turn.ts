@@ -33,7 +33,7 @@ interface PrivateTurnDiagnostic {
     elapsedMs: number;
     httpStatus?: number;
     sdkCode?: 'auth/network-request-failed' | 'auth/user-token-expired' | 'auth/invalid-user-token' | 'auth/user-disabled' | 'auth/too-many-requests' | 'auth/internal-error';
-    detail?: 'CONTENT_TYPE_INVALID' | 'BODY_TOO_LARGE' | 'BODY_UNAVAILABLE' | 'JSON_INVALID' | 'CONTRACT_INVALID';
+    detail?: 'CONTENT_TYPE_INVALID' | 'BODY_TOO_LARGE' | 'BODY_UNAVAILABLE' | 'JSON_INVALID' | 'CONTRACT_INVALID' | 'ROOT_INVALID' | 'USERNAME_INVALID' | 'CREDENTIAL_INVALID' | 'TTL_INVALID' | 'EXPIRY_FORMAT_INVALID' | 'EXPIRY_UNSAFE' | 'EXPIRY_TOO_EARLY' | 'EXPIRY_BEYOND_TTL' | 'ICE_SERVERS_INVALID' | 'ICE_SERVER_INVALID' | 'ICE_FIELDS_INVALID' | 'ICE_URLS_INVALID' | 'ICE_URI_INVALID' | 'ICE_CREDENTIAL_TYPE_INVALID' | 'ICE_CREDENTIAL_MISMATCH' | 'ICE_STUN_CREDENTIALS_INVALID' | 'TURN_SERVER_MISSING';
 }
 type PrivateTurnObserver = (event: PrivateTurnDiagnostic) => void;
 interface PrivateTurnFlight {
@@ -71,35 +71,51 @@ interface PrivateTurnFlight {
     function clone(config: PrivateTurnConfiguration): PrivateTurnConfiguration {
         return { iceTransportPolicy: config.iceTransportPolicy, iceServers: config.iceServers.map(server => ({ ...server, urls: Array.isArray(server.urls) ? [...server.urls] : server.urls })) };
     }
-    function parse(value: unknown, contract: PrivateTurnContract, now: number, margin: number, policy: 'all' | 'relay'): { expiresAt: number; config: PrivateTurnConfiguration } {
-        const body = record(value), username = text(body.username, 256), credential = text(body.credential, 1024);
-        if (!Number.isSafeInteger(body.ttl) || Number(body.ttl) < 1 || Number(body.ttl) > 300) failure('TURN_INVALID_RESPONSE');
+    function parse(value: unknown, contract: PrivateTurnContract, now: number, margin: number, policy: 'all' | 'relay', rejected: (detail: PrivateTurnDiagnostic['detail']) => void): { expiresAt: number; config: PrivateTurnConfiguration } {
+        function invalid(detail: PrivateTurnDiagnostic['detail']): never {
+            rejected(detail);
+            return failure('TURN_INVALID_RESPONSE');
+        }
+        // Reuse the same strict primitives; only label their existing failure branches.
+        function checked<T>(detail: PrivateTurnDiagnostic['detail'], read: () => T): T {
+            try { return read(); }
+            catch (error) {
+                if (error instanceof PrivateTurnError) return invalid(detail);
+                throw error;
+            }
+        }
+        const body = checked('ROOT_INVALID', () => record(value));
+        const username = checked('USERNAME_INVALID', () => text(body.username, 256));
+        const credential = checked('CREDENTIAL_INVALID', () => text(body.credential, 1024));
+        if (!Number.isSafeInteger(body.ttl) || Number(body.ttl) < 1 || Number(body.ttl) > 300) invalid('TTL_INVALID');
         let expiresAt: number;
         if (contract.expiresAtFormat === 'iso8601') {
-            const source = text(body.expiresAt, 32);
+            const source = checked('EXPIRY_FORMAT_INVALID', () => text(body.expiresAt, 32));
             expiresAt = Date.parse(source);
-            if (!Number.isFinite(expiresAt) || new Date(expiresAt).toISOString() !== source) failure('TURN_INVALID_RESPONSE');
+            if (!Number.isFinite(expiresAt) || new Date(expiresAt).toISOString() !== source) invalid('EXPIRY_FORMAT_INVALID');
         } else {
-            if (!Number.isSafeInteger(body.expiresAt)) failure('TURN_INVALID_RESPONSE');
+            if (!Number.isSafeInteger(body.expiresAt)) invalid('EXPIRY_FORMAT_INVALID');
             expiresAt = Number(body.expiresAt) * (contract.expiresAtFormat === 'unix-seconds' ? 1000 : 1);
         }
-        if (!Number.isSafeInteger(expiresAt) || expiresAt <= now + margin || expiresAt > now + Number(body.ttl) * 1000) failure('TURN_INVALID_RESPONSE');
-        if (!Array.isArray(body.iceServers) || !body.iceServers.length || body.iceServers.length > 8) failure('TURN_INVALID_RESPONSE');
+        if (!Number.isSafeInteger(expiresAt)) invalid('EXPIRY_UNSAFE');
+        if (expiresAt <= now + margin) invalid('EXPIRY_TOO_EARLY');
+        if (expiresAt > now + Number(body.ttl) * 1000) invalid('EXPIRY_BEYOND_TTL');
+        if (!Array.isArray(body.iceServers) || !body.iceServers.length || body.iceServers.length > 8) invalid('ICE_SERVERS_INVALID');
         let hasTurn = false;
         const iceServers = body.iceServers.map((value: unknown): PrivateTurnIceServer => {
-            const server = record(value);
-            if (Object.keys(server).some(key => !['urls', 'username', 'credential', 'credentialType'].includes(key))) failure('TURN_INVALID_RESPONSE');
+            const server = checked('ICE_SERVER_INVALID', () => record(value));
+            if (Object.keys(server).some(key => !['urls', 'username', 'credential', 'credentialType'].includes(key))) invalid('ICE_FIELDS_INVALID');
             const list = Array.isArray(server.urls) ? server.urls : [server.urls];
-            if (!list.length || list.length > 8) failure('TURN_INVALID_RESPONSE');
-            const urls = list.map(uri), isTurn = urls.some(value => value.turn);
-            if (server.credentialType !== undefined && server.credentialType !== 'password') failure('TURN_INVALID_RESPONSE');
+            if (!list.length || list.length > 8) invalid('ICE_URLS_INVALID');
+            const urls = list.map(value => checked('ICE_URI_INVALID', () => uri(value))), isTurn = urls.some(value => value.turn);
+            if (server.credentialType !== undefined && server.credentialType !== 'password') invalid('ICE_CREDENTIAL_TYPE_INVALID');
             if (isTurn) {
-                if (server.username !== username || server.credential !== credential) failure('TURN_INVALID_RESPONSE');
+                if (server.username !== username || server.credential !== credential) invalid('ICE_CREDENTIAL_MISMATCH');
                 hasTurn = true;
-            } else if (server.username !== undefined || server.credential !== undefined) failure('TURN_INVALID_RESPONSE');
+            } else if (server.username !== undefined || server.credential !== undefined) invalid('ICE_STUN_CREDENTIALS_INVALID');
             return { urls: Array.isArray(server.urls) ? urls.map(value => value.url) : urls[0].url, ...(isTurn ? { username, credential } : {}) };
         });
-        if (!hasTurn) failure('TURN_INVALID_RESPONSE');
+        if (!hasTurn) invalid('TURN_SERVER_MISSING');
         return { expiresAt, config: { iceServers, iceTransportPolicy: policy } };
     }
     function createProvider(options: PrivateTurnOptions) {
@@ -194,7 +210,7 @@ interface PrivateTurnFlight {
                 let raw: unknown;
                 try { raw = JSON.parse(source); } catch { detail = 'JSON_INVALID'; failure('TURN_INVALID_RESPONSE'); }
                 detail = 'CONTRACT_INVALID';
-                const result = parse(raw, contract, time(), margin, policy);
+                const result = parse(raw, contract, time(), margin, policy, reason => { detail = reason; });
                 detail = undefined;
                 guard(user.uid, captured);
                 cache = { uid: user.uid, generation: captured, ...result };

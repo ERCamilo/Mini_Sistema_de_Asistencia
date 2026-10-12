@@ -2,7 +2,7 @@ interface PrivateTurnBootstrapAuth {
     currentUser: PrivateTurnUser | null;
     onAuthStateChanged(callback: (user: PrivateTurnUser | null) => void): () => void;
 }
-interface PrivateTurnBootstrapSession { pc: unknown; close(): void; }
+interface PrivateTurnBootstrapSession { pc: unknown; channel?: unknown; close(...args: unknown[]): void; }
 interface PrivateTurnBootstrapCore { createRtcSession(options: Record<string, unknown>): Promise<PrivateTurnBootstrapSession>; }
 interface PrivateTurnBootstrapOptions {
     enabled: boolean;
@@ -29,8 +29,8 @@ interface PrivateTurnBootstrapDiagnostic {
     remoteDescription?: boolean;
 }
 interface PrivateTurnBootstrapEvent {
-    stage: PrivateTurnDiagnostic['stage'] | 'auth' | 'rtc' | 'relay';
-    code: PrivateTurnDiagnostic['code'] | 'AUTH_START' | 'AUTH_SIGNED_IN' | 'AUTH_GUEST' | 'AUTH_FAILED' | 'RTC_START' | 'RTC_STATE' | 'RTC_FAILED' | 'ICE_ERROR' | 'RELAY_VERIFIED' | 'RELAY_UNMEASURED';
+    stage: PrivateTurnDiagnostic['stage'] | 'auth' | 'rtc' | 'relay' | 'app' | 'channel' | 'signal';
+    code: PrivateTurnDiagnostic['code'] | 'AUTH_START' | 'AUTH_SIGNED_IN' | 'AUTH_GUEST' | 'AUTH_FAILED' | 'RTC_START' | 'RTC_STATE' | 'RTC_FAILED' | 'ICE_ERROR' | 'RELAY_VERIFIED' | 'RELAY_UNMEASURED' | 'LOCAL_CLOSE' | 'RTC_CLOSED' | 'APP_ERROR' | 'APP_CONNECTED' | 'APP_CONNECTING' | 'APP_DISCONNECTED' | 'APP_FAILED' | 'APP_CLOSED' | 'APP_OTHER' | 'APP_PAIR_EXPIRED' | 'APP_ICE_UNAVAILABLE' | 'APP_CONNECTION_UNAVAILABLE' | 'APP_CHANNEL_FAILED' | 'APP_CHANNEL_CLOSED' | 'CHANNEL_STATE' | 'CHANNEL_OPEN' | 'CHANNEL_CLOSE' | 'CHANNEL_ERROR' | 'SIGNAL_PEER_LEFT' | 'SIGNAL_SOCKET_CLOSED' | 'SIGNAL_SOCKET_ERROR' | 'SIGNAL_ERROR';
     elapsedMs: number;
     httpStatus?: number;
     sdkCode?: PrivateTurnDiagnostic['sdkCode'];
@@ -45,8 +45,13 @@ interface PrivateTurnBootstrapPeer {
     signalingState?: string;
     localDescription?: unknown;
     remoteDescription?: unknown;
-    addEventListener?(name: string, callback: (event?: { errorCode?: unknown }) => void): void;
-    removeEventListener?(name: string, callback: (event?: { errorCode?: unknown }) => void): void;
+    addEventListener?(name: string, callback: (event?: { errorCode?: unknown; channel?: unknown }) => void): void;
+    removeEventListener?(name: string, callback: (event?: { errorCode?: unknown; channel?: unknown }) => void): void;
+}
+interface PrivateTurnBootstrapChannel {
+    readyState?: string;
+    addEventListener?(name: string, callback: () => void): void;
+    removeEventListener?(name: string, callback: () => void): void;
 }
 interface PrivateTurnBootstrapHandle { active: boolean; dispose(): void; }
 interface PrivateTurnBootstrapRoot {
@@ -172,18 +177,38 @@ interface PrivateTurnBootstrapRoot {
             if (copyButton) copyButton.onclick = null;
             panel = null; output = null; copyButton = null; copyStatus = null; manualCopy = null;
         }
-        function observe(session: PrivateTurnBootstrapSession, record: PrivateTurnBootstrapDiagnostic, captured: number, capturedScope: string, elapsed: () => number): void {
-            if (options.diagnostics !== true || disposed || epoch !== captured) return;
+        function observe(session: PrivateTurnBootstrapSession, record: PrivateTurnBootstrapDiagnostic, captured: number, capturedScope: string, elapsed: () => number, stopSignal: () => void): void {
+            if (options.diagnostics !== true || disposed || epoch !== captured) { stopSignal(); return; }
             const pc = session.pc as PrivateTurnBootstrapPeer | null;
-            if (!pc || typeof pc !== 'object') return;
+            if (!pc || typeof pc !== 'object') { stopSignal(); observations.delete(record.session); return; }
             let stopped = false, running = false, retry = 0, timer: ReturnType<typeof setTimeout> | undefined;
             const originalClose = session.close;
+            const channels = new Map<PrivateTurnBootstrapChannel, () => void>();
+            function watchChannel(value: unknown): void {
+                if (!valid() || !value || typeof value !== 'object') return;
+                const channel = value as PrivateTurnBootstrapChannel;
+                if (channels.has(channel) || channels.size >= 1) return;
+                const emit = (code: PrivateTurnBootstrapEvent['code']) => {
+                    if (!valid()) return;
+                    append(record, { stage: 'channel', code, elapsedMs: elapsed(), rtcState: 'ready=' + enumState(channel.readyState, ['connecting', 'open', 'closing', 'closed']) });
+                };
+                const open = () => emit('CHANNEL_OPEN'), closed = () => emit('CHANNEL_CLOSE'), error = () => emit('CHANNEL_ERROR');
+                const callbacks: [string, () => void][] = [['open', open], ['close', closed], ['error', error]];
+                channels.set(channel, () => { for (const [name, fn] of callbacks) { try { channel.removeEventListener?.(name, fn); } catch { /* Isolated cleanup. */ } } });
+                for (const [name, fn] of callbacks) channel.addEventListener?.(name, fn);
+                emit('CHANNEL_STATE');
+            }
+            const dataChannel = (event?: { channel?: unknown }) => { try { watchChannel(event?.channel); } catch { /* Isolated channel observer. */ } };
             const valid = () => {
                 try { guard(captured, capturedScope); return !stopped; } catch { return false; }
             };
             function stop(): void {
                 if (stopped) return;
                 stopped = true;
+                stopSignal();
+                for (const detach of channels.values()) detach();
+                channels.clear();
+                try { pc?.removeEventListener?.('datachannel', dataChannel); } catch { /* Isolated cleanup. */ }
                 if (timer !== undefined) clearTimeout(timer);
                 for (const name of rtcEvents) {
                     try { pc?.removeEventListener?.(name, update); } catch { /* Isolated observer. */ }
@@ -192,9 +217,9 @@ interface PrivateTurnBootstrapRoot {
                 if (session.close === close) session.close = originalClose;
                 observations.delete(record.session);
             }
-            function close(): void {
-                if (valid()) { record.connection = 'closed'; publish(record); }
-                stop(); originalClose.call(session);
+            function close(...args: unknown[]): void {
+                if (valid()) { append(record, { stage: 'rtc', code: 'LOCAL_CLOSE', elapsedMs: elapsed() }); record.connection = 'closed'; publish(record); }
+                stop(); originalClose.apply(session, args);
             }
             async function measure(): Promise<void> {
                 if (running || !valid() || pc?.connectionState !== 'connected') return;
@@ -219,7 +244,7 @@ interface PrivateTurnBootstrapRoot {
                 record.signaling = enumState(pc?.signalingState, ['stable', 'have-local-offer', 'have-remote-offer', 'have-local-pranswer', 'have-remote-pranswer', 'closed']);
                 record.localDescription = Boolean(pc?.localDescription); record.remoteDescription = Boolean(pc?.remoteDescription);
                 append(record, { stage: 'rtc', code: 'RTC_STATE', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice + ' gathering=' + record.gathering + ' signaling=' + record.signaling + ' local=' + record.localDescription + ' remote=' + record.remoteDescription });
-                if (record.connection === 'closed' || record.connection === 'failed') { stop(); return; }
+                if (record.connection === 'closed' || record.connection === 'failed') { append(record, { stage: 'rtc', code: 'RTC_CLOSED', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice }); stop(); return; }
                 void measure();
             }
             function iceError(event?: { errorCode?: unknown }): void {
@@ -228,10 +253,12 @@ interface PrivateTurnBootstrapRoot {
                 append(record, { stage: 'rtc', code: 'ICE_ERROR', elapsedMs: elapsed(),
                     ...(Number.isInteger(code) && Number(code) >= 300 && Number(code) <= 701 ? { iceErrorCode: Number(code) } : {}) });
             }
-            if (observations.size >= 8) observations.values().next().value!();
+            if (!observations.has(record.session) && observations.size >= 8) observations.values().next().value!();
             observations.set(record.session, stop);
             try {
                 session.close = close;
+                pc.addEventListener?.('datachannel', dataChannel);
+                watchChannel(session.channel);
                 for (const name of rtcEvents) pc.addEventListener?.(name, update);
                 pc.addEventListener?.('icecandidateerror', iceError);
                 update();
@@ -278,6 +305,7 @@ interface PrivateTurnBootstrapRoot {
             append(record, { stage: 'auth', code: 'AUTH_START', elapsedMs: elapsed() });
             let captured = startEpoch;
             let authResolved = false;
+            let stopSignal: () => void = () => {};
             try {
                 const next = await resolveAuth();
                 guard(startEpoch, capturedScope);
@@ -294,11 +322,53 @@ interface PrivateTurnBootstrapRoot {
                 if (auth !== bound || (auth?.currentUser?.uid || null) !== uid || (identity === 'mini' && miniAuth() !== bound)) fail('TURN_BOOTSTRAP_STALE');
                 record.credentials = config ? 'available' : 'guest'; publish(record);
                 append(record, { stage: 'rtc', code: 'RTC_START', elapsedMs: elapsed() });
-                const session = await original.call(core, config ? { ...sessionOptions, ...config } : sessionOptions);
+                const observed = options.diagnostics === true ? { ...sessionOptions } : sessionOptions;
+                if (options.diagnostics === true) {
+                    const emit = (stage: PrivateTurnBootstrapEvent['stage'], code: PrivateTurnBootstrapEvent['code']) => {
+                        try { guard(captured, capturedScope); if (history.has(record.session)) append(record, { stage, code, elapsedMs: elapsed() }); } catch { /* Suppress stale events. */ }
+                    };
+                    const originalState = sessionOptions.onState;
+                    observed.onState = (...args: unknown[]) => {
+                        const status = args[0];
+                        const codes: Record<string, PrivateTurnBootstrapEvent['code']> = { error: 'APP_ERROR', connected: 'APP_CONNECTED', connecting: 'APP_CONNECTING', disconnected: 'APP_DISCONNECTED', failed: 'APP_FAILED', closed: 'APP_CLOSED' };
+                        let code = typeof status === 'string' && Object.prototype.hasOwnProperty.call(codes, status) ? codes[status] : 'APP_OTHER';
+                        if (status === 'error') {
+                            try {
+                                const failures: Record<string, PrivateTurnBootstrapEvent['code']> = {
+                                    'La sesión de emparejamiento expiró.': 'APP_PAIR_EXPIRED',
+                                    'La conexión ICE P2P dejó de estar disponible.': 'APP_ICE_UNAVAILABLE',
+                                    'La conexión P2P dejó de estar disponible.': 'APP_CONNECTION_UNAVAILABLE',
+                                    'Canal de datos P2P falló.': 'APP_CHANNEL_FAILED',
+                                    'El canal de datos P2P se cerró inesperadamente.': 'APP_CHANNEL_CLOSED'
+                                };
+                                const message = (args[1] as { message?: unknown } | undefined)?.message;
+                                if (typeof message === 'string' && Object.prototype.hasOwnProperty.call(failures, message)) code = failures[message];
+                            } catch { /* Unknown errors retain only the fixed APP_ERROR classification. */ }
+                        }
+                        emit('app', code);
+                        if (typeof originalState === 'function') return originalState(...args);
+                    };
+                    // SignalingClient supports independent subscribers; never replace the application's listener.
+                    const signaling = sessionOptions.signaling as { onEvent?: (fn: (event: { type?: unknown }) => void) => () => void } | undefined;
+                    try {
+                        const off = signaling?.onEvent?.(event => {
+                            const codes: Record<string, PrivateTurnBootstrapEvent['code']> = { 'peer-left': 'SIGNAL_PEER_LEFT', 'socket-closed': 'SIGNAL_SOCKET_CLOSED', 'socket-error': 'SIGNAL_SOCKET_ERROR', error: 'SIGNAL_ERROR' };
+                            if (typeof event?.type === 'string' && Object.prototype.hasOwnProperty.call(codes, event.type)) emit('signal', codes[event.type]);
+                        });
+                        if (typeof off === 'function') {
+                            let listening = true;
+                            stopSignal = () => { if (!listening) return; listening = false; try { off(); } catch { /* Isolated subscriber cleanup. */ } };
+                            if (observations.size >= 8) observations.values().next().value!();
+                            observations.set(record.session, stopSignal);
+                        }
+                    } catch { /* Unavailable subscription cannot affect RTC. */ }
+                }
+                const session = await original.call(core, config ? { ...observed, ...config } : observed);
                 // Instrumentation is best-effort and cannot reject a successful factory.
-                try { observe(session, record, captured, capturedScope, elapsed); } catch { /* Isolated observer. */ }
+                try { observe(session, record, captured, capturedScope, elapsed, stopSignal); } catch { stopSignal(); }
                 return session;
             } catch (error) {
+                stopSignal(); observations.delete(record.session);
                 try {
                     guard(captured, capturedScope);
                     if (record.credentials === 'requesting') record.credentials = 'failed';

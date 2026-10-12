@@ -124,7 +124,7 @@ test('connection event verifies relay; missing stats remain unmeasured, not dire
 });
 for (const action of ['close', 'dispose', 'account']) test(`diagnostics suppress late stats and clean listeners after ${action}`, async () => {
   const gate = deferred(), pc = diagnosticPeer(), d = diagnosticFixture(pc); pc.getStats = () => gate.promise;
-  await d.f.root.SaMiniP2P.createRtcSession({}); assert.equal(pc.listenerCount(), 5);
+  await d.f.root.SaMiniP2P.createRtcSession({}); assert.equal(pc.listenerCount(), 6);
   if (action === 'close') d.session.close(); else if (action === 'dispose') d.handle.dispose(); else d.f.setUser(null);
   const count = d.records.length; gate.resolve(await statsFixture().getStats()); await flushDiagnostics();
   assert.equal(d.records.length, count); assert.equal(pc.listenerCount(), 0); assert.equal(d.records.some(r => r.relay === 'verified'), false);
@@ -174,7 +174,7 @@ test('private renderer is secret-free, history and observers bounded, disposal r
   assert.equal((output.textContent.match(/Sesión /g) || []).length, 8); assert.match(output.textContent, /Sesión 12/);
   assert.match(output.textContent, /relay local: verificado durante la conexión/);
   assert.doesNotMatch(output.textContent, /synthetic|payload|candidate|uid|https?:/i);
-  assert.equal(peers.reduce((sum, pc) => sum + pc.listenerCount(), 0), 40);
+  assert.equal(peers.reduce((sum, pc) => sum + pc.listenerCount(), 0), 48);
   h.dispose(); assert.equal(panel.removed, true); assert.equal(peers.reduce((sum, pc) => sum + pc.listenerCount(), 0), 0);
 });
 test('factory errors do not rewrite successful credential acquisition as request failure', async () => {
@@ -280,4 +280,92 @@ test('account invalidation suppresses pending clipboard feedback and removes han
   button.onclick(); c.f.setUser(null); gate.resolve(); await flushDiagnostics();
   assert.equal(button.onclick, null); assert.equal(c.doc.body.children[0].removed, true);
   assert.ok(!c.doc.elements.some(element => element.textContent === 'Diagnóstico copiado.')); c.h.dispose();
+});
+
+test('console and copy preserve precise contract reason without exposing response data', async () => {
+  const doc = diagnosticDocument(), copies = [], f = fixture({ document: doc, navigator: { clipboard: { writeText: async value => copies.push(value) } }, fetch: async () => Response.json({ username: 'PRIVATE_USER', credential: 'PRIVATE_PASSWORD', ttl: '300', expiresAt: 1700000300000, iceServers: [] }) });
+  const h = f.install({ diagnostics: true });
+  await assert.rejects(f.root.SaMiniP2P.createRtcSession({}), /TURN_INVALID_RESPONSE/);
+  const output = doc.body.children[0].children[1]; assert.match(output.textContent, /validation.*RESPONSE_INVALID.*TTL_INVALID/);
+  assert.doesNotMatch(output.textContent, /PRIVATE_|1700000300000|iceServers/);
+  doc.elements.find(e => e.tag === 'button').onclick(); await flushDiagnostics();
+  assert.equal(copies[0], output.textContent); assert.equal(f.calls().length, 0); h.dispose();
+});
+
+test('diagnostics preserve callbacks and record sanitized signaling, channel and local close events', async () => {
+  const pc = diagnosticPeer(false), records = [], listeners = new Set();
+  const channel = diagnosticPeer(false); channel.readyState = 'connecting';
+  channel.fireEvent = name => { for (const fn of [...(channel.events?.get(name) || [])]) fn(); };
+  const channelListeners = new Map();
+  channel.addEventListener = (name, fn) => { if (!channelListeners.has(name)) channelListeners.set(name, new Set()); channelListeners.get(name).add(fn); };
+  channel.removeEventListener = (name, fn) => channelListeners.get(name)?.delete(fn);
+  let captured, appCalls = 0;
+  const session = { pc, channel, close() { pc.fire('closed'); } };
+  const f = fixture({ SaMiniP2P: { createRtcSession: async options => { captured = options; return session; } } });
+  const handle = f.install({ diagnostics: true, onDiagnostic: value => records.push(value) });
+  const signaling = { onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); } };
+  await f.root.SaMiniP2P.createRtcSession({ signaling, onState(status, error) { appCalls++; assert.equal(status, 'error'); assert.equal(error.message, 'secret-error'); }, onChannel(value) { appCalls++; assert.equal(value, channel); } });
+  for (const fn of listeners) fn({ type: 'peer-left', reason: 'secret-room', error: 'secret-error' });
+  captured.onChannel(channel); captured.onState('error', new Error('secret-error'));
+  channel.readyState = 'open'; for (const fn of channelListeners.get('open') || []) fn();
+  channel.readyState = 'closed'; for (const fn of channelListeners.get('close') || []) fn();
+  session.close('secret-reason');
+  assert.equal(appCalls, 2);
+  const events = records.flatMap(value => value.events || []);
+  for (const code of ['SIGNAL_PEER_LEFT', 'APP_ERROR', 'CHANNEL_OPEN', 'CHANNEL_CLOSE', 'LOCAL_CLOSE']) assert.ok(events.some(event => event.code === code), code);
+  assert.doesNotMatch(JSON.stringify(records), /secret-/);
+  assert.equal(listeners.size, 0);
+  assert.equal([...channelListeners.values()].reduce((sum, set) => sum + set.size, 0), 0);
+  handle.dispose();
+});
+
+
+test('diagnostic signaling subscriptions clean up pending factories on account change and rejection', async () => {
+  for (const action of ['account', 'reject']) {
+    const listeners = new Set(), records = []; let release;
+    const f = fixture({ SaMiniP2P: { createRtcSession: () => new Promise((resolve, reject) => { release = { resolve, reject }; }) } });
+    const handle = f.install({ diagnostics: true, onDiagnostic: value => records.push(value) });
+    const promise = f.root.SaMiniP2P.createRtcSession({ signaling: { onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); } } });
+    while (!release) await Promise.resolve();
+    assert.equal(listeners.size, 1);
+    if (action === 'account') {
+      f.setUser(null); assert.equal(listeners.size, 0);
+      release.resolve({ pc: diagnosticPeer(false), close() {} }); await promise;
+    } else { release.reject(new Error('private-factory-error')); await assert.rejects(promise, /private-factory-error/); }
+    assert.equal(listeners.size, 0);
+    assert.doesNotMatch(JSON.stringify(records), /private-factory-error/);
+    handle.dispose();
+  }
+});
+test('application callback exceptions retain their original semantics and unknown states remain sanitized', async () => {
+  let observed;
+  const records = [], f = fixture({ SaMiniP2P: { createRtcSession: async options => { observed = options; return { pc: diagnosticPeer(false), close() {} }; } } });
+  const handle = f.install({ diagnostics: true, onDiagnostic: value => { records.push(value); if ((value.events || []).some(event => event.code === 'APP_OTHER')) throw new Error('observer-error'); } });
+  await f.root.SaMiniP2P.createRtcSession({ onState() { throw new Error('application-error'); } });
+  assert.throws(() => observed.onState('__proto__', { message: 'private-error' }), /application-error/);
+  assert.ok(records.at(-1).events.some(event => event.code === 'APP_OTHER'));
+  assert.doesNotMatch(JSON.stringify(records), /private-error|__proto__|observer-error/);
+  handle.dispose();
+});
+
+
+test('close diagnostic error reasons are fixed allowlisted classes, never original messages', async () => {
+  let observed, forwarded = 0;
+  const records = [], f = fixture({ SaMiniP2P: { createRtcSession: async options => { observed = options; return { pc: diagnosticPeer(false), close() {} }; } } });
+  const handle = f.install({ diagnostics: true, onDiagnostic: value => records.push(value) });
+  await f.root.SaMiniP2P.createRtcSession({ onState() { forwarded++; } });
+  for (const [message, code] of [
+    ['La sesión de emparejamiento expiró.', 'APP_PAIR_EXPIRED'],
+    ['La conexión ICE P2P dejó de estar disponible.', 'APP_ICE_UNAVAILABLE'],
+    ['La conexión P2P dejó de estar disponible.', 'APP_CONNECTION_UNAVAILABLE'],
+    ['Canal de datos P2P falló.', 'APP_CHANNEL_FAILED'],
+    ['El canal de datos P2P se cerró inesperadamente.', 'APP_CHANNEL_CLOSED']
+  ]) {
+    observed.onState('error', new Error(message));
+    assert.equal(records.at(-1).events.at(-1).code, code);
+    assert.ok(!JSON.stringify(records).includes(message));
+  }
+  observed.onState('error', { get message() { throw new Error('private-getter'); } });
+  assert.equal(records.at(-1).events.at(-1).code, 'APP_ERROR'); assert.equal(forwarded, 6);
+  handle.dispose();
 });

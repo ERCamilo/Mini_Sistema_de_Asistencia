@@ -100,7 +100,7 @@ async function main() {
     await pages[1].evaluate(() => { window.acceptOffer = false; window.offerInbox.release((offer, reply) => {
       if (window.acceptOffer) {
         const core = window.SaMiniP2P, bridge = window.SaMiniP2PBackup;
-        const receiver = core.createTransferReceiver({ channel: window.channel, onError: () => { window.failure = true; }, onComplete(result) { const staged = window.stageStore.stageBackup({ ...result, sourceApp: 'mini', sourcePeerId: window.peer.peerId, sourcePeerName: window.peer.displayName }); bridge.sendBackupStagedAck(window.channel, staged); } });
+        const receiver = core.createTransferReceiver({ channel: window.channel, onError: () => { window.failure = true; }, onComplete(result) { const staged = window.stageStore.stageBackup({ ...result, sourceApp: 'mini', sourcePeerId: window.peer.peerId, sourcePeerName: window.peer.displayName }); bridge.sendBackupStagedAck(window.channel, { transferId: result.transferId, sha256: result.sha256, schema: result.schema }); } });
         let finished = false;
         const handler = async event => {
           if (core.parseControl(event.data)) return;
@@ -131,9 +131,15 @@ async function main() {
       return { count: window.stageStore.getPendingCount(), schema: staged.schema, sourceApp: staged.sourceApp, sha256: staged.sha256, size: staged.size, exact: review.text === expectedText, textareaExact: document.getElementById('restore-backup-textarea').value === review.text, modal: window.openedModal, validationRequested: window.validationRequested, unchanged: JSON.stringify(window.data) === window.beforeData, failed: window.failure };
     }, sent.expectedText);
     assert.deepEqual(proof, { count: 1, schema: 'mini-backup/v1', sourceApp: 'mini', sha256: sent.sha256, size: sent.size, exact: true, textareaExact: true, modal: 'modal-restore-backup', validationRequested: true, unchanged: true, failed: false });
+    phase = 'REPEATED_CONSENT_ACCEPT_AND_STAGE';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const repeated = await sendBackup();
+      assert.equal(repeated.decision, 'accepted'); assert.equal(repeated.sent, true);
+    }
+    assert.deepEqual(await pages[1].evaluate(() => ({ count: window.stageStore.getPendingCount(), unchanged: JSON.stringify(window.data) === window.beforeData, failed: window.failure })), { count: 1, unchanged: true, failed: false });
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
-    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 1, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
+    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 3, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
   } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });

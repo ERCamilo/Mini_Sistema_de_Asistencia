@@ -170,15 +170,49 @@
             copyStatus = null;
             manualCopy = null;
         }
-        function observe(session, record, captured, capturedScope, elapsed) {
-            var _a, _b;
-            if (options.diagnostics !== true || disposed || epoch !== captured)
+        function observe(session, record, captured, capturedScope, elapsed, stopSignal) {
+            var _a, _b, _c;
+            if (options.diagnostics !== true || disposed || epoch !== captured) {
+                stopSignal();
                 return;
+            }
             const pc = session.pc;
-            if (!pc || typeof pc !== 'object')
+            if (!pc || typeof pc !== 'object') {
+                stopSignal();
+                observations.delete(record.session);
                 return;
+            }
             let stopped = false, running = false, retry = 0, timer;
             const originalClose = session.close;
+            const channels = new Map();
+            function watchChannel(value) {
+                var _a;
+                if (!valid() || !value || typeof value !== 'object')
+                    return;
+                const channel = value;
+                if (channels.has(channel) || channels.size >= 1)
+                    return;
+                const emit = (code) => {
+                    if (!valid())
+                        return;
+                    append(record, { stage: 'channel', code, elapsedMs: elapsed(), rtcState: 'ready=' + enumState(channel.readyState, ['connecting', 'open', 'closing', 'closed']) });
+                };
+                const open = () => emit('CHANNEL_OPEN'), closed = () => emit('CHANNEL_CLOSE'), error = () => emit('CHANNEL_ERROR');
+                const callbacks = [['open', open], ['close', closed], ['error', error]];
+                channels.set(channel, () => { var _a; for (const [name, fn] of callbacks) {
+                    try {
+                        (_a = channel.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(channel, name, fn);
+                    }
+                    catch { /* Isolated cleanup. */ }
+                } });
+                for (const [name, fn] of callbacks)
+                    (_a = channel.addEventListener) === null || _a === void 0 ? void 0 : _a.call(channel, name, fn);
+                emit('CHANNEL_STATE');
+            }
+            const dataChannel = (event) => { try {
+                watchChannel(event === null || event === void 0 ? void 0 : event.channel);
+            }
+            catch { /* Isolated channel observer. */ } };
             const valid = () => {
                 try {
                     guard(captured, capturedScope);
@@ -189,33 +223,42 @@
                 }
             };
             function stop() {
-                var _a, _b;
+                var _a, _b, _c;
                 if (stopped)
                     return;
                 stopped = true;
+                stopSignal();
+                for (const detach of channels.values())
+                    detach();
+                channels.clear();
+                try {
+                    (_a = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(pc, 'datachannel', dataChannel);
+                }
+                catch { /* Isolated cleanup. */ }
                 if (timer !== undefined)
                     clearTimeout(timer);
                 for (const name of rtcEvents) {
                     try {
-                        (_a = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(pc, name, update);
+                        (_b = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _b === void 0 ? void 0 : _b.call(pc, name, update);
                     }
                     catch { /* Isolated observer. */ }
                 }
                 try {
-                    (_b = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _b === void 0 ? void 0 : _b.call(pc, 'icecandidateerror', iceError);
+                    (_c = pc === null || pc === void 0 ? void 0 : pc.removeEventListener) === null || _c === void 0 ? void 0 : _c.call(pc, 'icecandidateerror', iceError);
                 }
                 catch { /* Isolated observer. */ }
                 if (session.close === close)
                     session.close = originalClose;
                 observations.delete(record.session);
             }
-            function close() {
+            function close(...args) {
                 if (valid()) {
+                    append(record, { stage: 'rtc', code: 'LOCAL_CLOSE', elapsedMs: elapsed() });
                     record.connection = 'closed';
                     publish(record);
                 }
                 stop();
-                originalClose.call(session);
+                originalClose.apply(session, args);
             }
             async function measure() {
                 if (running || !valid() || (pc === null || pc === void 0 ? void 0 : pc.connectionState) !== 'connected')
@@ -257,6 +300,7 @@
                 record.remoteDescription = Boolean(pc === null || pc === void 0 ? void 0 : pc.remoteDescription);
                 append(record, { stage: 'rtc', code: 'RTC_STATE', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice + ' gathering=' + record.gathering + ' signaling=' + record.signaling + ' local=' + record.localDescription + ' remote=' + record.remoteDescription });
                 if (record.connection === 'closed' || record.connection === 'failed') {
+                    append(record, { stage: 'rtc', code: 'RTC_CLOSED', elapsedMs: elapsed(), rtcState: 'connection=' + record.connection + ' ICE=' + record.ice });
                     stop();
                     return;
                 }
@@ -271,14 +315,16 @@
                 append(record, { stage: 'rtc', code: 'ICE_ERROR', elapsedMs: elapsed(),
                     ...(Number.isInteger(code) && Number(code) >= 300 && Number(code) <= 701 ? { iceErrorCode: Number(code) } : {}) });
             }
-            if (observations.size >= 8)
+            if (!observations.has(record.session) && observations.size >= 8)
                 observations.values().next().value();
             observations.set(record.session, stop);
             try {
                 session.close = close;
+                (_a = pc.addEventListener) === null || _a === void 0 ? void 0 : _a.call(pc, 'datachannel', dataChannel);
+                watchChannel(session.channel);
                 for (const name of rtcEvents)
-                    (_a = pc.addEventListener) === null || _a === void 0 ? void 0 : _a.call(pc, name, update);
-                (_b = pc.addEventListener) === null || _b === void 0 ? void 0 : _b.call(pc, 'icecandidateerror', iceError);
+                    (_b = pc.addEventListener) === null || _b === void 0 ? void 0 : _b.call(pc, name, update);
+                (_c = pc.addEventListener) === null || _c === void 0 ? void 0 : _c.call(pc, 'icecandidateerror', iceError);
                 update();
             }
             catch {
@@ -351,7 +397,7 @@
                 fail('TURN_BOOTSTRAP_STALE');
         }
         const wrapper = async (sessionOptions) => {
-            var _a, _b;
+            var _a, _b, _c;
             const record = { session: ++ordinal, credentials: 'requesting', connection: 'unmeasured', relay: 'unmeasured' };
             const capturedScope = scope(), startEpoch = epoch;
             const started = Date.now();
@@ -359,6 +405,7 @@
             append(record, { stage: 'auth', code: 'AUTH_START', elapsedMs: elapsed() });
             let captured = startEpoch;
             let authResolved = false;
+            let stopSignal = () => { };
             try {
                 const next = await resolveAuth();
                 guard(startEpoch, capturedScope);
@@ -381,15 +428,76 @@
                 record.credentials = config ? 'available' : 'guest';
                 publish(record);
                 append(record, { stage: 'rtc', code: 'RTC_START', elapsedMs: elapsed() });
-                const session = await original.call(core, config ? { ...sessionOptions, ...config } : sessionOptions);
+                const observed = options.diagnostics === true ? { ...sessionOptions } : sessionOptions;
+                if (options.diagnostics === true) {
+                    const emit = (stage, code) => {
+                        try {
+                            guard(captured, capturedScope);
+                            if (history.has(record.session))
+                                append(record, { stage, code, elapsedMs: elapsed() });
+                        }
+                        catch { /* Suppress stale events. */ }
+                    };
+                    const originalState = sessionOptions.onState;
+                    observed.onState = (...args) => {
+                        var _a;
+                        const status = args[0];
+                        const codes = { error: 'APP_ERROR', connected: 'APP_CONNECTED', connecting: 'APP_CONNECTING', disconnected: 'APP_DISCONNECTED', failed: 'APP_FAILED', closed: 'APP_CLOSED' };
+                        let code = typeof status === 'string' && Object.prototype.hasOwnProperty.call(codes, status) ? codes[status] : 'APP_OTHER';
+                        if (status === 'error') {
+                            try {
+                                const failures = {
+                                    'La sesión de emparejamiento expiró.': 'APP_PAIR_EXPIRED',
+                                    'La conexión ICE P2P dejó de estar disponible.': 'APP_ICE_UNAVAILABLE',
+                                    'La conexión P2P dejó de estar disponible.': 'APP_CONNECTION_UNAVAILABLE',
+                                    'Canal de datos P2P falló.': 'APP_CHANNEL_FAILED',
+                                    'El canal de datos P2P se cerró inesperadamente.': 'APP_CHANNEL_CLOSED'
+                                };
+                                const message = (_a = args[1]) === null || _a === void 0 ? void 0 : _a.message;
+                                if (typeof message === 'string' && Object.prototype.hasOwnProperty.call(failures, message))
+                                    code = failures[message];
+                            }
+                            catch { /* Unknown errors retain only the fixed APP_ERROR classification. */ }
+                        }
+                        emit('app', code);
+                        if (typeof originalState === 'function')
+                            return originalState(...args);
+                    };
+                    // SignalingClient supports independent subscribers; never replace the application's listener.
+                    const signaling = sessionOptions.signaling;
+                    try {
+                        const off = (_c = signaling === null || signaling === void 0 ? void 0 : signaling.onEvent) === null || _c === void 0 ? void 0 : _c.call(signaling, event => {
+                            const codes = { 'peer-left': 'SIGNAL_PEER_LEFT', 'socket-closed': 'SIGNAL_SOCKET_CLOSED', 'socket-error': 'SIGNAL_SOCKET_ERROR', error: 'SIGNAL_ERROR' };
+                            if (typeof (event === null || event === void 0 ? void 0 : event.type) === 'string' && Object.prototype.hasOwnProperty.call(codes, event.type))
+                                emit('signal', codes[event.type]);
+                        });
+                        if (typeof off === 'function') {
+                            let listening = true;
+                            stopSignal = () => { if (!listening)
+                                return; listening = false; try {
+                                off();
+                            }
+                            catch { /* Isolated subscriber cleanup. */ } };
+                            if (observations.size >= 8)
+                                observations.values().next().value();
+                            observations.set(record.session, stopSignal);
+                        }
+                    }
+                    catch { /* Unavailable subscription cannot affect RTC. */ }
+                }
+                const session = await original.call(core, config ? { ...observed, ...config } : observed);
                 // Instrumentation is best-effort and cannot reject a successful factory.
                 try {
-                    observe(session, record, captured, capturedScope, elapsed);
+                    observe(session, record, captured, capturedScope, elapsed, stopSignal);
                 }
-                catch { /* Isolated observer. */ }
+                catch {
+                    stopSignal();
+                }
                 return session;
             }
             catch (error) {
+                stopSignal();
+                observations.delete(record.session);
                 try {
                     guard(captured, capturedScope);
                     if (record.credentials === 'requesting')

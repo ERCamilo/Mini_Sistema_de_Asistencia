@@ -73,3 +73,27 @@ test('received Mini backups are reviewed with cards, not raw JSON, and restore v
   assert.match(html, /<script src="\.\/mini-backup-review\.js"><\/script>/);
   assert.match(require('node:fs').readFileSync(require.resolve('../sw.js'), 'utf8'), /'\.\/mini-backup-review\.js'/);
 });
+
+test('completed transfer timer cannot clear or rearm a newer transfer', () => {
+  const vm = require('node:vm');
+  const send = between('async function sendBackupToPeer', 'async function waitBackupTransfer');
+  const start = send.indexOf('const finished = activeSession;');
+  const end = send.indexOf('}, 1500);', start) + '}, 1500);'.length;
+  assert.ok(start >= 0 && end > start);
+  const snippet = send.slice(start, end);
+  for (const newer of [false, true]) {
+    let callback, closed = 0, rearmed = 0;
+    const owner = { close() { closed++; } }, next = {};
+    const context = { activeSession: owner, activeChannel: 'old', activeManualPeerId: 'old',
+      setTimeout(fn, delay) { assert.equal(delay, 1500); callback = fn; },
+      startMiniBackupInbox() { rearmed++; return Promise.resolve(); } };
+    vm.runInNewContext(snippet, context);
+    if (newer) { context.activeSession = next; context.activeChannel = 'new'; context.activeManualPeerId = 'new'; }
+    callback();
+    assert.equal(closed, newer ? 0 : 1);
+    assert.equal(rearmed, newer ? 0 : 1);
+    assert.equal(context.activeSession, newer ? next : null);
+    assert.equal(context.activeChannel, newer ? 'new' : null);
+    assert.equal(context.activeManualPeerId, newer ? 'new' : null);
+  }
+});

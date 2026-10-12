@@ -158,3 +158,43 @@ test('diagnostic SDK codes are allowlisted and parsing details never expose bodi
   await assert.rejects(f.provider.getConfiguration(e => events.push(e)));
   assert.equal(events.at(-1).detail, 'JSON_INVALID'); assert.doesNotMatch(JSON.stringify(events), /synthetic/);
 });
+
+for (const [label, mutate, detail] of [
+  ['root shape', () => [], 'ROOT_INVALID'],
+  ['username shape', b => ({ ...b, username: '' }), 'USERNAME_INVALID'],
+  ['credential shape', b => ({ ...b, credential: '' }), 'CREDENTIAL_INVALID'],
+  ['TTL shape', b => ({ ...b, ttl: '300' }), 'TTL_INVALID'],
+  ['TTL range', b => ({ ...b, ttl: 301 }), 'TTL_INVALID'],
+  ['expiry format', b => ({ ...b, expiresAt: 'not-a-number' }), 'EXPIRY_FORMAT_INVALID'],
+  ['expiry unsafe', b => ({ ...b, expiresAt: Number.MAX_SAFE_INTEGER }), 'EXPIRY_BEYOND_TTL'],
+  ['near stale expiry', b => ({ ...b, expiresAt: b.expiresAt - 285000 }), 'EXPIRY_TOO_EARLY'],
+  ['expired', b => ({ ...b, expiresAt: b.expiresAt - 400000 }), 'EXPIRY_TOO_EARLY'],
+  ['client two seconds behind', b => ({ ...b, expiresAt: b.expiresAt + 2000 }), 'EXPIRY_BEYOND_TTL'],
+  ['ICE array', b => ({ ...b, iceServers: [] }), 'ICE_SERVERS_INVALID'],
+  ['ICE record', b => ({ ...b, iceServers: [null] }), 'ICE_SERVER_INVALID'],
+  ['ICE fields', b => ({ ...b, iceServers: [{ ...b.iceServers[1], secret: 'synthetic-secret' }] }), 'ICE_FIELDS_INVALID'],
+  ['ICE URL array', b => ({ ...b, iceServers: [{ ...b.iceServers[1], urls: [] }] }), 'ICE_URLS_INVALID'],
+  ['ICE URI', b => ({ ...b, iceServers: [{ ...b.iceServers[1], urls: 'https://synthetic-secret.invalid' }] }), 'ICE_URI_INVALID'],
+  ['credential type', b => ({ ...b, iceServers: [{ ...b.iceServers[1], credentialType: 'oauth' }] }), 'ICE_CREDENTIAL_TYPE_INVALID'],
+  ['TURN credentials mismatch', b => ({ ...b, iceServers: [{ ...b.iceServers[1], username: 'synthetic-secret' }] }), 'ICE_CREDENTIAL_MISMATCH'],
+  ['STUN credentials', b => ({ ...b, iceServers: [{ ...b.iceServers[0], username: 'synthetic-secret' }] }), 'ICE_STUN_CREDENTIALS_INVALID'],
+  ['missing TURN', b => ({ ...b, iceServers: [b.iceServers[0]] }), 'TURN_SERVER_MISSING']
+]) test(`diagnostic contract branch: ${label}`, async () => {
+  const events = [], f = fixture({ fetcher: async () => Response.json(mutate(f.payload())) });
+  await assert.rejects(f.provider.getConfiguration(e => events.push(e)), error => error.message === 'TURN_INVALID_RESPONSE' && !error.detail);
+  assert.equal(events.at(-1).stage, 'validation'); assert.equal(events.at(-1).code, 'RESPONSE_INVALID');
+  assert.equal(events.at(-1).detail, detail); assert.equal(events.at(-1).httpStatus, 200);
+  assert.doesNotMatch(JSON.stringify(events), /synthetic|expiresAt|iceServers|idToken/);
+  await assert.rejects(f.provider.getConfiguration(() => { throw new Error('observer'); }), /TURN_INVALID_RESPONSE/);
+});
+test('aligned expiry emits READY without a failure detail', async () => {
+  const events = [], f = fixture(); await f.provider.getConfiguration(e => events.push(e));
+  assert.equal(events.at(-1).code, 'READY'); assert.equal(events.at(-1).detail, undefined);
+});
+test('unix seconds multiplication overflow and invalid ISO use distinct expiry diagnostics', async () => {
+  for (const [format, value, detail] of [['unix-seconds', Number.MAX_SAFE_INTEGER, 'EXPIRY_UNSAFE'], ['iso8601', '2023-11-14T22:18:20Z', 'EXPIRY_FORMAT_INVALID']]) {
+    const events = [], f = fixture({ contract: { ttlUnit: 'seconds', expiresAtFormat: format }, fetcher: async () => Response.json({ ...f.payload(), expiresAt: value }) });
+    await assert.rejects(f.provider.getConfiguration(e => events.push(e)), /TURN_INVALID_RESPONSE/);
+    assert.equal(events.at(-1).detail, detail);
+  }
+});

@@ -2778,9 +2778,9 @@
                   try { finished?.close?.(); } catch (_) {}
                   activeSession = null;
                   activeChannel = null;
+                  activeManualPeerId = null;
+                  startMiniBackupInbox().catch(() => {});
                 }
-                activeManualPeerId = null;
-                startMiniBackupInbox().catch(() => {});
               }, 1500);
             }
           },
