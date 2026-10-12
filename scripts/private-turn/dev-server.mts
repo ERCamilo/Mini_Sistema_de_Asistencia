@@ -10,6 +10,7 @@ interface PrivateTurnDevBootstrap {
     contract: { ttlUnit: 'seconds'; clockSource?: 'issuer'; expiresAtFormat: 'unix-seconds' | 'unix-milliseconds' | 'iso8601' };
     canonicalRoot: string;
     forceRelay?: boolean;
+    previewRelease?: { label: string; revision: string };
 }
 interface PrivateTurnDevOptions {
     forwardPort: number;
@@ -141,10 +142,15 @@ function forward(idToken: string, port: number, max: number, timeout: number): P
     });
 }
 const privateOrigins = ['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'];
+function previewRelease(value: PrivateTurnDevBootstrap['previewRelease']): PrivateTurnDevBootstrap['previewRelease'] {
+    if (value === undefined) return undefined;
+    if (!value || typeof value.label !== 'string' || !/^beta [0-9]{1,3}\.[0-9]{1,3}$/.test(value.label) || typeof value.revision !== 'string' || !/^[a-f0-9]{7,40}$/.test(value.revision)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+    return { label: value.label, revision: value.revision };
+}
 function bootstrapOptions(value: PrivateTurnDevBootstrap | undefined, secure: boolean): PrivateTurnDevBootstrap | undefined {
     if (!value || value.enabled === false) return undefined;
     if (!secure || value.enabled !== true || !['mini', 'sa'].includes(value.appIdentity) || typeof value.canonicalRoot !== 'string' || !value.canonicalRoot || !value.contract || value.contract.ttlUnit !== 'seconds' || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(value.contract.expiresAtFormat) || (value.forceRelay !== undefined && typeof value.forceRelay !== 'boolean')) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
-    return { enabled: true, appIdentity: value.appIdentity, canonicalRoot: value.canonicalRoot, forceRelay: value.forceRelay === true, contract: { ...value.contract } };
+    return { enabled: true, appIdentity: value.appIdentity, canonicalRoot: value.canonicalRoot, forceRelay: value.forceRelay === true, previewRelease: previewRelease(value.previewRelease), contract: { ...value.contract } };
 }
 function scriptJson(value: unknown): string { return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029'); }
 async function miniPublicConfig(root: string): Promise<unknown> {
@@ -170,7 +176,7 @@ async function injectHtml(body: Buffer, bootstrap: PrivateTurnDevBootstrap, orig
         if (html.split(configAnchor).length !== 2 || html.indexOf(configAnchor) > html.indexOf(core)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
         html = html.replace(configAnchor, '<script>window.MiniFirebaseFieldConfig=' + scriptJson(await miniPublicConfig(bootstrap.canonicalRoot)) + ';</script>' + configAnchor);
     }
-    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: { ...bootstrap.contract, clockSource: 'issuer' }, forceRelay: bootstrap.forceRelay, diagnostics: true, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
+    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: { ...bootstrap.contract, clockSource: 'issuer' }, forceRelay: bootstrap.forceRelay, previewRelease: bootstrap.previewRelease, diagnostics: true, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
     const saLoader = bootstrap.appIdentity === 'sa' ? ',loadSaAuth:async()=>{const m=await import("/js/modules/data/firebase.js");if(!m.auth||typeof m.onAuthStateChanged!=="function")throw new Error("TURN_BOOTSTRAP_UNAVAILABLE");return {get currentUser(){return m.auth.currentUser;},onAuthStateChanged:fn=>m.onAuthStateChanged(m.auth,fn)};}' : '';
     const install = 'window.privateTurnTest=PrivateTurnBootstrap.install({' + scriptJson(options).slice(1, -1) + saLoader + '});';
     return Buffer.from(html.replace(core, core + '<script src="/__private-turn/provider.js"></script><script src="/__private-turn/bootstrap.js"></script><script>' + install + '</script>'));
@@ -249,7 +255,7 @@ async function cli(): Promise<void> {
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--force-relay') { forceRelay = true; continue; }
         if (args[i] === '--reverse-proxy') { reverseProxy = true; continue; }
-        if (!['--root', '--asset', '--forward-port', '--port', '--cert', '--key', '--app', '--canonical-root', '--expiry-format', '--public-origin'].includes(args[i]) || !args[i + 1]) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+        if (!['--root', '--asset', '--forward-port', '--port', '--cert', '--key', '--app', '--canonical-root', '--expiry-format', '--public-origin', '--preview-release', '--preview-revision'].includes(args[i]) || !args[i + 1]) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
         const flag = args[i], value = args[++i];
         if (flag === '--asset') assets.push(value); else { if (values[flag] !== undefined) throw new Error('TURN_DEV_CONFIGURATION_INVALID'); values[flag] = value; }
     }
@@ -258,8 +264,8 @@ async function cli(): Promise<void> {
     if (values['--app']) {
         const identity = values['--app'], format = values['--expiry-format'];
         if (!['mini', 'sa'].includes(identity) || !['unix-seconds', 'unix-milliseconds', 'iso8601'].includes(format) || !values['--canonical-root'] || !values['--root']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
-        bootstrap = { enabled: true, appIdentity: identity as 'mini' | 'sa', forceRelay, canonicalRoot: values['--canonical-root'], contract: { ttlUnit: 'seconds', clockSource: 'issuer', expiresAtFormat: format as PrivateTurnDevBootstrap['contract']['expiresAtFormat'] } };
-    } else if (forceRelay || values['--expiry-format'] || values['--canonical-root']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
+        bootstrap = { enabled: true, appIdentity: identity as 'mini' | 'sa', forceRelay, canonicalRoot: values['--canonical-root'], previewRelease: values['--preview-release'] !== undefined || values['--preview-revision'] !== undefined ? previewRelease({ label: values['--preview-release'], revision: values['--preview-revision'] }) : undefined, contract: { ttlUnit: 'seconds', clockSource: 'issuer', expiresAtFormat: format as PrivateTurnDevBootstrap['contract']['expiresAtFormat'] } };
+    } else if (forceRelay || values['--expiry-format'] || values['--canonical-root'] || values['--preview-release'] || values['--preview-revision']) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
     const tls = reverseProxy ? undefined : { cert: await readFile(values['--cert']), key: await readFile(values['--key']) };
     const dev = await startDevServer({ forwardPort: Number(values['--forward-port']), port: values['--port'] ? Number(values['--port']) : 9443, tls, reverseProxy, publicOrigin: values['--public-origin'], bootstrap, appRoot: values['--root'], assets });
     const stop = () => { void dev.close(); };

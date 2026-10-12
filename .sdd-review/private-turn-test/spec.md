@@ -307,3 +307,6 @@ whose inbox has retired. Both inboxes need renewed demand. A carefully owned,
 credential-free signaling standby and buffered event replay may address this
 without changing the signaling protocol; that behavior needs explicit parent
 scope selection and regression/browser proof before activation.
+
+## Loaded private preview identity
+The private operator may supply a bounded beta release label and reviewed hexadecimal revision together. The development proxy validates and injects these into the document's existing opt-in bootstrap. Each installation captures its metadata and the document's loaded MINI_BUILD_INFO version after readiness, decorates Mini's existing Settings version, and adds the same release identity to sanitized diagnostic copies. Version identity is the loaded document/build, never newly fetched version metadata; other installations or future server releases cannot change it. An element-only observer preserves the captured label when asynchronous storage boot later renders the ordinary version. Disposal disconnects that observer, removes pending decoration and restores only its owned version text. Ordinary production HTML, package version, banner and transport remain unchanged when metadata is absent.

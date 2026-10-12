@@ -468,3 +468,71 @@ test('async factory time reduces the exact configuration lease', async () => {
   let mono = 100; const f = fixture({ performance: { now: () => mono }, SaMiniP2P: { createRtcSession: async () => { mono += 20000; return { pc: {}, close() {} }; } } });
   const handle = f.install(); const session = await f.root.SaMiniP2P.createRtcSession({}); assert.equal(session.getLeaseRemainingMs(), 280000); handle.dispose();
 });
+
+function releaseDocument(readyState = 'complete') {
+  const doc = diagnosticDocument(), version = { textContent: 'v2.17.1' }, events = new Map();
+  doc.readyState = readyState;
+  doc.getElementById = id => id === 'mini-version' ? version : null;
+  doc.addEventListener = (name, fn) => events.set(name, fn);
+  doc.removeEventListener = (name, fn) => { if (events.get(name) === fn) events.delete(name); };
+  return { doc, version, ready() { doc.readyState = 'complete'; events.get('DOMContentLoaded')?.(); }, count: () => events.size };
+}
+test('private loaded release decorates after ordinary DOM-ready rendering and survives option mutation', async () => {
+  const d = releaseDocument('loading'), copies = [], metadata = { label: 'beta 1.0', revision: 'abcdef123456' };
+  const f = fixture({ document: d.doc, navigator: { clipboard: { writeText: async value => copies.push(value) } } });
+  const h = f.install({ diagnostics: true, previewRelease: metadata });
+  assert.equal(d.version.textContent, 'v2.17.1'); metadata.label = 'beta 9.0'; metadata.revision = '9999999';
+  d.ready(); d.version.textContent = 'v2.17.1'; await flushDiagnostics();
+  assert.equal(d.version.textContent, 'v2.17.1 beta 1.0 · abcdef123456');
+  await f.root.SaMiniP2P.createRtcSession({}); await flushDiagnostics();
+  const button = d.doc.elements.find(el => el.textContent === 'Copiar diagnóstico');
+  button.onclick(); await flushDiagnostics();
+  assert.match(copies[0], /versión=v2\.17\.1 beta 1\.0 · abcdef123456/);
+  assert.doesNotMatch(copies[0], /beta 9|9999999|synthetic/);
+  h.dispose(); assert.equal(d.version.textContent, 'v2.17.1'); assert.equal(d.count(), 0);
+});
+test('different loaded release snapshots remain distinct and disposal preserves a newer renderer', async () => {
+  const versions = [];
+  for (const revision of ['abcdef1', 'abcdef2']) {
+    const d = releaseDocument(), f = fixture({ document: d.doc });
+    const h = f.install({ previewRelease: { label: 'beta 1.0', revision } }); await flushDiagnostics();
+    versions.push(d.version.textContent); d.version.textContent = 'v2.18.0'; h.dispose(); assert.equal(d.version.textContent, 'v2.18.0');
+  }
+  assert.deepEqual(versions, ['v2.17.1 beta 1.0 · abcdef1', 'v2.17.1 beta 1.0 · abcdef2']);
+});
+test('disposed pending release decoration cannot change the loaded document', async () => {
+  const d = releaseDocument('loading'), f = fixture({ document: d.doc });
+  const h = f.install({ previewRelease: { label: 'beta 1.0', revision: 'abcdef1' } });
+  h.dispose(); d.ready(); await flushDiagnostics(); assert.equal(d.version.textContent, 'v2.17.1'); assert.equal(d.count(), 0);
+});
+test('absent or disabled private release leaves ordinary version unchanged', async () => {
+  for (const changes of [{}, { enabled: false, previewRelease: { label: 'beta 1.0', revision: 'abcdef1' } }]) {
+    const d = releaseDocument(), f = fixture({ document: d.doc }); const h = f.install(changes);
+    await flushDiagnostics(); assert.equal(d.version.textContent, 'v2.17.1'); h.dispose();
+  }
+});
+test('release metadata rejects unsafe labels and revisions without reading private data', () => {
+  for (const previewRelease of [{ label: 'account@example.com', revision: 'abcdef1' }, { label: 'beta 1.0', revision: '<script>' }, { label: 'beta ' + '1'.repeat(40), revision: 'abcdef1' }, { label: 'beta 1.0', revision: 'a'.repeat(41) }, { label: 'beta 1.0' }]) {
+    assert.throws(() => fixture().install({ previewRelease }), /TURN_BOOTSTRAP_CONFIGURATION_INVALID/);
+  }
+});
+
+test('asynchronous storage boot rendering cannot erase or replace the captured loaded release', async () => {
+  const d = releaseDocument(), observers = [];
+  d.version.textContent = 'v2.13.0';
+  class Observer {
+    constructor(callback) { this.callback = callback; observers.push(this); }
+    observe(element, options) { this.element = element; this.options = options; }
+    disconnect() { this.disconnected = true; }
+  }
+  const info = { version: '2.17.1' }, f = fixture({ document: d.doc, MutationObserver: Observer, MINI_BUILD_INFO: info });
+  const h = f.install({ previewRelease: { label: 'beta 1.0', revision: 'abcdef1' } }); await flushDiagnostics();
+  assert.equal(d.version.textContent, 'v2.17.1 beta 1.0 · abcdef1');
+  assert.equal(observers.length, 1); assert.equal(observers[0].element, d.version);
+  d.version.textContent = 'v2.17.1'; observers[0].callback();
+  assert.equal(d.version.textContent, 'v2.17.1 beta 1.0 · abcdef1');
+  info.version = '2.18.0'; d.version.textContent = 'v2.18.0'; observers[0].callback();
+  assert.equal(d.version.textContent, 'v2.17.1 beta 1.0 · abcdef1');
+  h.dispose(); assert.equal(observers[0].disconnected, true); assert.equal(d.version.textContent, 'v2.17.1');
+  observers[0].callback(); assert.equal(d.version.textContent, 'v2.17.1');
+});

@@ -8,6 +8,7 @@ interface PrivateTurnBootstrapOptions {
     enabled: boolean;
     forceRelay?: boolean;
     diagnostics?: boolean;
+    previewRelease?: { label: string; revision: string };
     onDiagnostic?: (value: PrivateTurnBootstrapDiagnostic) => void;
     allowedOrigins?: readonly string[];
     appIdentity: 'mini' | 'sa';
@@ -59,6 +60,8 @@ interface PrivateTurnBootstrapHandle { active: boolean; dispose(): void; }
 interface PrivateTurnBootstrapRoot {
     location?: { origin: string };
     document?: Document;
+    MINI_BUILD_INFO?: { version?: unknown };
+    MutationObserver?: typeof MutationObserver;
     navigator?: { clipboard?: { writeText(value: string): Promise<void> } };
     crypto?: { getRandomValues(value: Uint8Array): Uint8Array };
     SaMiniP2P?: PrivateTurnBootstrapCore;
@@ -94,6 +97,10 @@ interface PrivateTurnBootstrapRoot {
         } catch { fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID'); }
         if ((options.allowedOrigins || []).some(value => !['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'].includes(value))) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         if (!core || !root.PrivateTurn || !root.fetch || (identity === 'sa' && !options.loadSaAuth)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        const metadata = options.previewRelease;
+        if (metadata !== undefined && (!metadata || typeof metadata.label !== 'string' || !/^beta [0-9]{1,3}\.[0-9]{1,3}$/.test(metadata.label) || typeof metadata.revision !== 'string' || !/^[a-f0-9]{7,40}$/.test(metadata.revision))) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        // Capture primitives, never mutable options or newly fetched build metadata.
+        const release = metadata ? { label: metadata.label, revision: metadata.revision } : null;
         if (installed) {
             if (installed.core === core && installed.identity === identity && core.createRtcSession === installed.wrapper) return installed.handle;
             fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
@@ -101,6 +108,30 @@ interface PrivateTurnBootstrapRoot {
         const original = core.createRtcSession, fetcher = root.fetch.bind(root), loadSaAuth = options.loadSaAuth;
         const getScope = options.getScope || (() => identity + ':' + origin);
         let disposed = false, epoch = 0, auth: PrivateTurnBootstrapAuth | null = null, pendingAuth: Promise<PrivateTurnBootstrapAuth> | null = null;
+        let versionElement: HTMLElement | null = null, ordinaryVersion = '', decoratedVersion = '';
+        const doc = root.document;
+        let versionObserver: MutationObserver | null = null;
+        const decorateVersion = () => {
+            if (disposed || !release || identity !== 'mini' || !doc?.getElementById) return;
+            const element = doc.getElementById('mini-version');
+            const loaded = root.MINI_BUILD_INFO?.version;
+            const text = typeof loaded === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(loaded) ? 'v' + loaded : element?.textContent || '';
+            if (!element || !/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(text)) return;
+            versionElement = element; ordinaryVersion = text;
+            decoratedVersion = text + ' ' + release.label + ' · ' + release.revision;
+            element.textContent = decoratedVersion;
+            if (root.MutationObserver) {
+                versionObserver = new root.MutationObserver(() => {
+                    if (!disposed && element.textContent !== decoratedVersion) element.textContent = decoratedVersion;
+                });
+                // Storage boot may render after DOM-ready. Observe this label only;
+                // never inspect settings, attendance or account DOM.
+                versionObserver.observe(element, { childList: true, characterData: true, subtree: true });
+            }
+        };
+        // Capture the document's loaded build after scripts finish. Storage boot
+        // may complete later; the label observer preserves this same identity.
+        const readyVersion = () => { doc?.removeEventListener?.('DOMContentLoaded', readyVersion); void Promise.resolve().then(decorateVersion); };
         let unsubscribe: () => void = () => {};
         const provider = root.PrivateTurn.createProvider({ enabled: true, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => auth?.currentUser || null, fetcher, now: options.now });
         // Private observations are bounded and never become connection authority.
@@ -116,6 +147,7 @@ interface PrivateTurnBootstrapRoot {
                 if (Number.isFinite(stamp)) utc = new Date(stamp).toISOString();
             } catch { /* Clock failures cannot affect diagnostic copying or RTC. */ }
             return 'Diagnóstico TURN · app=' + (identity === 'mini' ? 'Mini' : 'SA')
+                + (release ? ' · versión=' + (decoratedVersion || release.label + ' · ' + release.revision) : '')
                 + ' · instancia=' + instance + ' · UTC=' + utc + '\n'
                 + [...history.values()].map(item => diagnosticText(item)).join("\n");
         };
@@ -454,12 +486,19 @@ interface PrivateTurnBootstrapRoot {
         const handle: PrivateTurnBootstrapHandle = { active: true, dispose: () => {
             if (disposed) return;
             disposed = true; handle.active = false; epoch++; provider.invalidate(); clearObservations();
+            doc?.removeEventListener?.('DOMContentLoaded', readyVersion);
+            versionObserver?.disconnect();
+            if (versionElement?.textContent === decoratedVersion) versionElement.textContent = ordinaryVersion;
             try { unsubscribe(); } catch { /* Disposal must not expose SDK errors. */ }
             if (core.createRtcSession === wrapper) core.createRtcSession = original;
             if (installed?.handle === handle) installed = null;
         } };
         core.createRtcSession = wrapper;
         installed = { core, identity, wrapper, handle };
+        if (release && identity === 'mini' && doc) {
+            if (doc.readyState === 'loading') doc.addEventListener?.('DOMContentLoaded', readyVersion);
+            else readyVersion();
+        }
         return handle;
     }
     async function verifySelectedRelay(pc: unknown): Promise<boolean> {

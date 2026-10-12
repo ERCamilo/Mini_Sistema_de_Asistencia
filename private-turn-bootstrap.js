@@ -23,7 +23,7 @@
     }
     function fail(code) { throw new Error(code); }
     function install(options) {
-        var _a;
+        var _a, _b;
         if (options.enabled !== true)
             return { active: false, dispose: () => { } };
         const origin = ((_a = root.location) === null || _a === void 0 ? void 0 : _a.origin) || '', identity = options.appIdentity, core = root.SaMiniP2P;
@@ -39,6 +39,11 @@
             fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         if (!core || !root.PrivateTurn || !root.fetch || (identity === 'sa' && !options.loadSaAuth))
             fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        const metadata = options.previewRelease;
+        if (metadata !== undefined && (!metadata || typeof metadata.label !== 'string' || !/^beta [0-9]{1,3}\.[0-9]{1,3}$/.test(metadata.label) || typeof metadata.revision !== 'string' || !/^[a-f0-9]{7,40}$/.test(metadata.revision)))
+            fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        // Capture primitives, never mutable options or newly fetched build metadata.
+        const release = metadata ? { label: metadata.label, revision: metadata.revision } : null;
         if (installed) {
             if (installed.core === core && installed.identity === identity && core.createRtcSession === installed.wrapper)
                 return installed.handle;
@@ -47,6 +52,35 @@
         const original = core.createRtcSession, fetcher = root.fetch.bind(root), loadSaAuth = options.loadSaAuth;
         const getScope = options.getScope || (() => identity + ':' + origin);
         let disposed = false, epoch = 0, auth = null, pendingAuth = null;
+        let versionElement = null, ordinaryVersion = '', decoratedVersion = '';
+        const doc = root.document;
+        let versionObserver = null;
+        const decorateVersion = () => {
+            var _a;
+            if (disposed || !release || identity !== 'mini' || !(doc === null || doc === void 0 ? void 0 : doc.getElementById))
+                return;
+            const element = doc.getElementById('mini-version');
+            const loaded = (_a = root.MINI_BUILD_INFO) === null || _a === void 0 ? void 0 : _a.version;
+            const text = typeof loaded === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+$/.test(loaded) ? 'v' + loaded : (element === null || element === void 0 ? void 0 : element.textContent) || '';
+            if (!element || !/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(text))
+                return;
+            versionElement = element;
+            ordinaryVersion = text;
+            decoratedVersion = text + ' ' + release.label + ' · ' + release.revision;
+            element.textContent = decoratedVersion;
+            if (root.MutationObserver) {
+                versionObserver = new root.MutationObserver(() => {
+                    if (!disposed && element.textContent !== decoratedVersion)
+                        element.textContent = decoratedVersion;
+                });
+                // Storage boot may render after DOM-ready. Observe this label only;
+                // never inspect settings, attendance or account DOM.
+                versionObserver.observe(element, { childList: true, characterData: true, subtree: true });
+            }
+        };
+        // Capture the document's loaded build after scripts finish. Storage boot
+        // may complete later; the label observer preserves this same identity.
+        const readyVersion = () => { var _a; (_a = doc === null || doc === void 0 ? void 0 : doc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(doc, 'DOMContentLoaded', readyVersion); void Promise.resolve().then(decorateVersion); };
         let unsubscribe = () => { };
         const provider = root.PrivateTurn.createProvider({ enabled: true, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => (auth === null || auth === void 0 ? void 0 : auth.currentUser) || null, fetcher, now: options.now });
         // Private observations are bounded and never become connection authority.
@@ -64,6 +98,7 @@
             }
             catch { /* Clock failures cannot affect diagnostic copying or RTC. */ }
             return 'Diagnóstico TURN · app=' + (identity === 'mini' ? 'Mini' : 'SA')
+                + (release ? ' · versión=' + (decoratedVersion || release.label + ' · ' + release.revision) : '')
                 + ' · instancia=' + instance + ' · UTC=' + utc + '\n'
                 + [...history.values()].map(item => diagnosticText(item)).join("\n");
         };
@@ -610,6 +645,7 @@
             }
         };
         const handle = { active: true, dispose: () => {
+                var _a;
                 if (disposed)
                     return;
                 disposed = true;
@@ -617,6 +653,10 @@
                 epoch++;
                 provider.invalidate();
                 clearObservations();
+                (_a = doc === null || doc === void 0 ? void 0 : doc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(doc, 'DOMContentLoaded', readyVersion);
+                versionObserver === null || versionObserver === void 0 ? void 0 : versionObserver.disconnect();
+                if ((versionElement === null || versionElement === void 0 ? void 0 : versionElement.textContent) === decoratedVersion)
+                    versionElement.textContent = ordinaryVersion;
                 try {
                     unsubscribe();
                 }
@@ -628,6 +668,12 @@
             } };
         core.createRtcSession = wrapper;
         installed = { core, identity, wrapper, handle };
+        if (release && identity === 'mini' && doc) {
+            if (doc.readyState === 'loading')
+                (_b = doc.addEventListener) === null || _b === void 0 ? void 0 : _b.call(doc, 'DOMContentLoaded', readyVersion);
+            else
+                readyVersion();
+        }
         return handle;
     }
     async function verifySelectedRelay(pc) {

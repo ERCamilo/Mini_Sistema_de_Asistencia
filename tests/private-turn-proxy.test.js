@@ -173,3 +173,35 @@ for (const date of [undefined, 'invalid', ['Tue, 14 Nov 2023 22:13:20 GMT', 'Tue
   const dev = await fixture(t, (_req, res) => { res.sendDate = false; if (date !== undefined) res.setHeader('Date', date); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(payload())); });
   const result = await request(dev.origin); assert.equal(result.headers['x-turn-issued-date'], undefined);
 });
+
+test('private HTML carries explicit loaded beta identity and validates bounded metadata', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'private-turn-release-')); t.after(() => fs.rm(root, { recursive: true }));
+  const html = '<html><script src="./firebase-field-config.js"></script><script src="./p2p-core.js"></script></html>';
+  await fs.writeFile(path.join(root, 'index.html'), html);
+  const bootstrap = { enabled: true, appIdentity: 'mini', contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds' }, canonicalRoot: path.resolve(__dirname, '..'), previewRelease: { label: 'beta 1.0', revision: 'abcdef123456' } };
+  const f = await tlsFixture(t, { appRoot: root, assets: ['index.html'], bootstrap });
+  assert.match((await f.get('/')).body, /"previewRelease":\{"label":"beta 1\.0","revision":"abcdef123456"\}/);
+  assert.equal(await fs.readFile(path.join(root, 'index.html'), 'utf8'), html);
+  for (const previewRelease of [{ label: 'private@example.com', revision: 'abcdef1' }, { label: 'beta 1.0', revision: 'not-a-commit' }, { label: 'beta 1.0' }, { label: 'beta ' + '1'.repeat(40), revision: 'abcdef1' }]) {
+    await assert.rejects(startDevServer({ forwardPort: 12345, port: 0, reverseProxy: true, publicOrigin: 'https://a2.tail2a0a8e.ts.net:8443', bootstrap: { ...bootstrap, previewRelease } }), /TURN_DEV_CONFIGURATION_INVALID/);
+  }
+});
+test('operator CLI accepts paired release identity and refuses unpaired or unsafe metadata', async t => {
+  const { spawn } = require('node:child_process');
+  const tool = path.join(process.env.PRIVATE_TURN_TOOL_OUTPUT, 'dev-server.mjs');
+  const root = path.resolve(__dirname, '..');
+  const base = ['--forward-port', '19753', '--port', '0', '--reverse-proxy', '--public-origin', 'https://a2.tail2a0a8e.ts.net:8443', '--app', 'mini', '--root', root, '--canonical-root', root, '--expiry-format', 'unix-seconds'];
+  async function run(args, expected) {
+    const child = spawn(process.execPath, [tool, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    t.after(() => child.kill());
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { child.kill(); reject(new Error('CLI deadline')); }, 5000);
+      let ready = false;
+      child.stdout.on('data', data => { if (String(data).includes('private-turn-dev:ready')) { ready = true; child.kill(); } });
+      child.on('error', reject); child.on('exit', code => { clearTimeout(timer); try { assert.equal(ready, expected); if (!expected) assert.equal(code, 1); resolve(); } catch (error) { reject(error); } });
+    });
+  }
+  await run([...base, '--preview-release', 'beta 1.0', '--preview-revision', 'abcdef123456'], true);
+  for (const args of [['--preview-release', 'beta 1.0'], ['--preview-revision', 'abcdef1'], ['--preview-release', 'beta 1.0', '--preview-revision', 'invalid'], ['--preview-release', 'account@example.com', '--preview-revision', 'abcdef1']]) await run([...base, ...args], false);
+  await run(['--forward-port', '19753', '--reverse-proxy', '--public-origin', 'https://a2.tail2a0a8e.ts.net:8443', '--preview-release', 'beta 1.0', '--preview-revision', 'abcdef1'], false);
+});
