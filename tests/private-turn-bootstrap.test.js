@@ -150,6 +150,7 @@ function diagnosticDocument() {
   const elements = [];
   function createElement(tag) {
     const element = { tag, style: {}, textContent: '', children: [], attributes: {}, removed: false,
+      focus() { this.focused = true; }, select() { this.selected = true; },
       get firstChild() { return this.children[0]; }, setAttribute(name, value) { this.attributes[name] = value; }, appendChild(child) { this.children.push(child); }, remove() { this.removed = true; } };
     elements.push(element); return element;
   }
@@ -232,4 +233,51 @@ test('console records observable ICE gathering and signaling without retaining e
   assert.equal(last.signaling, 'have-local-offer'); assert.equal(last.localDescription, true); assert.equal(last.remoteDescription, false);
   assert.equal(last.events.length, 32); assert.ok(last.events.some(e => e.code === 'RTC_STATE'));
   assert.doesNotMatch(JSON.stringify(last), /synthetic|sdp|url|errorText/); d.handle.dispose(); assert.equal(pc.listenerCount(), 0);
+});
+
+function copyConsoleFixture(clipboard) {
+  const doc = diagnosticDocument();
+  const f = fixture({ document: doc, navigator: clipboard === undefined ? {} : { clipboard }, SaMiniP2P: { createRtcSession: async () => ({ pc: diagnosticPeer(false), close() {} }) } });
+  doc.body.textContent = 'PRIVATE_ATTENDANCE_ACCOUNT_PAIRING';
+  const h = f.install({ diagnostics: true });
+  return { f, h, doc, button: () => doc.elements.find(element => element.tag === 'button'), output: () => doc.body.children[0].children[1] };
+}
+test('copy console takes a fresh sanitized snapshot including all retained sessions', async () => {
+  const copies = [], c = copyConsoleFixture({ writeText: async text => copies.push(text) });
+  await c.f.root.SaMiniP2P.createRtcSession({});
+  const button = c.button(); assert.ok(button, 'copy button exists');
+  assert.equal(button.textContent, 'Copiar diagnóstico'); assert.match(button.style.cssText, /min-height:44px/);
+  await c.f.root.SaMiniP2P.createRtcSession({ credential: 'PRIVATE_SESSION_SECRET' });
+  button.onclick(); await flushDiagnostics();
+  assert.equal(copies.length, 1); assert.equal(copies[0], c.output().textContent);
+  assert.match(copies[0], /Sesión 1/); assert.match(copies[0], /Sesión 2/);
+  assert.doesNotMatch(copies[0], /PRIVATE_|synthetic-token|synthetic-password/);
+  assert.ok(c.doc.elements.some(element => element.textContent === 'Diagnóstico copiado.')); c.h.dispose();
+});
+for (const reason of ['unavailable', 'denied']) test(`copy console provides selectable fallback when clipboard ${reason}`, async () => {
+  const c = copyConsoleFixture(reason === 'unavailable' ? undefined : { writeText: async () => { throw new Error('PRIVATE_DENIAL'); } });
+  await c.f.root.SaMiniP2P.createRtcSession({}); assert.ok(c.button(), 'copy button exists');
+  c.button().onclick(); await flushDiagnostics();
+  const fallback = c.doc.elements.find(element => element.tag === 'textarea'); assert.ok(fallback);
+  assert.equal(fallback.readOnly, true); assert.equal(fallback.value, c.output().textContent);
+  assert.equal(fallback.focused, true); assert.equal(fallback.selected, true);
+  assert.equal(fallback.attributes['aria-label'], 'Diagnóstico TURN para copiar manualmente');
+  assert.ok(c.doc.elements.some(element => element.textContent === 'Selecciona y copia el diagnóstico manualmente.'));
+  c.h.dispose(); assert.equal(c.button().onclick, null);
+});
+test('pending clipboard completion cannot revive disposed console or accept stale clicks', async () => {
+  const gate = deferred(), copies = [], c = copyConsoleFixture({ writeText: text => { copies.push(text); return gate.promise; } });
+  await c.f.root.SaMiniP2P.createRtcSession({}); const button = c.button(); assert.ok(button);
+  const click = button.onclick; click(); click(); assert.equal(copies.length, 1);
+  c.h.dispose(); gate.resolve(); await flushDiagnostics(); click();
+  assert.equal(copies.length, 1); assert.equal(button.onclick, null);
+  assert.ok(!c.doc.elements.some(element => element.textContent === 'Diagnóstico copiado.'));
+});
+
+test('account invalidation suppresses pending clipboard feedback and removes handler', async () => {
+  const gate = deferred(), c = copyConsoleFixture({ writeText: () => gate.promise });
+  await c.f.root.SaMiniP2P.createRtcSession({}); const button = c.button();
+  button.onclick(); c.f.setUser(null); gate.resolve(); await flushDiagnostics();
+  assert.equal(button.onclick, null); assert.equal(c.doc.body.children[0].removed, true);
+  assert.ok(!c.doc.elements.some(element => element.textContent === 'Diagnóstico copiado.')); c.h.dispose();
 });

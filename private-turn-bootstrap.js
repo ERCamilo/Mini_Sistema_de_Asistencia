@@ -39,6 +39,52 @@
         const observations = new Map();
         const history = new Map();
         let ordinal = 0, panel = null, output = null;
+        let copyButton = null, copyStatus = null, manualCopy = null;
+        const snapshot = () => [...history.values()].map(item => diagnosticText(item)).join("\n");
+        async function copyDiagnostics() {
+            var _a, _b;
+            const button = copyButton, owner = panel, captured = epoch;
+            if (disposed || !button || button.disabled || !owner)
+                return;
+            const content = snapshot();
+            const current = () => !disposed && epoch === captured && panel === owner;
+            button.disabled = true;
+            try {
+                if (!((_b = (_a = root.navigator) === null || _a === void 0 ? void 0 : _a.clipboard) === null || _b === void 0 ? void 0 : _b.writeText))
+                    throw new Error("CLIPBOARD_UNAVAILABLE");
+                await root.navigator.clipboard.writeText(content);
+                if (current() && copyStatus) {
+                    copyStatus.textContent = "Diagnóstico copiado.";
+                    if (manualCopy) {
+                        manualCopy.remove();
+                        manualCopy = null;
+                    }
+                }
+            }
+            catch {
+                if (!current())
+                    return;
+                try {
+                    if (!manualCopy) {
+                        manualCopy = root.document.createElement("textarea");
+                        manualCopy.readOnly = true;
+                        manualCopy.setAttribute("aria-label", "Diagnóstico TURN para copiar manualmente");
+                        manualCopy.style.cssText = "display:block;box-sizing:border-box;width:100%;min-height:88px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);outline:2px solid var(--accent-color)";
+                        owner.appendChild(manualCopy);
+                    }
+                    manualCopy.value = content;
+                    if (copyStatus)
+                        copyStatus.textContent = "Selecciona y copia el diagnóstico manualmente.";
+                    manualCopy.focus();
+                    manualCopy.select();
+                }
+                catch { /* An unavailable DOM cannot affect the connection. */ }
+            }
+            finally {
+                if (current())
+                    button.disabled = false;
+            }
+        }
         const state = (value) => ['new', 'connecting', 'connected', 'disconnected', 'failed', 'closed'].includes(value || '')
             ? value : 'unmeasured';
         function publish(value) {
@@ -72,14 +118,23 @@
                     summary.setAttribute('aria-label', 'Abrir o cerrar diagnóstico TURN de prueba');
                     summary.style.cssText = 'min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;outline:2px solid var(--accent-color);outline-offset:2px;font-weight:700;list-style:none;position:sticky;top:0;background:var(--card-bg)';
                     output = doc.createElement('div');
+                    copyButton = doc.createElement("button");
+                    copyButton.type = "button";
+                    copyButton.textContent = "Copiar diagnóstico";
+                    copyButton.style.cssText = "min-width:44px;min-height:44px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:8px;outline:2px solid var(--accent-color);outline-offset:2px";
+                    copyButton.onclick = () => { void copyDiagnostics(); };
+                    copyStatus = doc.createElement("div");
+                    copyStatus.setAttribute("role", "status");
                     panel.appendChild(summary);
                     panel.appendChild(output);
+                    panel.appendChild(copyButton);
+                    panel.appendChild(copyStatus);
                     doc.body.appendChild(panel);
                 }
                 if (panel === null || panel === void 0 ? void 0 : panel.firstChild)
                     panel.firstChild.setAttribute('title', 'TURN · prueba privada · ' + (record.credentials === 'requesting' ? 'solicitando credenciales' : record.credentials === 'failed' ? 'solicitud fallida' : record.relay === 'verified' ? 'relay verificado' : 'relay sin verificar'));
                 if (output)
-                    output.textContent = [...history.values()].map(item => diagnosticText(item)).join('\n');
+                    output.textContent = snapshot();
                 if (output) {
                     output.style.cssText = 'white-space:pre-wrap;font:12px ui-monospace,monospace;line-height:1.5;overflow-wrap:anywhere;max-width:80vw';
                     output.setAttribute('aria-label', 'Consola TURN sanitizada de prueba');
@@ -107,8 +162,13 @@
                 panel === null || panel === void 0 ? void 0 : panel.remove();
             }
             catch { /* Best-effort DOM cleanup. */ }
+            if (copyButton)
+                copyButton.onclick = null;
             panel = null;
             output = null;
+            copyButton = null;
+            copyStatus = null;
+            manualCopy = null;
         }
         function observe(session, record, captured, capturedScope, elapsed) {
             var _a, _b;

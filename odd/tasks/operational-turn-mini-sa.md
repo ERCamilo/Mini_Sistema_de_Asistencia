@@ -77,8 +77,8 @@ User authorized replacing the bottom bar with a top-left floating control above 
 
 ## T3b: sanitized private TURN console
 User authorized precise, console-style diagnosis of failed credential acquisition and stalled RTC sessions. Route: delegated writer; provider stages and bootstrap lifecycle require two nontrivial TypeScript modules. Root class: missing observability, not a proven transport defect. Preserve all connection behavior, retries, deadlines, guest P2P, and the floating native control.
-- [ ] T3b: Add allowlisted auth/token/request/response/validation/cache/shared-request events with bounded elapsed time and HTTP status; display bounded per-session chronology and observable RTC states without raw errors, tokens, identities, addresses, SDP, candidates, or attendance data.
-- [ ] Verify deterministic RED/GREEN, privacy, callback isolation, concurrent request sharing, and cleanup with focused provider/bootstrap tests and isolated compilation. Full verification, native review, commit, and private activation remain parent-owned and pending.
+- [x] T3b: Add allowlisted auth/token/request/response/validation/cache/shared-request events with bounded elapsed time and HTTP status; display bounded per-session chronology and observable RTC states without raw errors, tokens, identities, addresses, SDP, candidates, or attendance data.
+- [x] Verify deterministic RED/GREEN, privacy, callback isolation, concurrent request sharing, and cleanup with focused provider/bootstrap tests and isolated compilation. Full verification, native review, commit, and private activation remain parent-owned and pending.
 - Scope: `src/private-turn.ts`, `src/private-turn-bootstrap.ts`, their generated root modules, their existing focused tests, and this tracker. No new dependency or remote operation. Engram mirror remains pending until host registration.
 
 ### T3b focused verification
@@ -90,3 +90,16 @@ User authorized precise, console-style diagnosis of failed credential acquisitio
 - User declined review only for target sha256:8e819182bdd0c6927cf7a59a41f653c6e32b0c64b30629cb43cca66d4ffd1b7c; exact provider invocation returned declined_this_candidate. No approval claimed and review mode unchanged.
 - Private preview activated using only tested provider/bootstrap assets, both served HTTPS responses matched source bytes. No production deployment, API changes, or transport behavior changes.
 - Next: refresh both physical clients, reproduce pairing, and collect bounded sanitized console events. This diagnostics task does not close the unresolved connectivity task. Memory mirror still pending authoritative host registration.
+
+- T3b work-unit commit: 6445bd6 (feat(turn): add sanitized private diagnostic console). Pinned normalization and commit hook converged without changing the verified runtime modules. No push/merge; original protected worktree remains untouched.
+
+## T3c: copy the sanitized private TURN console
+User authorized copying the entire TURN diagnostic history for future reports. Route: delegated bounded writer; TS rendering, derived asset and deterministic DOM tests form one behavior. Scope excludes transport/provider changes: inspect contract validation read-only, add a native 44px copy button inside details, and copy only a fresh allowlisted diagnostic snapshot. Clipboard denial/unavailability offers a readonly selectable manual fallback; asynchronous completion must not revive disposed/account-invalidated output. No app body, attendance, identity, pairing data, raw errors, or credentials may be copied.
+- [x] T3c: Observe focused RED/GREEN, compile only the derived bootstrap asset, and verify clipboard success/fallback/privacy/cleanup.
+- Native review, commit and private activation remain parent-owned; memory mirror pending host session registration.
+
+### T3c implementation evidence
+- Focused observed RED: 38/42 passed, four new copy-button regressions failed on the unchanged module. GREEN: 43/43 passed after isolated TypeScript compilation; only `private-turn-bootstrap.js` copied from compiler output. Additional coverage proves actual fallback focus/selection and account-invalidated async feedback suppression.
+- Final full deterministic suite: `PRIVATE_TURN_TOOL_OUTPUT=/tmp/turn-diagnostics-tool-etuj5U node --test tests/*.test.js`: 818/818 passed, zero skipped; `git diff --check` passed. Logs: `/tmp/turn-copy-red.log`, `/tmp/turn-copy-green.log`, `/tmp/turn-copy-full-final.log`. No build stamping, commit, native review, runtime update, remote access or real tokens.
+- Read-only contract diagnosis: validation rejects expiry beyond client-now plus advertised TTL (`src/private-turn.ts:86`). Synthetic aligned clock and +2s clock accepted a valid 300-second response; -2s clock rejected it as TURN_INVALID_RESPONSE. This confirms clock sensitivity, not the real phone's clock offset. CONTRACT_INVALID also covers payload/string/TTL/expiry/ICE-server shape and credentials constraints; actual failing branch remains unmeasured.
+- Next: parent checks candidate/review, activates private assets only under applicable authorization, and asks for automatic date/time verification or a sanitized expiry-specific diagnostic before changing transport/provider behavior. Clipboard manual/device acceptance remains pending.

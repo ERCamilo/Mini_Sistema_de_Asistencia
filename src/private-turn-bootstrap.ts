@@ -52,6 +52,7 @@ interface PrivateTurnBootstrapHandle { active: boolean; dispose(): void; }
 interface PrivateTurnBootstrapRoot {
     location?: { origin: string };
     document?: Document;
+    navigator?: { clipboard?: { writeText(value: string): Promise<void> } };
     SaMiniP2P?: PrivateTurnBootstrapCore;
     PrivateTurn?: { createProvider(options: PrivateTurnOptions): { getConfiguration(observer?: PrivateTurnObserver): Promise<PrivateTurnConfiguration | null>; invalidate(): void } };
     firebase?: { app(name: string): { auth(): PrivateTurnBootstrapAuth } };
@@ -86,6 +87,37 @@ interface PrivateTurnBootstrapRoot {
         const observations = new Map<number, () => void>();
         const history = new Map<number, PrivateTurnBootstrapDiagnostic>();
         let ordinal = 0, panel: HTMLElement | null = null, output: HTMLElement | null = null;
+        let copyButton: HTMLButtonElement | null = null, copyStatus: HTMLElement | null = null, manualCopy: HTMLTextAreaElement | null = null;
+        const snapshot = () => [...history.values()].map(item => diagnosticText(item)).join("\n");
+        async function copyDiagnostics(): Promise<void> {
+            const button = copyButton, owner = panel, captured = epoch;
+            if (disposed || !button || button.disabled || !owner) return;
+            const content = snapshot();
+            const current = () => !disposed && epoch === captured && panel === owner;
+            button.disabled = true;
+            try {
+                if (!root.navigator?.clipboard?.writeText) throw new Error("CLIPBOARD_UNAVAILABLE");
+                await root.navigator.clipboard.writeText(content);
+                if (current() && copyStatus) {
+                    copyStatus.textContent = "Diagnóstico copiado.";
+                    if (manualCopy) { manualCopy.remove(); manualCopy = null; }
+                }
+            } catch {
+                if (!current()) return;
+                try {
+                    if (!manualCopy) {
+                        manualCopy = root.document!.createElement("textarea");
+                        manualCopy.readOnly = true;
+                        manualCopy.setAttribute("aria-label", "Diagnóstico TURN para copiar manualmente");
+                        manualCopy.style.cssText = "display:block;box-sizing:border-box;width:100%;min-height:88px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);outline:2px solid var(--accent-color)";
+                        owner.appendChild(manualCopy);
+                    }
+                    manualCopy.value = content;
+                    if (copyStatus) copyStatus.textContent = "Selecciona y copia el diagnóstico manualmente.";
+                    manualCopy.focus(); manualCopy.select();
+                } catch { /* An unavailable DOM cannot affect the connection. */ }
+            } finally { if (current()) button.disabled = false; }
+        }
         const state = (value: string | undefined): PrivateTurnBootstrapDiagnostic['connection'] =>
             ['new', 'connecting', 'connected', 'disconnected', 'failed', 'closed'].includes(value || '')
                 ? value as PrivateTurnBootstrapDiagnostic['connection'] : 'unmeasured';
@@ -112,10 +144,15 @@ interface PrivateTurnBootstrapRoot {
                     summary.setAttribute('aria-label', 'Abrir o cerrar diagnóstico TURN de prueba');
                     summary.style.cssText = 'min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;outline:2px solid var(--accent-color);outline-offset:2px;font-weight:700;list-style:none;position:sticky;top:0;background:var(--card-bg)';
                     output = doc.createElement('div');
-                    panel.appendChild(summary); panel.appendChild(output); doc.body.appendChild(panel);
+                    copyButton = doc.createElement("button");
+                    copyButton.type = "button"; copyButton.textContent = "Copiar diagnóstico";
+                    copyButton.style.cssText = "min-width:44px;min-height:44px;background:var(--card-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:8px;outline:2px solid var(--accent-color);outline-offset:2px";
+                    copyButton.onclick = () => { void copyDiagnostics(); };
+                    copyStatus = doc.createElement("div"); copyStatus.setAttribute("role", "status");
+                    panel.appendChild(summary); panel.appendChild(output); panel.appendChild(copyButton); panel.appendChild(copyStatus); doc.body.appendChild(panel);
                 }
                 if (panel?.firstChild) (panel.firstChild as HTMLElement).setAttribute('title', 'TURN · prueba privada · ' + (record.credentials === 'requesting' ? 'solicitando credenciales' : record.credentials === 'failed' ? 'solicitud fallida' : record.relay === 'verified' ? 'relay verificado' : 'relay sin verificar'));
-                if (output) output.textContent = [...history.values()].map(item => diagnosticText(item)).join('\n');
+                if (output) output.textContent = snapshot();
                 if (output) { output.style.cssText = 'white-space:pre-wrap;font:12px ui-monospace,monospace;line-height:1.5;overflow-wrap:anywhere;max-width:80vw'; output.setAttribute('aria-label', 'Consola TURN sanitizada de prueba'); }
             } catch { /* A missing or unavailable DOM is not a connection failure. */ }
         }
@@ -132,7 +169,8 @@ interface PrivateTurnBootstrapRoot {
             for (const stop of [...observations.values()]) stop();
             observations.clear(); history.clear();
             try { panel?.remove(); } catch { /* Best-effort DOM cleanup. */ }
-            panel = null; output = null;
+            if (copyButton) copyButton.onclick = null;
+            panel = null; output = null; copyButton = null; copyStatus = null; manualCopy = null;
         }
         function observe(session: PrivateTurnBootstrapSession, record: PrivateTurnBootstrapDiagnostic, captured: number, capturedScope: string, elapsed: () => number): void {
             if (options.diagnostics !== true || disposed || epoch !== captured) return;
