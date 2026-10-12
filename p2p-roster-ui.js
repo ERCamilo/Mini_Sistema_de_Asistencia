@@ -1975,6 +1975,10 @@
       if (decided) return;
       decided = true;
       clearTimeout(expiry);
+      if (entry.stopped || miniBackupListeners.get(String(peer.peerId).trim()) !== entry || entry.retryTimer) {
+        notice.dismiss();
+        return;
+      }
       if (!accepted) {
         respond(false);
         notice.update({ state: 'info', title: 'Respaldo rechazado', description: 'No se recibió nada de ' + senderLabel + '.', actions: [], duration: 2500 });
@@ -1998,36 +2002,42 @@
     const expiry = setTimeout(() => {
       if (decided) return;
       decided = true;
+      if (entry.stopped || miniBackupListeners.get(String(peer.peerId).trim()) !== entry || entry.retryTimer) {
+        notice.dismiss();
+        return;
+      }
       respond(false);
       notice.update({ state: 'info', title: 'Oferta vencida', description: 'No respondiste a tiempo; no se recibió nada.', actions: [], duration: 3000 });
     }, OFFER_DECISION_MS);
   }
 
-  function stopMiniBackupListener(peerId) {
+  function stopMiniBackupListener(peerId, owner = null) {
     const key = String(peerId || '').trim();
     const entry = miniBackupListeners.get(key);
-    if (!entry) return false;
+    if (!entry || (owner && entry !== owner)) return false;
     entry.stopped = true;
-    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
-    try { entry.detachOffers?.(); } catch (_) {}
-    try { entry.detachReceiver?.(); } catch (_) {}
-    try { entry.session?.close?.(); } catch (_) {}
     miniBackupListeners.delete(key);
+    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
+    entry.retryTimer = null;
+    try { entry.detachOffers?.(); } catch (_) {}
+    entry.detachOffers = null;
+    try { entry.detachReceiver?.(); } catch (_) {}
+    entry.detachReceiver = null;
+    try { entry.session?.close?.(); } catch (_) {}
+    try { entry.signaling?.close?.(); } catch (_) {}
     return true;
   }
 
-  function scheduleMiniBackupRetry(peer, attempt) {
+  function scheduleMiniBackupRetry(peer, attempt, entry) {
     const peerId = String(peer?.peerId || '').trim();
-    const entry = miniBackupListeners.get(peerId);
-    if (!entry || entry.stopped || !isNetworkOnline()) return;
-    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
+    if (!entry || entry.stopped || miniBackupListeners.get(peerId) !== entry || entry.retryTimer || !isNetworkOnline()) return;
     const index = Math.min(attempt, MINI_BACKUP_BACKOFF_MS.length - 1);
-    entry.retryTimer = setTimeout(() => {
-      const current = miniBackupListeners.get(peerId);
-      if (!current || current.stopped) return;
-      miniBackupListeners.delete(peerId);
+    const timer = setTimeout(() => {
+      if (entry.stopped || miniBackupListeners.get(peerId) !== entry || entry.retryTimer !== timer) return;
+      stopMiniBackupListener(peerId, entry);
       ensureMiniBackupListener(peer, Math.min(attempt + 1, MINI_BACKUP_BACKOFF_MS.length - 1)).catch(() => {});
     }, MINI_BACKUP_BACKOFF_MS[index]);
+    entry.retryTimer = timer;
   }
 
   async function ensureMiniBackupListener(peer, attempt = 0) {
@@ -2038,24 +2048,33 @@
     if (existing && !existing.stopped) return existing;
     const entry = { peer, session: null, signaling: null, startedAt: Date.now(), retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
     miniBackupListeners.set(peerId, entry);
+    const isCurrent = () => !entry.stopped && miniBackupListeners.get(peerId) === entry;
     const retry = () => {
-      if (entry.stopped) return;
-      try { entry.detachOffers?.(); } catch (_) {}
-      try { entry.session?.close?.(); } catch (_) {}
-      scheduleMiniBackupRetry(peer, attempt);
+      if (!isCurrent() || entry.retryTimer) return;
+      scheduleMiniBackupRetry(peer, attempt, entry);
+      // Clear owned resources before close can synchronously call onState again.
+      const detachOffers = entry.detachOffers, detachReceiver = entry.detachReceiver, session = entry.session;
+      entry.detachOffers = null;
+      entry.detachReceiver = null;
+      entry.session = null;
+      try { detachOffers?.(); } catch (_) {}
+      try { detachReceiver?.(); } catch (_) {}
+      try { session?.close?.(); } catch (_) {}
     };
     try {
       const self = await identityStore.getSelf();
+      if (!isCurrent()) return entry;
       const route = await core.deriveTrustedRoute(peer.linkToken);
+      if (!isCurrent()) return entry;
       const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
       entry.signaling = signaling;
-      entry.session = await core.createRtcSession({
+      const session = await core.createRtcSession({
         signaling, initiator: false,
         onState: (status, error) => {
           if (error || status === 'disconnected' || status === 'failed' || status === 'closed') retry();
         },
         onChannel: channel => {
-          if (entry.stopped) { try { channel?.close?.(); } catch (_) {} return; }
+          if (!isCurrent() || entry.retryTimer) { try { channel?.close?.(); } catch (_) {} return; }
           // Listen before the handshake ends: the sender may finish first and
           // offer while this phone is still saving the peer to IndexedDB.
           const offers = root.P2PBackupConsent.bufferOffers(channel, core);
@@ -2063,8 +2082,10 @@
           pairing.attachTrusted(channel, {
             self, peer, store: identityStore, allowSameApp: true,
             onAuthenticated: () => {
+              if (!isCurrent() || entry.retryTimer) return;
               attempt = 0;
               offers.release((offer, respond) => {
+                if (!isCurrent() || entry.retryTimer) return;
                 promptIncomingBackup(peer, offer, respond, channel, entry);
               });
             },
@@ -2072,7 +2093,11 @@
           });
         }
       });
-      if (entry.stopped) { try { entry.session?.close?.(); } catch (_) {} }
+      if (!isCurrent() || entry.retryTimer) {
+        try { session?.close?.(); } catch (_) {}
+        return entry;
+      }
+      entry.session = session;
       return entry;
     } catch (_) {
       retry();
