@@ -9,7 +9,7 @@ const { X509Certificate, createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { browserLaunchReason } = require('./private-turn.browser.cjs');
 const ROOT = path.resolve(__dirname, '../..');
-const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js', 'p2p-demand-negotiation.js', 'mini-peer-availability.js'];
+const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js', 'p2p-demand-negotiation.js', 'mini-peer-availability.js', 'connection-menu.js', 'connection-presentation.js'];
 let phase = 'CAPABILITY';
 async function main() {
   assert.ok(process.env.PLAYWRIGHT_MODULE); assert.ok(process.env.PRIVATE_TURN_TOOL_OUTPUT);
@@ -29,14 +29,14 @@ async function main() {
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     const fixture = path.join(temporary, 'app'); await fs.mkdir(fixture);
-    for (const name of [...modules, 'firebase-field-config.js']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
-    await fs.writeFile(path.join(fixture, 'index.html'), '<html><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
+    for (const name of [...modules, 'firebase-field-config.js', 'p2p-transfer.css']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
+    await fs.writeFile(path.join(fixture, 'index.html'), '<html><link rel="stylesheet" href="./p2p-transfer.css"><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
     phase = 'BROWSER_LAUNCH';
     try { browser = await chromium.launch({ chromiumSandbox: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}), args: ['--ignore-certificate-errors-spki-list=' + spki, '--disable-background-networking'] }); }
     catch (error) { phase += '_' + browserLaunchReason(error); throw new Error('BROWSER_UNAVAILABLE'); }
     const ports = new Set();
     async function pageFor(forceRelay) {
-      const dev = await startDevServer({ forwardPort: upstream.address().port, port: 0, tls: { key, cert }, appRoot: fixture, assets: ['index.html', 'firebase-field-config.js', ...modules], bootstrap: { enabled: true, appIdentity: 'mini', canonicalRoot: ROOT, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, forceRelay } });
+      const dev = await startDevServer({ forwardPort: upstream.address().port, port: 0, tls: { key, cert }, appRoot: fixture, assets: ['index.html', 'firebase-field-config.js', 'p2p-transfer.css', ...modules], bootstrap: { enabled: true, appIdentity: 'mini', canonicalRoot: ROOT, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, forceRelay } });
       devs.push(dev); ports.add(new URL(dev.origin).port);
       const context = await browser.newContext(); contexts.push(context);
       await context.route('**/*', route => { const u = new URL(route.request().url()); if (['127.0.0.1', 'localhost'].includes(u.hostname) && ports.has(u.port)) return route.continue(); blocked++; return route.abort(); });
@@ -105,7 +105,7 @@ async function main() {
       window.demandOwner = window.MiniPeerAvailability.create({ signaling: signal, localPeerId: 'demand-' + i, remotePeerId: 'demand-' + (1 - i), validateFrame: window.SaMiniP2P.validateSignalFrameObject,
         createSession: async options => {
           const generation = ++window.demandCalls, startedAt = window.demandLeaseClock;
-          const session = await window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); }, onChannel(channel) { window.demandChannel = channel; window.demandLease.ready(channel); channel.addEventListener('message', event => window.demandMessages.push(event.data)); } });
+          let session; session = await window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); if (['error', 'disconnected', 'failed', 'closed'].includes(state) && session && window.demandOwner.getSession() === session) window.demandLease?.retire(); }, onChannel(channel) { window.demandChannel = channel; window.demandLease.ready(channel); channel.addEventListener('message', event => window.demandMessages.push(event.data)); } });
           window.demandLease = window.MiniPeerSessionManager.create({ now: () => window.demandLeaseClock, schedule: () => ({}), cancel() {} }).lease(session, startedAt, () => window.demandOwner.retire(), { transportOwnedExternally: true });
           return session;
         }
@@ -133,7 +133,7 @@ async function main() {
         assert.deepEqual(result, { calls: expectedCalls, errors: 0, open: 'open' });
       }
       for (let i = 0; i < 2; i++) await pages[i].evaluate(i => Promise.all([0, 1, 2].map(index => window.demandLease.run(async channel => { if (channel !== window.demandChannel) throw new Error('DEMAND_CHANNEL_REPLACED'); channel.send('demand-' + i + '-' + index); }))), i);
-      for (const page of pages) await page.waitForFunction(() => window.demandMessages.length === 3);
+      try { for (const page of pages) await page.waitForFunction(() => window.demandMessages.length === 3); } catch (error) { console.error(JSON.stringify({scope:'synthetic-native-demand-message-count',phase,endpoints:await Promise.all(pages.map(page=>page.evaluate(()=>({messages:window.demandMessages.length,factories:window.demandCalls,active:!!window.demandOwner.getSession(),channel:window.demandChannel?.readyState}))))}));throw error; }
     }
     for (const role of [0, 1]) {
       phase = 'NATIVE_UNILATERAL_DEMAND_' + role;
@@ -151,6 +151,8 @@ async function main() {
     phase = 'NATIVE_ONE_SIDED_RETIREMENT_WAKE';
     for (const page of pages) await page.evaluate(() => { window.demandChannel = null; window.demandMessages = []; });
     assert.equal(await pages[0].evaluate(() => { window.demandLeaseClock = 300000; return window.demandLease.valid(); }), false);
+    for (const page of pages) await page.waitForFunction(() => window.demandOwner.getSession() === null);
+    for (const page of pages) assert.equal(await page.evaluate(() => window.demandCalls), 3);
     await pages[0].evaluate(() => window.demandOwner.demand().then(() => true));
     await assertDemandChannel(4); demandProof.oneSidedRetirementWake = true;
     for (const page of pages) await page.evaluate(() => window.demandOwner.stop());
@@ -188,6 +190,17 @@ async function main() {
       window.sharedLease.ready(window.channel);
       window.originalChannel = window.channel;
     });
+    phase = 'NATIVE_MENU_FOCUS';
+    for (const page of pages) {
+      await page.evaluate(() => {
+        const container=document.createElement('section');document.body.append(container);window.peerUiAlias='<script>not executable</script>';
+        window.peerUi=window.MiniConnectionPresentation.mountPeers({container,getPeers:()=>[{peerId:window.peer.peerId,name:window.peerUiAlias,state:'connected',authenticated:window.SaMiniP2P.isChannelAuthenticated(window.channel),channelOpen:window.channel.readyState==='open',leaseValid:window.sharedLease.valid()}],subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){}});
+        window.peerUiConnect=container.querySelector('[data-mini-peer-connect]');window.peerUiConnect.focus();window.peerUiAlias='Updated device alias';window.peerUi.refresh();
+        window.peerUiResult={focused:document.activeElement===window.peerUiConnect,sameButton:container.querySelector('[data-mini-peer-connect]')===window.peerUiConnect,state:container.querySelector('.connections-mini-peer-state').textContent,name:container.querySelector('strong').textContent,scriptNodes:container.querySelectorAll('script').length,touchMinimum:window.peerUiConnect.getBoundingClientRect().height>=44};
+      });
+      assert.deepEqual(await page.evaluate(()=>window.peerUiResult),{focused:true,sameButton:true,state:'Conectado',name:'Updated device alias',scriptNodes:0,touchMinimum:true});
+      await page.evaluate(()=>window.peerUi.dispose());
+    }
     phase = 'CONSENT_DECLINE';
     for (const page of pages) await page.evaluate(() => { window.acceptOffer = false; window.offerInbox.release((offer, reply) => {
       if (window.acceptOffer) {
@@ -244,7 +257,7 @@ async function main() {
     }
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
-    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, managedLeaseExpiryWake: true, managedLeaseMessagesEachDirection: 3, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
+    console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, managedLeaseExpiryWake: true, bilateralRetirementStandby: true, nativeMenuFocusPreserved: true, managedLeaseMessagesEachDirection: 3, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
   } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });

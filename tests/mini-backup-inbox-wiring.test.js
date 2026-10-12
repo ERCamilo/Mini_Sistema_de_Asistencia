@@ -352,3 +352,28 @@ test('returning online restarts only failed signaling without allocating idle RT
   await h.timers[0].fn(); assert.equal(h.options.length, 0); assert.notEqual(h.ctx.miniBackupListeners.get(inboxPeer.peerId), entry);
   h.ctx.stop(inboxPeer.peerId);
 });
+
+test('live Mini snapshot closes transport without removing link, availability or stored data', async () => {
+ const h=inboxHarness();h.ctx.peerName=peer=>peer.displayName||'Alias Mini';
+ const entry=await h.ctx.ensure(inboxPeer);await entry.availability.demand();
+ const channel={readyState:'open',close(){}};h.options[0].onChannel(channel);h.handshakes[0].onAuthenticated();
+ const vm=require('node:vm');vm.runInNewContext('this.snapshot=miniBackupConnectionSnapshot;this.retire=retireMiniBackupTransport;this.subscribe=subscribeMiniBackupConnections;',h.ctx);
+ let changed=0;const off=h.ctx.subscribe(()=>changed++);
+ assert.equal(h.ctx.snapshot()[0].authenticated,true);assert.equal(h.ctx.snapshot()[0].leaseValid,true);
+ h.ctx.retire(entry);assert.equal(entry.availability.getSession(),null);assert.equal(h.signals[0].closed,0);
+ assert.equal(h.ctx.miniBackupListeners.get(inboxPeer.peerId),entry);assert.equal(h.ctx.snapshot()[0].state,'available');assert.ok(changed);off();h.ctx.stop(inboxPeer.peerId);
+});
+
+test('actual reconnect coalesces clicks, close cancels it, and stale callbacks cannot affect a fresh lease', async () => {
+ const h=inboxHarness();h.ctx.peerName=()=> 'Mini';h.ctx.identityStore.getPeer=async()=>inboxPeer;
+ const vm=require('node:vm');vm.runInNewContext('this.reconnect=reconnectMiniBackupPeer;this.retire=retireMiniBackupTransport;',h.ctx);
+ const entry=await h.ctx.ensure(inboxPeer),first=h.ctx.reconnect(inboxPeer.peerId),duplicate=h.ctx.reconnect(inboxPeer.peerId);
+ await settleInbox();assert.equal(h.options.length,1);
+ h.options[0].onChannel({readyState:'open',close(){}});h.handshakes[0].onAuthenticated();await Promise.all([first,duplicate]);
+ assert.equal(entry.state,'connected');h.ctx.retire(entry);assert.equal(h.signals[0].closed,0);
+ const second=h.ctx.reconnect(inboxPeer.peerId),rejected=assert.rejects(second);await settleInbox();assert.equal(h.options.length,2);
+ h.ctx.retire(entry);const third=h.ctx.reconnect(inboxPeer.peerId);await rejected;await settleInbox();assert.equal(h.options.length,3);
+ h.options[1].onState('failed');assert.equal(entry.session,h.sessions[2]);
+ h.options[2].onChannel({readyState:'open',close(){}});h.handshakes.at(-1).onAuthenticated();await third;
+ assert.equal(entry.state,'connected');assert.equal(h.signals[0].closed,0);h.ctx.stop(inboxPeer.peerId);
+});

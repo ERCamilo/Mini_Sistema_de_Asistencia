@@ -1,3 +1,12 @@
+interface MiniConnectionPeerSnapshot { peerId: string; name: string; state?: string; authenticated?: boolean; channelOpen?: boolean; leaseValid?: boolean; busy?: boolean; }
+interface MiniConnectionPeerViewOptions {
+ container: HTMLElement;
+ getPeers(): MiniConnectionPeerSnapshot[];
+ subscribe(callback: () => void): () => void;
+ connect(peerId: string): Promise<void>;
+ close(peerId: string): void;
+ notify(message: string): void;
+}
 interface MiniPresentationSnapshot {home?:boolean;task?:string;taskTitle?:string;native?:string;nativeTitle?:string;linkPhase?:string;}
 interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLElement;title:HTMLElement;back:HTMLButtonElement;account:HTMLButtonElement;}
 (function exposeMiniPresentation(root:any,factory:()=>unknown){const api=factory();if(typeof module==='object'&&module&&module.exports)module.exports=api;if(root)root.MiniConnectionPresentation=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
@@ -9,6 +18,40 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
   return {key:s.native||'direct',title:titles[s.native||'']||s.nativeTitle||'Conexión directa',back:true};
  }
  function describeFeedback(state:string,pageChanged:boolean,open:boolean){return {banner:state==='success'||state==='error',open:!pageChanged&&open,busy:state==='busy'};}
+ function describePeer(peer:MiniConnectionPeerSnapshot){
+  const connected=peer.authenticated===true&&peer.channelOpen===true&&peer.leaseValid===true;
+  const state=connected?'connected':peer.state==='connecting'?'connecting':peer.state==='error'?'error':'available';
+  return {state,label:state==='connected'?'Conectado':state==='connecting'?'Conectando':state==='error'?'Error':'Disponible',connectLabel:state==='connected'||state==='error'?'Reconectar':'Conectar',canClose:state==='connected'||state==='connecting',busy:peer.busy===true};
+ }
+ function mountPeers(o:MiniConnectionPeerViewOptions){
+  const d=o.container.ownerDocument;
+  const rows=new Map<string,{row:HTMLElement;name:HTMLElement;status:HTMLElement;hint:HTMLElement;connect:HTMLButtonElement;close:HTMLButtonElement}>();
+  const pending=new Map<string,Promise<void>>();let disposed=false;
+  function refresh(){
+   if(disposed)return;
+   const peers=o.getPeers(),ids=new Set(peers.map(peer=>peer.peerId));
+   for(const [id,view] of rows)if(!ids.has(id)){view.row.remove();rows.delete(id);}
+   for(const peer of peers){
+    let view=rows.get(peer.peerId);
+    if(!view){
+     const row=d.createElement('article');row.className='connections-mini-peer';row.dataset.miniPeer=peer.peerId;
+     const name=d.createElement('strong'),status=d.createElement('span'),hint=d.createElement('p'),actions=d.createElement('div');
+     status.className='connections-mini-peer-state';status.setAttribute('aria-live','polite');hint.className='connections-hint';actions.className='connections-mini-peer-actions';
+     const connect=d.createElement('button'),close=d.createElement('button');connect.type=close.type='button';connect.dataset.miniPeerConnect=peer.peerId;close.dataset.miniPeerClose=peer.peerId;
+     connect.onclick=()=>{if(pending.has(peer.peerId)||disposed)return;const operation=o.connect(peer.peerId);pending.set(peer.peerId,operation);refresh();void operation.catch(()=>{if(!disposed&&pending.get(peer.peerId)===operation)o.notify('No se pudo conectar. Reintenta; tus datos se conservan.');}).finally(()=>{if(pending.get(peer.peerId)===operation)pending.delete(peer.peerId);refresh();});};
+     close.onclick=()=>{if(disposed)return;pending.delete(peer.peerId);o.close(peer.peerId);refresh();};
+     actions.append(connect,close);row.append(icon(d,'phone'),name,status,hint,actions);o.container.append(row);view={row,name,status,hint,connect,close};rows.set(peer.peerId,view);
+    }
+    const model=describePeer(peer);if(view.name.textContent!==peer.name)view.name.textContent=peer.name;if(view.status.textContent!==model.label)view.status.textContent=model.label;view.row.dataset.state=model.state;
+    view.hint.textContent=model.busy?'Cerrar interrumpe la transferencia; los datos guardados se conservan.':model.state==='available'?'Disponible para recibir respaldos mientras Mini esté abierta.':model.state==='connecting'?'Esperando al otro Mini.':model.state==='error'?'Reintenta la conexión; tus datos se conservan.':'Canal compartido para enviar y recibir respaldos.';
+    view.connect.textContent=model.connectLabel;view.connect.disabled=pending.has(peer.peerId);view.connect.setAttribute('aria-label',model.connectLabel+' con '+peer.name);
+    const focusedClose=d.activeElement===view.close;view.close.textContent='Cerrar conexión';view.close.disabled=!model.canClose&&!pending.has(peer.peerId);view.close.setAttribute('aria-label','Cerrar conexión con '+peer.name);
+    if(focusedClose&&view.close.disabled)view.connect.focus();
+   }
+   o.container.hidden=peers.length===0;
+  }
+  const off=o.subscribe(refresh);refresh();return {refresh,dispose(){disposed=true;off();pending.clear();rows.clear();}};
+ }
  function icon(d:Document,kind:string){
   const paths:Record<string,string>={send:'M22 2L9 15M22 2l-7 20-4-9-9-4z',calendar:'M8 2v4M16 2v4M3 10h18M3 4h18v18H3zM8 15h2M14 15h2',share:'M6 12l12-7M6 12l12 7M18 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6',refresh:'M3 12a9 9 0 0 1 15-7l3 3M21 3v5h-5M21 12a9 9 0 0 1-15 7l-3-3M3 21v-5h5',back:'M15 18l-6-6 6-6',chevron:'M9 6l6 6-6 6',building:'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4',phone:'M7 2h10v20H7zM10 18h4',people:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8',cloud:'M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12z',qr:'M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6z',document:'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8',clock:'M12 8v5l3 2M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20',unlink:'M9 15l-2 2a4 4 0 0 1-6-6l3-3M15 9l2-2a4 4 0 0 1 6 6l-3 3M3 3l18 18',tag:'M3 3h8l10 10-8 8L3 11zM7 7h.01',check:'M5 12l4 4L19 6'};
   const svg=d.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('mini-connection-icon');const p=d.createElementNS(svg.namespaceURI,'path');p.setAttribute('d',paths[kind]||paths.document);svg.append(p);return svg;
@@ -54,5 +97,5 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
   const cloud=d.getElementById('cloud-field-status');if(cloud)observer.observe(cloud,{childList:true,attributes:true,attributeFilter:['data-operation-state']});
   refresh();return {refresh,dispose(){stopped=true;observer.disconnect();progress.remove();o.account.disabled=false;if(cloud?.parentElement===banner&&feedback)feedback.append(cloud);banner.remove();if(feedback?.parentElement===details)details.before(feedback);details.remove();back.remove();account.remove();heading!.textContent=originalTitle;delete heading!.dataset.miniPageTitle;delete o.shell.dataset.miniConnectionPage;if(subtitle)subtitle.hidden=false;}};
  }
- return {describePage,describeFeedback,icon,mount};
+ return {describePage,describeFeedback,describePeer,mountPeers,icon,mount};
 });

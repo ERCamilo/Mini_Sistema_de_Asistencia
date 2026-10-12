@@ -15,6 +15,28 @@
                 return true;
             } };
     }
+    function createPeerActions(options) {
+        const active = new Map();
+        let disposed = false;
+        return {
+            connect(peerId) {
+                if (disposed)
+                    return Promise.reject(new Error('Menú cerrado.'));
+                const previous = active.get(peerId);
+                if (previous)
+                    return previous;
+                const promise = options.connect(peerId);
+                active.set(peerId, promise);
+                void promise.then(() => { if (active.get(peerId) === promise)
+                    active.delete(peerId); }, () => { if (active.get(peerId) === promise)
+                    active.delete(peerId); });
+                return promise;
+            },
+            close(peerId) { if (disposed)
+                return; active.delete(peerId); options.close(peerId); },
+            pending: (peerId) => active.has(peerId), dispose() { disposed = true; active.clear(); }
+        };
+    }
     function mount(options) {
         const { shell, directBody } = options, d = shell.ownerDocument;
         d.body.classList.add('connections-open');
@@ -110,6 +132,15 @@
         const header = shell.querySelector('header');
         if (header)
             move(account, header);
+        if (app === 'mini' && options.getMiniPeers && options.subscribeMiniPeers && options.connectMiniPeer && options.closeMiniPeer && typeof MiniConnectionPresentation !== 'undefined') {
+            const peerSection = node('section', 'connections-mini-peers'), peerHeading = node('h3'), peerList = node('div');
+            peerHeading.textContent = 'Otros Minis';
+            peerSection.append(peerHeading, peerList);
+            home.insertBefore(peerSection, toolbar);
+            const actions = createPeerActions({ connect: options.connectMiniPeer, close: options.closeMiniPeer });
+            const peers = MiniConnectionPresentation.mountPeers({ container: peerList, getPeers: options.getMiniPeers, subscribe: options.subscribeMiniPeers, connect: id => actions.connect(id), close: id => actions.close(id), notify: options.notify });
+            cleanupCallbacks.push(() => { peers.dispose(); actions.dispose(); });
+        }
         const parts = new Map();
         const detailPart = node('section', 'connections-form connections-detail');
         detailPart.dataset.connectionStep = 'details';
@@ -1129,5 +1160,5 @@
             }
         };
     }
-    return { createModeState, mount };
+    return { createModeState, createPeerActions, mount };
 });

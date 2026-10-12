@@ -611,3 +611,14 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
 
 .connections-task #sa-field-employees label>span {display:grid;gap:5px;min-width:0;}
 .connections-task #sa-field-employees small {font-size:12px;color:var(--connection-muted);}
+
+.connections-mini-peers { margin-block: 12px; }
+.connections-mini-peers h3 { color: var(--text-color); font-size: 15px; margin-block: 8px; }
+.connections-mini-peer { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; padding: 12px; margin-block: 8px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--card-bg); color: var(--text-color); }
+.connections-mini-peer strong { overflow-wrap: anywhere; }
+.connections-mini-peer .connections-hint { grid-column: 1 / -1; margin: 0; color: var(--text-muted); font-size: 12px; }
+.connections-mini-peer-state { color: var(--text-color); background: var(--input-bg); border-radius: 6px; padding: 4px 6px; font-size: 12px; }
+.connections-mini-peer-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.connections-mini-peer-actions button { min-height: 44px; min-width: 44px; flex: 1; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--input-bg); color: var(--text-color); font: inherit; }
+.connections-mini-peer-actions button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.connections-mini-peer-actions button:disabled { opacity: .6; }

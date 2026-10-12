@@ -1,6 +1,7 @@
-declare const MiniConnectionPresentation:{icon(d:Document,kind:string):SVGElement;mount(o:MiniPresentationOptions):{refresh():void;dispose():void}};
+declare const MiniConnectionPresentation:{icon(d:Document,kind:string):SVGElement;mountPeers(o:MiniConnectionPeerViewOptions):{refresh():void;dispose():void};mount(o:MiniPresentationOptions):{refresh():void;dispose():void}};
 type ConnectionMenuMethod='direct'|'internet';
 interface ConnectionMenuOptions {
+ getMiniPeers?():MiniConnectionPeerSnapshot[];subscribeMiniPeers?(callback:()=>void):()=>void;closeMiniPeer?(peerId:string):void;connectMiniPeer?(peerId:string):Promise<void>;
  app?:'mini'|'sa';shell:HTMLElement;directBody:HTMLElement;internetAvailable:boolean;
  getInternet():HTMLElement;beforeLeaveInternet():boolean;canChange():boolean;
  notify(message:string):void;close():void;scanInvitation?():void;refreshInternet?():void|Promise<void>;prepareSend?():Promise<void>;prepareMembers?():Promise<void>;
@@ -14,6 +15,19 @@ interface ConnectionMenuOptions {
    if(next==='internet'&&!options.internetAvailable||!options.canChange())return false;
    mode=next;return true;
   }};
+ }
+ function createPeerActions(options:{connect(peerId:string):Promise<void>;close(peerId:string):void}){
+  const active=new Map<string,Promise<void>>();let disposed=false;
+  return {
+   connect(peerId:string):Promise<void>{
+    if(disposed)return Promise.reject(new Error('Menú cerrado.'));
+    const previous=active.get(peerId);if(previous)return previous;
+    const promise=options.connect(peerId);active.set(peerId,promise);
+    void promise.then(()=>{if(active.get(peerId)===promise)active.delete(peerId);},()=>{if(active.get(peerId)===promise)active.delete(peerId);});return promise;
+   },
+   close(peerId:string){if(disposed)return;active.delete(peerId);options.close(peerId);},
+   pending:(peerId:string)=>active.has(peerId),dispose(){disposed=true;active.clear();}
+  };
  }
  function mount(options:ConnectionMenuOptions){
   const {shell,directBody}=options,d=shell.ownerDocument;d.body.classList.add('connections-open');
@@ -64,6 +78,12 @@ interface ConnectionMenuOptions {
   toolbar.prepend(add);toolbar.append(refresh);if(app==='mini'){refresh.prepend(icon('refresh'));add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(priorities,toolbar,heading,list,empty,extras,account);
   shell.insertBefore(home,directBody);shell.insertBefore(feedback,directBody);shell.insertBefore(taskHost,directBody);shell.append(store);
   const header=shell.querySelector('header');if(header)move(account,header);
+  if(app==='mini'&&options.getMiniPeers&&options.subscribeMiniPeers&&options.connectMiniPeer&&options.closeMiniPeer&&typeof MiniConnectionPresentation!=='undefined'){
+   const peerSection=node('section','connections-mini-peers'),peerHeading=node('h3'),peerList=node('div');peerHeading.textContent='Otros Minis';peerSection.append(peerHeading,peerList);home.insertBefore(peerSection,toolbar);
+   const actions=createPeerActions({connect:options.connectMiniPeer,close:options.closeMiniPeer});
+   const peers=MiniConnectionPresentation.mountPeers({container:peerList,getPeers:options.getMiniPeers,subscribe:options.subscribeMiniPeers,connect:id=>actions.connect(id),close:id=>actions.close(id),notify:options.notify});
+   cleanupCallbacks.push(()=>{peers.dispose();actions.dispose();});
+  }
   const parts=new Map<string,HTMLElement>();
   const detailPart=node('section','connections-form connections-detail');detailPart.dataset.connectionStep='details';parts.set('details',detailPart);store.append(detailPart);
   const accountOpen=button('Mi cuenta',()=>{task('account');});accountOpen.dataset.connectionAccountOpen='';account.append(accountOpen);
@@ -460,5 +480,5 @@ interface ConnectionMenuOptions {
    }
   };
  }
- return {createModeState,mount};
+ return {createModeState,createPeerActions,mount};
 });

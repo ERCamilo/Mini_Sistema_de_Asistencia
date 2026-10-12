@@ -16,3 +16,14 @@ test('Mini account UI has one truthful card with original controls and an unavai
  assert.ok(source.includes('El acceso con Google no está habilitado en esta versión.'));
  assert.ok(source.includes('accountUnavailable'));
 });
+
+test('peer reconnect has one owned action and stale completion cannot clear a newer action', async () => {
+ const api=require('../connection-menu.js');assert.equal(typeof api.createPeerActions,'function');
+ let resolve, calls=0, closed=0;const actions=api.createPeerActions({connect:()=>{calls++;return new Promise(r=>{resolve=r;});},close:()=>{closed++;}});
+ const first=actions.connect('p'), finishFirst=resolve;assert.equal(actions.connect('p'),first);assert.equal(calls,1);assert.equal(actions.pending('p'),true);
+ actions.close('p');assert.equal(closed,1);assert.equal(actions.pending('p'),false);
+ const second=actions.connect('p'), finishSecond=resolve;assert.equal(calls,2);
+ finishFirst();await first;assert.equal(actions.pending('p'),true);
+ finishSecond();await second;assert.equal(actions.pending('p'),false);
+ actions.dispose();
+});
