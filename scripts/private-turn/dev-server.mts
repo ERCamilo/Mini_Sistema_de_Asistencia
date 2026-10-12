@@ -81,13 +81,19 @@ function normalizeResponse(body: Buffer): string {
         if (!Number.isSafeInteger(row.ttl) || Number(row.ttl) <= 0 || !(Number.isSafeInteger(row.expiresAt) || (typeof row.expiresAt === 'string' && row.expiresAt.length <= 32))) throw new Error();
         if (!Array.isArray(row.iceServers) || !row.iceServers.length || row.iceServers.length > 8) throw new Error();
         for (const server of row.iceServers) {
-            if (!server || typeof server !== 'object' || Array.isArray(server) || Object.keys(server).some(key => !['urls', 'username', 'credential', 'credentialType'].includes(key))) throw new Error();
+            if (!server || typeof server !== 'object' || Array.isArray(server) || Object.keys(server).some(key => !['urls', 'username', 'credential', 'credentialType', 'expiresAt'].includes(key))) throw new Error();
+            if ('expiresAt' in server && (!Number.isSafeInteger(server.expiresAt) || server.expiresAt <= 0 || server.expiresAt !== row.expiresAt)) throw new Error();
             const urls: unknown[] = Array.isArray(server.urls) ? server.urls : [server.urls];
             if (!urls.length || urls.length > 8 || urls.some(url => typeof url !== 'string' || url.length > 512 || !/^(stun|stuns|turn|turns):/.test(url))) throw new Error();
             for (const key of ['username', 'credential', 'credentialType']) if (server[key] !== undefined && (typeof server[key] !== 'string' || server[key].length > 1024)) throw new Error();
         }
+        // Expiry metadata belongs to the response contract, not RTCIceServer.
+        const iceServers = row.iceServers.map(server => {
+            const { expiresAt: _expiry, ...rtcServer } = server;
+            return rtcServer;
+        });
         // Strip unrelated upstream fields; clients enforce the explicit expiry contract.
-        return JSON.stringify({ username: row.username, credential: row.credential, ttl: row.ttl, expiresAt: row.expiresAt, iceServers: row.iceServers });
+        return JSON.stringify({ username: row.username, credential: row.credential, ttl: row.ttl, expiresAt: row.expiresAt, iceServers });
     } catch { throw new PrivateTurnProxyError(502, 'TURN_UPSTREAM_UNAVAILABLE'); }
 }
 function forward(idToken: string, port: number, max: number, timeout: number): Promise<string> {
@@ -159,7 +165,7 @@ async function injectHtml(body: Buffer, bootstrap: PrivateTurnDevBootstrap, orig
         if (html.split(configAnchor).length !== 2 || html.indexOf(configAnchor) > html.indexOf(core)) throw new Error('TURN_DEV_CONFIGURATION_INVALID');
         html = html.replace(configAnchor, '<script>window.MiniFirebaseFieldConfig=' + scriptJson(await miniPublicConfig(bootstrap.canonicalRoot)) + ';</script>' + configAnchor);
     }
-    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: bootstrap.contract, forceRelay: bootstrap.forceRelay, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
+    const options = { enabled: true, appIdentity: bootstrap.appIdentity, contract: bootstrap.contract, forceRelay: bootstrap.forceRelay, diagnostics: true, allowedOrigins: privateOrigins.includes(origin) ? [origin] : [] };
     const saLoader = bootstrap.appIdentity === 'sa' ? ',loadSaAuth:async()=>{const m=await import("/js/modules/data/firebase.js");if(!m.auth||typeof m.onAuthStateChanged!=="function")throw new Error("TURN_BOOTSTRAP_UNAVAILABLE");return {get currentUser(){return m.auth.currentUser;},onAuthStateChanged:fn=>m.onAuthStateChanged(m.auth,fn)};}' : '';
     const install = 'window.privateTurnTest=PrivateTurnBootstrap.install({' + scriptJson(options).slice(1, -1) + saLoader + '});';
     return Buffer.from(html.replace(core, core + '<script src="/__private-turn/provider.js"></script><script src="/__private-turn/bootstrap.js"></script><script>' + install + '</script>'));

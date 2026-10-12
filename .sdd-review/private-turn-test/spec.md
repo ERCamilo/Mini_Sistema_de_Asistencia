@@ -238,3 +238,43 @@ VM tests prove hostname conditions only. Operator-reported Google/Firebase
 console authorization remains pending real sign-in acceptance. This does not
 load private TURN modules or provide `/api/turn-creds` on Cloudflare Pages;
 private issuer connectivity and live acceptance remain separate work.
+
+## Private proxy nested expiry compatibility
+
+The operator-documented API response includes optional integer `expiresAt`
+metadata inside a TURN `iceServers` entry. The development proxy accepts this
+metadata only when it is a positive safe integer equal to root `expiresAt`,
+and strips it before emitting standard RTCIceServer properties. Missing nested
+metadata remains compatible. Unexpected entry fields, malformed/mismatched
+expiry metadata, token/origin failures, and transport limits remain rejected.
+No expiry unit is inferred; the explicitly configured client contract still
+validates the root expiry. This is isolated fixture evidence, not live API or
+relay acceptance, and changes no production registration or security policy.
+
+## Private application-session diagnostics
+
+Only an explicitly opted-in development response passes `diagnostics: true` to
+bootstrap installation. Ordinary installation defaults to no observer or DOM;
+production HTML, service-worker caches, and configuration remain unchanged.
+The private expandable panel displays at most eight anonymous session ordinals,
+credential acquisition status, sanitized connection state, and local selected
+relay proof. Credentials may come from the existing account-bound provider
+cache; acquisition status is not an HTTP request counter. Guests remain P2P and
+make no token/credential request. No identifiers, candidate addresses, URLs,
+raw stats, error text, tokens, passwords, pairing codes, or payloads are shown.
+
+Each actual factory result is observed independently, including already-connected
+peers and later connection/ICE state events. Stats are sampled while connected;
+relay proof requires the existing selected, connected, successful, nominated
+candidate-pair validation. Missing or non-relay stats remain unverified and never
+prove STUN. Retained proof is explicitly historical (verified during connection),
+not an assertion that a closed connection remains active. There are at most
+eight observers and three timed stats retries per observer. Session close,
+disposal, account change, and stale scope suppress late results and detach
+owned listeners/timers; observer/DOM failures cannot reject successful factory
+creation or replace application callbacks. Disposal removes the owned panel.
+
+Deterministic Node fixtures verify lifecycle behavior and secret-free rendering;
+they are not proof of live Google authentication, selected network relay, real
+pairing, or physical-device backup transfer. Native review, private runtime
+update, and physical-device acceptance remain pending.

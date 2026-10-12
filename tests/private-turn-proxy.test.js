@@ -34,6 +34,43 @@ test('forwards fixed loopback POST without credentials headers and returns no-st
   });
   const result = await request(dev.origin); assert.equal(result.status, 200); assert.deepEqual(JSON.parse(result.body), payload()); assert.equal(result.headers['cache-control'], 'no-store'); assert.equal(calls, 1);
 });
+test('accepts documented nested unix-seconds expiry and strips it from RTC servers', async t => {
+  const expected = payload();
+  expected.expiresAt = 1700000300;
+  expected.iceServers.unshift({ urls: 'stun:turn.test.invalid:3478' });
+  const upstream = structuredClone(expected);
+  upstream.iceServers[1].expiresAt = expected.expiresAt;
+  const dev = await fixture(t, (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(upstream));
+  });
+  const result = await request(dev.origin);
+  assert.equal(result.status, 200);
+  assert.deepEqual(JSON.parse(result.body), expected);
+  assert.equal(result.headers['cache-control'], 'no-store');
+});
+for (const [label, metadata] of [
+  ['string expiry', { expiresAt: '1700000300' }],
+  ['mismatched expiry', { expiresAt: 1700000301 }],
+  ['fractional expiry', { expiresAt: 1700000300.5 }],
+  ['null expiry', { expiresAt: null }],
+  ['zero expiry', { expiresAt: 0 }],
+  ['negative expiry', { expiresAt: -1 }],
+  ['unsafe expiry', { expiresAt: Number.MAX_SAFE_INTEGER + 1 }],
+  ['unrelated metadata', { expiresAt: 1700000300, unrelated: 'synthetic-secret' }]
+]) test(`rejects nested ${label} without leaking upstream response`, async t => {
+  const upstream = payload();
+  upstream.expiresAt = 1700000300;
+  Object.assign(upstream.iceServers[0], metadata);
+  const dev = await fixture(t, (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(upstream));
+  });
+  const result = await request(dev.origin);
+  assert.equal(result.status, 502);
+  assert.deepEqual(JSON.parse(result.body), { error: 'TURN_UPSTREAM_UNAVAILABLE' });
+  assert.doesNotMatch(result.body, /synthetic-secret|synthetic-password/);
+});
 for (const [label, changes, status] of [
   ['wrong host', { headers: { Host: 'external.invalid' } }, 403], ['wrong origin', { headers: { Origin: 'https://external.invalid' } }, 403],
   ['missing origin', { headers: { Origin: '' } }, 403], ['GET', { method: 'GET' }, 405],
@@ -104,7 +141,7 @@ test('HTTPS opt-in injects immediately after the known core without changing sou
   const html = '<html><body><script src="./firebase-field-config.js"></script><script src="./p2p-core.js"></script><script>window.caller=true</script></body></html>';
   await fs.writeFile(path.join(root, 'index.html'), html);
   const f = await tlsFixture(t, { appRoot: root, assets: ['index.html'], bootstrap: { enabled: true, appIdentity: 'mini', contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, canonicalRoot: path.resolve(__dirname, '..') } });
-  const result = await f.get('/'); assert.equal(result.status, 200); assert.match(result.body, /PrivateTurnBootstrap\.install/);
+  const result = await f.get('/'); assert.equal(result.status, 200); assert.match(result.body, /PrivateTurnBootstrap\.install/); assert.match(result.body, /"diagnostics":true/);
   assert.ok(result.body.indexOf('/__private-turn/bootstrap.js') < result.body.indexOf('window.caller')); assert.ok(result.body.indexOf('window.MiniFirebaseFieldConfig=') < result.body.indexOf('./firebase-field-config.js')); assert.equal(await fs.readFile(path.join(root, 'index.html'), 'utf8'), html);
 });
 test('no opt-in serves byte-identical HTML and exposes no implicit shared scripts', async t => {
