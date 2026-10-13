@@ -74,12 +74,15 @@
                 retirementReason = reason === 'lease-expired' ? reason : 'unknown';
                 if (timer !== undefined)
                     cancel(timer);
+                const failure = () => new Error(reason === 'channel-closed'
+                    ? 'El canal se cerró. Reconecta para reintentar.'
+                    : 'La conexión expiró o se interrumpió. Reintenta.');
                 for (const waiter of waiting)
-                    waiter.reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
+                    waiter.reject(failure());
                 waiting.clear();
                 running = false;
                 for (const reject of operations)
-                    reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
+                    reject(failure());
                 operations.clear();
                 try {
                     onRetired(retirementReason);
@@ -117,6 +120,10 @@
                     return Promise.reject(new Error('La conexión expiró. Reintenta.'));
                 if ((channel === null || channel === void 0 ? void 0 : channel.readyState) === 'open')
                     return Promise.resolve(channel);
+                if ((channel === null || channel === void 0 ? void 0 : channel.readyState) === 'closing' || (channel === null || channel === void 0 ? void 0 : channel.readyState) === 'closed') {
+                    retire('channel-closed');
+                    return Promise.reject(new Error('El canal se cerró. Reconecta para reintentar.'));
+                }
                 return new Promise((resolve, reject) => waiting.add({ resolve, reject }));
             }
             function run(operation) {

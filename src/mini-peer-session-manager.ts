@@ -64,10 +64,13 @@ interface MiniPeerIntentRecord { token: MiniPeerIntent; promise: Promise<unknown
         stopped = true;
         retirementReason = reason === 'lease-expired' ? reason : 'unknown';
         if (timer !== undefined) cancel(timer);
-        for (const waiter of waiting) waiter.reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
+        const failure = () => new Error(reason === 'channel-closed'
+          ? 'El canal se cerró. Reconecta para reintentar.'
+          : 'La conexión expiró o se interrumpió. Reintenta.');
+        for (const waiter of waiting) waiter.reject(failure());
         waiting.clear();
         running = false;
-        for (const reject of operations) reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
+        for (const reject of operations) reject(failure());
         operations.clear();
         try { onRetired(retirementReason); } finally { try { if (eligibility.transportOwnedExternally !== true) session.close(); } catch { /* Isolated transport cleanup. */ } }
       }
@@ -90,6 +93,10 @@ interface MiniPeerIntentRecord { token: MiniPeerIntent; promise: Promise<unknown
       function authenticated(): Promise<MiniPeerLeaseChannel> {
         if (!valid()) return Promise.reject(new Error('La conexión expiró. Reintenta.'));
         if (channel?.readyState === 'open') return Promise.resolve(channel);
+        if (channel?.readyState === 'closing' || channel?.readyState === 'closed') {
+          retire('channel-closed');
+          return Promise.reject(new Error('El canal se cerró. Reconecta para reintentar.'));
+        }
         return new Promise((resolve, reject) => waiting.add({ resolve, reject }));
       }
       function run<T>(operation: (value: MiniPeerLeaseChannel) => Promise<T>): Promise<T> {

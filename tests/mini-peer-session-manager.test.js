@@ -1,12 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Manager = require('../mini-peer-session-manager.js');
-function fixture(remaining = 300000) {
+function fixture(remaining = 300000, eligibility = {}) {
   let now = 0, closed = 0, retired = 0;
   const timers = [];
   const manager = Manager.create({ now: () => now, schedule: (fn, delay) => { const t = { fn, delay }; timers.push(t); return t; }, cancel: t => { t.cancelled = true; } });
   const session = { close() { closed++; }, getLeaseRemainingMs: () => remaining };
-  const lease = manager.lease(session, 0, () => retired++);
+  const lease = manager.lease(session, 0, () => retired++, eligibility);
   return { manager, lease, session, timers, time: n => now = n, counts: () => ({ closed, retired }) };
 }
 test('six queued operations reuse the exact authenticated channel and session', async () => {
@@ -78,4 +78,56 @@ test('lease expiry reason is set before retirement callback and observation neve
  const h=fixture();assert.equal(typeof h.lease.getRetirementReason,'function');assert.equal(h.lease.getRetirementReason(),null);h.time(300000);assert.equal(h.lease.getRetirementReason(),null);assert.deepEqual(h.counts(),{closed:0,retired:0});h.lease.valid();assert.equal(h.lease.getRetirementReason(),'lease-expired');
  const manual=fixture();manual.lease.retire();assert.equal(manual.lease.getRetirementReason(),'unknown');
  let reason;const manager=Manager.create({now:()=>0,schedule:()=>({}),cancel(){}});manager.lease({close(){},getLeaseRemainingMs:()=>0},0,value=>{reason=value;});assert.equal(reason,'lease-expired');
+});
+
+
+for (const state of ['closing', 'closed']) {
+  for (const externallyOwned of [false, true]) {
+    test(`already-ready ${state} channel settles queued sends once (${externallyOwned ? 'external' : 'local'} cleanup owner)`, async () => {
+      const h = fixture(300000, { transportOwnedExternally: externallyOwned });
+      const channel = { readyState: 'open' }, deadline = h.lease.deadline;
+      let executions = 0;
+      assert.equal(h.lease.ready(channel), true);
+      channel.readyState = state;
+      const sends = Array.from({ length: 3 }, () => h.lease.run(async () => { executions++; }));
+      const outcomes = sends.map(send => send.then(() => 'resolved', error => {
+        assert.match(error.message, /Reintenta|Reconecta/);
+        assert.doesNotMatch(error.message, /expir/);
+        return 'rejected';
+      }));
+      try {
+        const observed = await Promise.race([
+          Promise.all(outcomes),
+          new Promise(resolve => setImmediate(() => resolve('pending-after-event-turn')))
+        ]);
+        assert.deepEqual(observed, ['rejected', 'rejected', 'rejected']);
+        assert.equal(executions, 0);
+        assert.deepEqual(h.counts(), { closed: externallyOwned ? 0 : 1, retired: 1 });
+        assert.equal(h.lease.valid(), false);
+        assert.equal(h.lease.busy(), false);
+        assert.equal(h.lease.deadline, deadline);
+        assert.equal(h.lease.getRetirementReason(), 'unknown');
+        h.lease.retire();
+        assert.equal(h.counts().retired, 1);
+      } finally {
+        h.lease.retire();
+        await Promise.all(outcomes);
+      }
+    });
+  }
+}
+
+test('initial unsupplied channel still waits for authentication and then uses the exact open channel', async () => {
+  const h = fixture(); let executions = 0, settled = false;
+  const channel = { readyState: 'open' };
+  const sending = h.lease.run(async value => { executions++; assert.equal(value, channel); });
+  const observed = sending.then(() => { settled = true; });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false); assert.equal(executions, 0);
+    assert.deepEqual(h.counts(), { closed: 0, retired: 0 });
+    assert.equal(h.lease.ready(channel), true);
+    await observed;
+    assert.equal(executions, 1); assert.equal(settled, true);
+  } finally { h.lease.retire(); }
 });
