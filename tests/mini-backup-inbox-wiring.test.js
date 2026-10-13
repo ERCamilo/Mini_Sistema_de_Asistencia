@@ -144,7 +144,7 @@ function inboxHarness(overrides = {}) {
       options.push(opts); const session = { closed: 0, startNegotiation: async () => {}, close() { this.closed++; opts.onState('closed'); } };
       sessions.push(session); return session;
     } },
-    root: { MiniPeerSessionManager: require('../mini-peer-session-manager.js'), MiniPeerAvailability: require('../mini-peer-availability.js'), P2PBackupConsent: { bufferOffers: () => ({ detach() { detached++; }, release(fn) { released++; fn({}, () => {}); } }) } },
+    root: { MiniConnectionPresentation: require('../connection-presentation.js'), MiniPeerSessionManager: require('../mini-peer-session-manager.js'), MiniPeerAvailability: require('../mini-peer-availability.js'), P2PBackupConsent: { bufferOffers: () => ({ detach() { detached++; }, release(fn) { released++; fn({}, () => {}); } }) } },
     pairing: { attachTrusted(_channel, opts) { handshakes.push(opts); } },
     promptIncomingBackup() { prompted++; },
     setTimeout(fn, delay) { const timer = { fn, delay, cancelled: false }; timers.push(timer); return timer; },
@@ -587,4 +587,44 @@ test('trusted readiness clears preparation deadline but queued old deadline and 
   const current = entry.session; deadlines[0].fn(); h.handshakes[0].onAuthenticated();
   assert.equal(entry.session, current); assert.equal(entry.authenticated, false); assert.equal(h.sessions[1].closed, 0);
   h.ctx.stop(inboxPeer.peerId);
+});
+
+test('production snapshots expose only safe owned observations and distinguish manual close from stale transport events', async () => {
+ const h=inboxHarness();h.ctx.peerName=()=> 'Mini';const entry=await h.ctx.ensure(inboxPeer);const vm=require('node:vm');vm.runInNewContext('this.snapshot=miniBackupConnectionSnapshot;this.close=closeMiniBackupConnection;',h.ctx);
+ await entry.availability.demand();try {
+ let snapshot=h.ctx.snapshot()[0];assert.equal(snapshot.phase,'preparing');assert.ok(snapshot.preparationRemainingMs>0);assert.equal(snapshot.linkFingerprint,null);
+ h.options[0].onChannel({readyState:'open',close(){}});assert.equal(h.ctx.snapshot()[0].phase,'authenticating');h.handshakes[0].onAuthenticated();assert.equal(h.ctx.snapshot()[0].phase,'ready');assert.equal(h.ctx.snapshot()[0].channelRemainingMs,300000);
+ h.ctx.close(inboxPeer.peerId);snapshot=h.ctx.snapshot()[0];assert.equal(snapshot.lastCloseReason,'manual');assert.equal(snapshot.channelRemainingMs,null);assert.equal(snapshot.phase,'standby');
+ await entry.availability.demand();h.options[0].onState('failed');assert.equal(h.ctx.snapshot()[0].lastCloseReason,'manual','stale transport must not relabel current details');h.options[1].onState('failed');assert.equal(h.ctx.snapshot()[0].lastCloseReason,'transport-error');
+ assert.doesNotMatch(JSON.stringify(h.ctx.snapshot()),/linkToken|room|proof|sdp|credential/);
+ }finally{h.ctx.stop(inboxPeer.peerId);}
+});
+test('fingerprint completion cannot publish into a stopped account or changed link owner', async () => {
+ const h=inboxHarness();h.ctx.peerName=()=> 'Mini';const pending=[];h.ctx.root.MiniConnectionPresentation={...require('../connection-presentation.js'),createLinkFingerprint:()=>new Promise(resolve=>pending.push(resolve))};
+ const first=await h.ctx.ensure(inboxPeer);try {assert.equal(pending.length,1);h.ctx.stop(inboxPeer.peerId);const second=await h.ctx.ensure(inboxPeer);pending[0]('012345-abcdef-012345-abcdef');await settleInbox();assert.equal(first.linkFingerprint,null);assert.equal(second.linkFingerprint,null);
+ pending[1]('abcdef-012345-abcdef-012345');await settleInbox();assert.equal(second.linkFingerprint,'abcdef-012345-abcdef-012345');}finally{h.ctx.stop(inboxPeer.peerId);}
+});
+
+test('idle snapshot has no fabricated close and socket loss is classified without idle RTC', async () => {
+ const h=inboxHarness();h.ctx.peerName=()=> 'Mini';const vm=require('node:vm');vm.runInNewContext('this.snapshot=miniBackupConnectionSnapshot;',h.ctx);await h.ctx.ensure(inboxPeer);
+ try {assert.equal(h.ctx.snapshot()[0].lastCloseReason,null);assert.equal(h.ctx.snapshot()[0].phase,'standby');h.signals[0].emit({type:'socket-closed'});assert.equal(h.ctx.snapshot()[0].lastCloseReason,'signaling-loss');assert.equal(h.options.length,0);}finally{h.ctx.stop(inboxPeer.peerId);}
+});
+test('changed link and account transition suppress late display fingerprints', async () => {
+ for(const change of ['link','account']){
+ const h=inboxHarness();const peer={...inboxPeer};let resolve,authCallback;h.ctx.root.MiniConnectionPresentation={...require('../connection-presentation.js'),createLinkFingerprint:()=>new Promise(r=>{resolve=r;})};
+ h.ctx.root.firebase={app:()=>({auth:()=>({currentUser:{uid:'A'},onAuthStateChanged(fn){authCallback=fn;return ()=>{};}})})};
+ const entry=await h.ctx.ensure(peer);try {if(change==='link')peer.linkToken='replaced-token';else authCallback({uid:'B'});resolve('012345-abcdef-012345-abcdef');await settleInbox();assert.equal(entry.linkFingerprint,null);}finally{h.ctx.stop(inboxPeer.peerId);}
+ }
+});
+test('actual lease expiry classification reaches the owned card and reads the existing deadline', async () => {
+ let now=0;const manager=require('../mini-peer-session-manager.js').create({now:()=>now,schedule:()=>({}),cancel(){}});
+ const h=inboxHarness({peerSessionManager:()=>manager});h.ctx.peerName=()=> 'Mini';const vm=require('node:vm');vm.runInNewContext('this.snapshot=miniBackupConnectionSnapshot;',h.ctx);const entry=await h.ctx.ensure(inboxPeer);await entry.availability.demand();
+ try {h.options[0].onChannel({readyState:'open',close(){}});h.handshakes[0].onAuthenticated();now=60000;assert.equal(h.ctx.snapshot()[0].channelRemainingMs,240000);now=300000;assert.equal(h.ctx.snapshot()[0].lastCloseReason,'lease-expired');assert.equal(h.ctx.snapshot()[0].channelRemainingMs,null);}finally{h.ctx.stop(inboxPeer.peerId);}
+});
+
+test('a published fingerprint becomes unknown after link replacement and never requires standby setup to wait', async () => {
+ const h=inboxHarness();h.ctx.peerName=()=> 'Mini';const peer={...inboxPeer};let resolve;
+ h.ctx.root.MiniConnectionPresentation={...require('../connection-presentation.js'),createLinkFingerprint:()=>new Promise(r=>{resolve=r;})};
+ const vm=require('node:vm');vm.runInNewContext('this.snapshot=miniBackupConnectionSnapshot;',h.ctx);const entry=await h.ctx.ensure(peer);
+ try {assert.ok(entry.availability,'standby must not await display digest');resolve('012345-abcdef-012345-abcdef');await settleInbox();assert.equal(h.ctx.snapshot()[0].linkFingerprint,'012345-abcdef-012345-abcdef');peer.linkToken='new-token';assert.equal(h.ctx.snapshot()[0].linkFingerprint,null);}finally{h.ctx.stop(inboxPeer.peerId);}
 });

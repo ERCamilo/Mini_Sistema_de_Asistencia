@@ -15,6 +15,9 @@
         if (!options.localPeerId || !options.remotePeerId || options.localPeerId === options.remotePeerId)
             throw new Error('Identidades Mini inválidas.');
         const signaling = options.signaling;
+        const now = options.now || (() => Date.now());
+        let preparationDeadline = null, lastCloseReason = null;
+        const closeReasons = new Set(['manual', 'reconnect', 'preparation-timeout', 'signaling-error', 'signaling-loss', 'transport-error', 'transport-disconnected', 'lease-expired']);
         const retired = new Set();
         let stopped = false, off = null, generation = 0;
         let active = null;
@@ -31,8 +34,11 @@
             if (retired.size > 64)
                 retired.delete(retired.values().next().value);
         }
-        function retire() {
+        function retire(reason = 'unknown') {
             var _a, _b, _c, _d, _e;
+            if (active || setup || preparationDeadline !== null || (reason !== 'unknown' && reason !== 'reconnect'))
+                lastCloseReason = closeReasons.has(reason) ? reason : 'unknown';
+            preparationDeadline = null;
             cancelSetup === null || cancelSetup === void 0 ? void 0 : cancelSetup(new Error('Preparación Mini retirada.'));
             cancelSetup = null;
             generation++;
@@ -72,6 +78,7 @@
                 if (stopped || ownGeneration !== generation)
                     return false;
                 ready = true;
+                preparationDeadline = null;
                 if (timer)
                     clearTimeout(timer);
                 timer = null;
@@ -85,10 +92,12 @@
                 onEvent: callback => { ownListeners.add(callback); return () => ownListeners.delete(callback); },
                 close: () => { }
             };
+            const timeout = Math.min(30000, Math.max(1, (_a = options.setupTimeoutMs) !== null && _a !== void 0 ? _a : 10000));
+            preparationDeadline = now() + timeout;
             timer = setTimeout(() => { var _a; if (!ready && ownGeneration === generation) {
-                retire();
+                retire('preparation-timeout');
                 (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'error', new Error('La preparación Mini excedió el tiempo límite.'));
-            } }, Math.min(30000, Math.max(1, (_a = options.setupTimeoutMs) !== null && _a !== void 0 ? _a : 10000)));
+            } }, timeout);
             const cancelled = new Promise((_resolve, reject) => { cancelSetup = reject; });
             const creation = Promise.resolve().then(() => {
                 if (stopped || ownGeneration !== generation)
@@ -135,7 +144,7 @@
             if (['peer-left', 'socket-closed', 'socket-error', 'error'].includes(event.type)) {
                 for (const callback of listeners)
                     callback(event);
-                retire();
+                retire(event.type === 'socket-error' || event.type === 'error' ? 'signaling-error' : 'signaling-loss');
                 if (event.type !== 'peer-left')
                     (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'signaling-error');
                 return;
@@ -190,7 +199,8 @@
             retire,
             stop() { if (stopped)
                 return; stopped = true; retire(); off === null || off === void 0 ? void 0 : off(); off = null; signaling.close('availability-stop'); },
-            getSession: () => active
+            getSession: () => active,
+            getInfo: () => ({ preparing: preparationDeadline !== null, preparationRemainingMs: preparationDeadline === null ? null : Math.max(0, preparationDeadline - now()), lastCloseReason })
         };
     }
     function watchAccount(auth, changed) {

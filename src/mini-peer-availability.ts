@@ -21,6 +21,7 @@ interface MiniAvailabilityOptions {
   createSession(options: { signaling: MiniAvailabilitySignal; initiator: boolean; onReady(): boolean; demandNegotiation: { localPeerId: string; remotePeerId: string } }): Promise<MiniAvailabilitySession>;
   onState?(state: string, error?: unknown): void;
   setupTimeoutMs?: number;
+  now?(): number;
 }
 (function exposeMiniPeerAvailability(root: any, factory: () => unknown) {
   const api = factory();
@@ -35,6 +36,9 @@ interface MiniAvailabilityOptions {
   function create(options: MiniAvailabilityOptions) {
     if (!options.localPeerId || !options.remotePeerId || options.localPeerId === options.remotePeerId) throw new Error('Identidades Mini inválidas.');
     const signaling = options.signaling;
+    const now = options.now || (() => Date.now());
+    let preparationDeadline: number | null = null, lastCloseReason: string | null = null;
+    const closeReasons = new Set(['manual', 'reconnect', 'preparation-timeout', 'signaling-error', 'signaling-loss', 'transport-error', 'transport-disconnected', 'lease-expired']);
     const retired = new Set<string>();
     let stopped = false, off: (() => void) | null = null, generation = 0;
     let active: MiniAvailabilitySession | null = null;
@@ -49,7 +53,9 @@ interface MiniAvailabilityOptions {
       retired.add(value);
       if (retired.size > 64) retired.delete(retired.values().next().value!);
     }
-    function retire() {
+    function retire(reason: string = 'unknown') {
+      if (active || setup || preparationDeadline !== null || (reason !== 'unknown' && reason !== 'reconnect')) lastCloseReason = closeReasons.has(reason) ? reason : 'unknown';
+      preparationDeadline = null;
       cancelSetup?.(new Error('Preparación Mini retirada.')); cancelSetup = null;
       generation++;
       remember(offerIdentity);
@@ -72,6 +78,7 @@ interface MiniAvailabilityOptions {
       const onReady = () => {
         if (stopped || ownGeneration !== generation) return false;
         ready = true;
+        preparationDeadline = null;
         if (timer) clearTimeout(timer);
         timer = null;
         return true;
@@ -83,7 +90,9 @@ interface MiniAvailabilityOptions {
         onEvent: callback => { ownListeners.add(callback); return () => ownListeners.delete(callback); },
         close: () => { /* RTC retirement must leave shared signaling available. */ }
       };
-      timer = setTimeout(() => { if (!ready && ownGeneration === generation) { retire(); options.onState?.('error', new Error('La preparación Mini excedió el tiempo límite.')); } }, Math.min(30000, Math.max(1, options.setupTimeoutMs ?? 10000)));
+      const timeout = Math.min(30000, Math.max(1, options.setupTimeoutMs ?? 10000));
+      preparationDeadline = now() + timeout;
+      timer = setTimeout(() => { if (!ready && ownGeneration === generation) { retire('preparation-timeout'); options.onState?.('error', new Error('La preparación Mini excedió el tiempo límite.')); } }, timeout);
       const cancelled = new Promise<MiniAvailabilitySession>((_resolve, reject) => { cancelSetup = reject; });
       const creation = Promise.resolve().then(() => {
         if (stopped || ownGeneration !== generation) throw new Error('Preparación Mini retirada.');
@@ -110,7 +119,7 @@ interface MiniAvailabilityOptions {
       if (stopped) return;
       if (['peer-left', 'socket-closed', 'socket-error', 'error'].includes(event.type)) {
         for (const callback of listeners) callback(event);
-        retire();
+        retire(event.type === 'socket-error' || event.type === 'error' ? 'signaling-error' : 'signaling-loss');
         if (event.type !== 'peer-left') options.onState?.('signaling-error');
         return;
       }
@@ -139,7 +148,8 @@ interface MiniAvailabilityOptions {
       demand() { localDemand = true; return ensure(); },
       retire,
       stop() { if (stopped) return; stopped = true; retire(); off?.(); off = null; signaling.close('availability-stop'); },
-      getSession: () => active
+      getSession: () => active,
+      getInfo: () => ({ preparing: preparationDeadline !== null, preparationRemainingMs: preparationDeadline === null ? null : Math.max(0, preparationDeadline - now()), lastCloseReason })
     };
   }
   function watchAccount(auth: { currentUser?: { uid?: string } | null; onAuthStateChanged(callback: (user: { uid?: string } | null) => void): () => void } | null, changed: (epoch: MiniAvailabilityAccountEpoch) => void): MiniAvailabilityAccountWatch {

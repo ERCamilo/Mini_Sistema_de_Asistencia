@@ -1,4 +1,4 @@
-interface MiniConnectionPeerSnapshot { peerId: string; name: string; state?: string; authenticated?: boolean; channelOpen?: boolean; leaseValid?: boolean; busy?: boolean; }
+interface MiniConnectionPeerSnapshot { peerId: string; name: string; state?: string; authenticated?: boolean; channelOpen?: boolean; leaseValid?: boolean; busy?: boolean; phase?: string; linkFingerprint?: string | null; preparationRemainingMs?: number | null; channelRemainingMs?: number | null; lastCloseReason?: string | null; }
 interface MiniConnectionPeerViewOptions {
  container: HTMLElement;
  getPeers(): MiniConnectionPeerSnapshot[];
@@ -6,6 +6,8 @@ interface MiniConnectionPeerViewOptions {
  connect(peerId: string): Promise<void>;
  close(peerId: string): void;
  notify(message: string): void;
+ schedule?(callback: () => void, delay: number): unknown;
+ cancel?(timer: unknown): void;
 }
 interface MiniPresentationSnapshot {home?:boolean;task?:string;taskTitle?:string;native?:string;nativeTitle?:string;linkPhase?:string;}
 interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLElement;title:HTMLElement;back:HTMLButtonElement;account:HTMLButtonElement;}
@@ -23,10 +25,43 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
   const state=connected?'connected':peer.state==='connecting'?'connecting':peer.state==='error'?'error':'available';
   return {state,label:state==='connected'?'Conectado':state==='connecting'?'Conectando':state==='error'?'Error':'Disponible',connectLabel:state==='connected'||state==='error'?'Reconectar':'Conectar',canClose:state==='connected'||state==='connecting',busy:peer.busy===true};
  }
+ interface ConnectionFingerprintCore { validateLinkToken(value: unknown): string; sha256Hex(value: string): Promise<string>; }
+ async function createLinkFingerprint(core: ConnectionFingerprintCore, token: unknown): Promise<string | null> {
+  try {
+   const validated = core.validateLinkToken(token);
+   const digest = await core.sha256Hex('mini-connection-card/link-fingerprint/v1:' + validated);
+   return /^[a-f0-9]{64}$/.test(digest) ? digest.slice(0, 24).match(/.{6}/g)!.join('-') : null;
+  } catch { return null; }
+ }
+ function observePhase(facts: { state?: string; preparing?: boolean; transportPresent?: boolean; localDescription?: boolean; remoteDescription?: boolean; channelOpen?: boolean; authenticated?: boolean; leaseValid?: boolean }): string {
+  if (facts.authenticated && facts.channelOpen && facts.leaseValid) return 'ready';
+  if (facts.state === 'error') return 'error';
+  if (facts.channelOpen) return 'authenticating';
+  if (facts.localDescription && !facts.remoteDescription) return 'waiting-answer';
+  if (facts.remoteDescription) return 'negotiating';
+  return facts.preparing || facts.transportPresent ? 'preparing' : 'standby';
+ }
+ function describePeerDetails(peer: MiniConnectionPeerSnapshot) {
+  const phases: Record<string, string> = { standby: 'Disponible, sin canal activo', preparing: 'Preparando conexión', 'waiting-answer': 'Esperando respuesta del otro Mini', negotiating: 'Negociando conexión', authenticating: 'Canal abierto, verificando vínculo', ready: 'Canal autenticado, listo para respaldos', error: 'No se pudo establecer la conexión' };
+  const reasons: Record<string, string> = { manual: 'Cerrado en este dispositivo', reconnect: 'Reemplazado al reconectar', 'preparation-timeout': 'Se agotó el tiempo del intento', 'signaling-error': 'Error de señalización', 'signaling-loss': 'Se perdió la señalización', 'transport-error': 'Error del transporte', 'transport-disconnected': 'Transporte desconectado', 'lease-expired': 'Venció el tiempo del canal', unknown: 'Motivo no identificado' };
+  const phase = describePeer(peer).state === 'connected' ? 'ready' : peer.phase === 'ready' ? 'authenticating' : peer.phase || 'standby';
+  const milliseconds = phase === 'ready' ? peer.channelRemainingMs : peer.preparationRemainingMs;
+  const seconds = typeof milliseconds === 'number' && Number.isFinite(milliseconds) ? Math.max(0, Math.ceil(milliseconds / 1000)) : null;
+  const time = seconds === null ? '' : String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
+  return {
+   link: /^[a-f0-9]{6}(?:-[a-f0-9]{6}){3}$/.test(peer.linkFingerprint || '') ? peer.linkFingerprint! : 'Sin identificar',
+   phase: phases[phase] || 'Estado no identificado',
+   remaining: time ? (phase === 'ready' ? 'Canal: ' : 'Intento: ') + time : 'Sin cuenta regresiva activa',
+   lastClose: peer.lastCloseReason ? reasons[peer.lastCloseReason] || reasons.unknown : 'Sin cierre registrado'
+  };
+ }
  function mountPeers(o:MiniConnectionPeerViewOptions){
   const d=o.container.ownerDocument;
-  const rows=new Map<string,{row:HTMLElement;name:HTMLElement;status:HTMLElement;statusLabel:HTMLElement;statusIcon:SVGElement;hint:HTMLElement;connect:HTMLButtonElement;close:HTMLButtonElement}>();
+  const rows=new Map<string,{row:HTMLElement;name:HTMLElement;status:HTMLElement;statusLabel:HTMLElement;statusIcon:SVGElement;hint:HTMLElement;connect:HTMLButtonElement;close:HTMLButtonElement;details:HTMLElement[]}>();
   const pending=new Map<string,Promise<void>>();let disposed=false;
+  const schedule=o.schedule||((callback:()=>void,delay:number)=>setTimeout(callback,delay));
+  const cancel=o.cancel||((handle:unknown)=>clearTimeout(handle as ReturnType<typeof setTimeout>));
+  let timer:unknown=null;
   function refresh(){
    if(disposed)return;
    const peers=o.getPeers(),ids=new Set(peers.map(peer=>peer.peerId));
@@ -41,7 +76,10 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
      const connect=d.createElement('button'),close=d.createElement('button');connect.type=close.type='button';connect.dataset.miniPeerConnect=peer.peerId;close.dataset.miniPeerClose=peer.peerId;
      connect.onclick=()=>{if(pending.has(peer.peerId)||disposed)return;const operation=o.connect(peer.peerId);pending.set(peer.peerId,operation);refresh();void operation.catch(()=>{if(!disposed&&pending.get(peer.peerId)===operation)o.notify('No se pudo conectar. Reintenta; tus datos se conservan.');}).finally(()=>{if(pending.get(peer.peerId)===operation)pending.delete(peer.peerId);refresh();});};
      close.onclick=()=>{if(disposed)return;pending.delete(peer.peerId);o.close(peer.peerId);refresh();};
-     actions.append(connect,close);row.append(icon(d,'phone'),name,status,hint,actions);o.container.append(row);view={row,name,status,statusLabel,statusIcon,hint,connect,close};rows.set(peer.peerId,view);
+     const group=d.createElement('div');group.className='connections-mini-peer-details';group.setAttribute('role','group');group.setAttribute('aria-label','Detalles del vínculo');
+     const details=Array.from({length:4},()=>d.createElement('p'));details[0].className='connections-mini-peer-link';group.append(...details);
+     const note=d.createElement('small');note.textContent='El mismo vínculo no confirma una conexión activa.';group.append(note);
+     actions.append(connect,close);row.append(icon(d,'phone'),name,status,hint,actions,group);o.container.append(row);view={row,name,status,statusLabel,statusIcon,hint,connect,close,details};rows.set(peer.peerId,view);
     }
     const model=describePeer(peer);if(view.name.textContent!==peer.name)view.name.textContent=peer.name;if(view.statusLabel.textContent!==model.label){
      view.statusLabel.textContent=model.label;
@@ -52,10 +90,15 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
     view.connect.textContent=model.connectLabel;view.connect.disabled=pending.has(peer.peerId);view.connect.setAttribute('aria-label',model.connectLabel+' con '+peer.name);
     const focusedClose=d.activeElement===view.close;view.close.textContent='Cerrar conexión';view.close.disabled=!model.canClose&&!pending.has(peer.peerId);view.close.setAttribute('aria-label','Cerrar conexión con '+peer.name);
     if(focusedClose&&view.close.disabled)view.connect.focus();
+    const detail=describePeerDetails(peer),texts=['Vínculo: '+detail.link,'Fase: '+detail.phase,detail.remaining,'Último cierre: '+detail.lastClose];
+    texts.forEach((text,index)=>{if(view!.details[index].textContent!==text)view!.details[index].textContent=text;});
    }
    o.container.hidden=peers.length===0;
+   const ticking=peers.some(peer=>[peer.preparationRemainingMs,peer.channelRemainingMs].some(value=>typeof value==='number'&&Number.isFinite(value)&&value>0));
+   if(!ticking&&timer!==null){cancel(timer);timer=null;}
+   if(ticking&&timer===null)timer=schedule(()=>{timer=null;refresh();},1000);
   }
-  const off=o.subscribe(refresh);refresh();return {refresh,dispose(){disposed=true;off();pending.clear();rows.clear();}};
+  const off=o.subscribe(refresh);refresh();return {refresh,dispose(){disposed=true;off();if(timer!==null)cancel(timer);timer=null;pending.clear();rows.clear();}};
  }
  function icon(d:Document,kind:string){
   const paths:Record<string,string>={send:'M22 2L9 15M22 2l-7 20-4-9-9-4z',calendar:'M8 2v4M16 2v4M3 10h18M3 4h18v18H3zM8 15h2M14 15h2',share:'M6 12l12-7M6 12l12 7M18 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6',refresh:'M3 12a9 9 0 0 1 15-7l3 3M21 3v5h-5M21 12a9 9 0 0 1-15 7l-3-3M3 21v-5h5',back:'M15 18l-6-6 6-6',chevron:'M9 6l6 6-6 6',building:'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4',phone:'M7 2h10v20H7zM10 18h4',people:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8',cloud:'M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12z',qr:'M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6z',document:'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8',clock:'M12 8v5l3 2M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20',unlink:'M9 15l-2 2a4 4 0 0 1-6-6l3-3M15 9l2-2a4 4 0 0 1 6 6l-3 3M3 3l18 18',tag:'M3 3h8l10 10-8 8L3 11zM7 7h.01',check:'M5 12l4 4L19 6',warning:'M12 3L2 21h20L12 3zM12 9v5M12 17h.01'};
@@ -102,5 +145,5 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
   const cloud=d.getElementById('cloud-field-status');if(cloud)observer.observe(cloud,{childList:true,attributes:true,attributeFilter:['data-operation-state']});
   refresh();return {refresh,dispose(){stopped=true;observer.disconnect();progress.remove();o.account.disabled=false;if(cloud?.parentElement===banner&&feedback)feedback.append(cloud);banner.remove();if(feedback?.parentElement===details)details.before(feedback);details.remove();back.remove();account.remove();heading!.textContent=originalTitle;delete heading!.dataset.miniPageTitle;delete o.shell.dataset.miniConnectionPage;if(subtitle)subtitle.hidden=false;}};
  }
- return {describePage,describeFeedback,describePeer,mountPeers,icon,mount};
+ return {describePage,describeFeedback,describePeer,createLinkFingerprint,observePhase,describePeerDetails,mountPeers,icon,mount};
 });

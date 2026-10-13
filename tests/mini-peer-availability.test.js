@@ -116,3 +116,24 @@ test('cancelled but already queued ready timer cannot retire its current session
   let ready; const owner = context.module.exports.create({localPeerId:'a',remotePeerId:'b',signaling:{connect:async()=>{},onEvent:()=>()=>{},close(){},send(){}},validateFrame:v=>v,createSession:async options=>{ready=options.onReady;return session;}});
   await owner.start(); await owner.demand(); assert.equal(ready(),true); deadline(); assert.equal(owner.getSession(),session); owner.stop();
 });
+
+test('availability info is non-mutating, uses the fixed clock and classifies explicit retirements', async () => {
+ let now=10,ready;const f=fixture(async opts=>{ready=opts.onReady;return {close(){}};},{now:()=>now,setupTimeoutMs:10000});await f.owner.start();
+ try {
+ assert.equal(typeof f.owner.getInfo,'function');assert.equal(f.owner.getInfo().preparationRemainingMs,null);
+ await f.owner.demand();assert.equal(f.owner.getInfo().preparationRemainingMs,10000);now=6010;assert.equal(f.owner.getInfo().preparationRemainingMs,4000);assert.equal(f.owner.getInfo().preparationRemainingMs,4000);
+ ready();assert.equal(f.owner.getInfo().preparationRemainingMs,null);f.owner.retire('manual');assert.equal(f.owner.getInfo().lastCloseReason,'manual');
+ await f.owner.demand();f.owner.retire('secret-error');assert.equal(f.owner.getInfo().lastCloseReason,'unknown');
+ } finally {f.owner.stop();}
+});
+test('timeout and socket errors have explicit observations while stale readiness cannot rewrite them', async () => {
+ let ready;const f=fixture(async opts=>{ready=opts.onReady;return {close(){}};},{setupTimeoutMs:2});await f.owner.start();await f.owner.demand();await new Promise(r=>setTimeout(r,10));
+ try {assert.equal(f.owner.getInfo().lastCloseReason,'preparation-timeout');assert.equal(ready(),false);f.emit({type:'socket-error'});assert.equal(f.owner.getInfo().lastCloseReason,'signaling-error');f.emit({type:'peer-left'});assert.equal(f.owner.getInfo().lastCloseReason,'signaling-loss');}finally{f.owner.stop();}
+});
+
+test('a queued stale preparation timer cannot overwrite replacement observations', async () => {
+ const vm=require('node:vm'),fs=require('node:fs');const timers=[];
+ const context={module:{exports:{}},setTimeout(fn){timers.push(fn);return {};},clearTimeout(){}};vm.runInNewContext(fs.readFileSync(require.resolve('../mini-peer-availability.js'),'utf8'),context);
+ const owner=context.module.exports.create({localPeerId:'a',remotePeerId:'b',now:()=>0,signaling:{connect:async()=>{},onEvent:()=>()=>{},close(){},send(){}},validateFrame:v=>v,createSession:async()=>({close(){}})});
+ await owner.start();await owner.demand();try {owner.retire('manual');await owner.demand();timers[0]();assert.equal(owner.getInfo().lastCloseReason,'manual');assert.equal(owner.getInfo().preparationRemainingMs,10000);}finally{owner.stop();}
+});

@@ -47,7 +47,7 @@ interface MiniPeerIntentRecord { token: MiniPeerIntent; promise: Promise<unknown
     const now = options.now || (() => performance.now());
     const schedule = options.schedule || ((fn: () => void, delay: number) => setTimeout(fn, delay));
     const cancel = options.cancel || ((timer: unknown) => clearTimeout(timer as ReturnType<typeof setTimeout>));
-    function lease(session: MiniPeerLeaseSession, startedAt: number, onRetired: () => void, eligibility: { guest?: boolean; transportOwnedExternally?: boolean } = {}) {
+    function lease(session: MiniPeerLeaseSession, startedAt: number, onRetired: (reason: string) => void, eligibility: { guest?: boolean; transportOwnedExternally?: boolean } = {}) {
       const credentialRemaining = () => {
         try { return session.getLeaseRemainingMs ? session.getLeaseRemainingMs() : eligibility.guest === true ? MAX_LEASE_MS : 0; }
         catch { return 0; }
@@ -58,19 +58,21 @@ interface MiniPeerIntentRecord { token: MiniPeerIntent; promise: Promise<unknown
       let running = false, tail: Promise<unknown> = Promise.resolve();
       const operations = new Set<(error: Error) => void>();
       const waiting = new Set<{ resolve: (channel: MiniPeerLeaseChannel) => void; reject: (error: Error) => void }>();
-      function retire() {
+      let retirementReason: string | null = null;
+      function retire(reason: string = 'unknown') {
         if (stopped) return;
         stopped = true;
+        retirementReason = reason === 'lease-expired' ? reason : 'unknown';
         if (timer !== undefined) cancel(timer);
         for (const waiter of waiting) waiter.reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
         waiting.clear();
         running = false;
         for (const reject of operations) reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
         operations.clear();
-        try { onRetired(); } finally { try { if (eligibility.transportOwnedExternally !== true) session.close(); } catch { /* Isolated transport cleanup. */ } }
+        try { onRetired(retirementReason); } finally { try { if (eligibility.transportOwnedExternally !== true) session.close(); } catch { /* Isolated transport cleanup. */ } }
       }
       function valid(): boolean {
-        if (!stopped && (now() >= deadline || credentialRemaining() <= 0)) retire();
+        if (!stopped && (now() >= deadline || credentialRemaining() <= 0)) retire('lease-expired');
         return !stopped;
       }
       function check() {
@@ -105,7 +107,7 @@ interface MiniPeerIntentRecord { token: MiniPeerIntent; promise: Promise<unknown
         void delivered.then(() => operations.delete(rejectOperation!), () => operations.delete(rejectOperation!));
         return delivered;
       }
-      return { session, ready, valid, retire, run, busy: () => running, deadline };
+      return { session, ready, valid, retire, run, busy: () => running, deadline, getRetirementReason: () => retirementReason };
     }
     return { lease, now };
   }

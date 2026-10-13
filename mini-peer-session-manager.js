@@ -66,10 +66,12 @@
             let running = false, tail = Promise.resolve();
             const operations = new Set();
             const waiting = new Set();
-            function retire() {
+            let retirementReason = null;
+            function retire(reason = 'unknown') {
                 if (stopped)
                     return;
                 stopped = true;
+                retirementReason = reason === 'lease-expired' ? reason : 'unknown';
                 if (timer !== undefined)
                     cancel(timer);
                 for (const waiter of waiting)
@@ -80,7 +82,7 @@
                     reject(new Error('La conexión expiró o se interrumpió. Reintenta.'));
                 operations.clear();
                 try {
-                    onRetired();
+                    onRetired(retirementReason);
                 }
                 finally {
                     try {
@@ -92,7 +94,7 @@
             }
             function valid() {
                 if (!stopped && (now() >= deadline || credentialRemaining() <= 0))
-                    retire();
+                    retire('lease-expired');
                 return !stopped;
             }
             function check() {
@@ -139,7 +141,7 @@
                 void delivered.then(() => operations.delete(rejectOperation), () => operations.delete(rejectOperation));
                 return delivered;
             }
-            return { session, ready, valid, retire, run, busy: () => running, deadline };
+            return { session, ready, valid, retire, run, busy: () => running, deadline, getRetirementReason: () => retirementReason };
         }
         return { lease, now };
     }

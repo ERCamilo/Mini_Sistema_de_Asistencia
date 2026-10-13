@@ -93,3 +93,37 @@ test('unchanged peer refresh does not rewrite the live status or replace its dra
  Object.defineProperty(label,'textContent',{get:()=> 'Disponible',set(){writes++;}});
  view.refresh();view.refresh();assert.equal(writes,0);assert.equal(badge.children[0].children[0],drawing);view.dispose();
 });
+
+test('link fingerprints use a validated token and a separate public-display digest domain', async () => {
+ const api=require('../connection-presentation.js'),core=require('../p2p-core.js');
+ const token=Buffer.alloc(32,7).toString('base64url'),other=Buffer.alloc(32,8).toString('base64url');
+ assert.equal(typeof api.createLinkFingerprint,'function');
+ const hash=await api.createLinkFingerprint(core,token);
+ const expected=(await core.sha256Hex('mini-connection-card/link-fingerprint/v1:'+token)).slice(0,24).match(/.{6}/g).join('-');
+ assert.equal(hash,expected);assert.equal(hash,await api.createLinkFingerprint(core,token));assert.notEqual(hash,await api.createLinkFingerprint(core,other));
+ assert.equal(await api.createLinkFingerprint(core,'secret-invalid-token'),null);
+ assert.equal(await api.createLinkFingerprint({...core,sha256Hex:async()=>{throw Error('secret');}},token),null);
+ assert.doesNotMatch(hash,new RegExp(token));
+});
+test('observed phases never infer trusted readiness from factory, ICE or channel completion', () => {
+ const {observePhase}=require('../connection-presentation.js');
+ assert.equal(typeof observePhase,'function');
+ for(const [facts,phase] of [[{},'standby'],[{preparing:true},'preparing'],[{transportPresent:true},'preparing'],[{localDescription:true,remoteDescription:false},'waiting-answer'],[{remoteDescription:true},'negotiating'],[{channelOpen:true},'authenticating'],[{channelOpen:true,authenticated:true,leaseValid:false},'authenticating'],[{channelOpen:true,authenticated:true,leaseValid:true},'ready'],[{state:'error'},'error']])assert.equal(observePhase(facts),phase);
+});
+test('card detail strings allowlist phases, codes and reasons without leaking unexpected text', () => {
+ const {describePeerDetails}=require('../connection-presentation.js');
+ assert.equal(typeof describePeerDetails,'function');
+ const base={peerId:'p',name:'Mini',phase:'waiting-answer',linkFingerprint:'012345-abcdef-012345-abcdef',preparationRemainingMs:9100,lastCloseReason:'preparation-timeout'};
+ const view=describePeerDetails(base);assert.match(view.link,/012345/);assert.match(view.phase,/respuesta/);assert.equal(view.remaining,'Intento: 00:10');assert.match(view.lastClose,/tiempo/);
+ assert.equal(describePeerDetails({...base,preparationRemainingMs:-2}).remaining,'Intento: 00:00');
+ assert.equal(describePeerDetails({...base,phase:'ready',authenticated:true,channelOpen:true,leaseValid:true,preparationRemainingMs:null,channelRemainingMs:61000}).remaining,'Canal: 01:01');
+ const unknown=JSON.stringify(describePeerDetails({...base,phase:'secret-sdp',linkFingerprint:'secret-proof',lastCloseReason:'secret-error'}));assert.doesNotMatch(unknown,/secret/);assert.match(unknown,/Sin identificar/);
+});
+test('display timer reads fixed remaining time, preserves keyed focus and stops on idle and dispose', () => {
+ const {mountPeers}=require('../connection-presentation.js'),{d,container}=peerDom();let callback,timer=0,cancelled=0,reads=0,remaining=5000;
+ const view=mountPeers({container,getPeers:()=>{reads++;return [{peerId:'p',name:'Mini',phase:'preparing',preparationRemainingMs:remaining}];},subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){},schedule:fn=>{callback=fn;return ++timer;},cancel:()=>cancelled++});
+ const row=container.children[0],button=row.children[4].children[0];button.focus();const details=row.children[5];assert.ok(details,'detail group missing');assert.equal(timer,1);
+ remaining=2900;callback();assert.equal(container.children[0],row);assert.equal(d.activeElement,button);assert.match(details.children[2].textContent,/00:03/);assert.equal(timer,2);
+ remaining=null;callback();assert.equal(timer,2,'idle cards must not schedule another tick');assert.equal(reads,3);view.dispose();assert.equal(cancelled,0);
+ const active=mountPeers({container,getPeers:()=>[{peerId:'q',name:'Mini',channelRemainingMs:5000}],subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){},schedule:fn=>{callback=fn;return ++timer;},cancel:()=>cancelled++});active.dispose();assert.equal(cancelled,1);callback();assert.equal(timer,3);
+});

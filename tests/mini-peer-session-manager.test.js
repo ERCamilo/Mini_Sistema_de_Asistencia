@@ -73,3 +73,9 @@ test('invalidateAll cancels intents even when no transport entry exists', async 
   const intents = Manager.createIntents(); const action = intents.run('peer', async () => new Promise(() => {}));
   intents.invalidateAll(); await assert.rejects(action);
 });
+
+test('lease expiry reason is set before retirement callback and observation never slides or retires a lease', () => {
+ const h=fixture();assert.equal(typeof h.lease.getRetirementReason,'function');assert.equal(h.lease.getRetirementReason(),null);h.time(300000);assert.equal(h.lease.getRetirementReason(),null);assert.deepEqual(h.counts(),{closed:0,retired:0});h.lease.valid();assert.equal(h.lease.getRetirementReason(),'lease-expired');
+ const manual=fixture();manual.lease.retire();assert.equal(manual.lease.getRetirementReason(),'unknown');
+ let reason;const manager=Manager.create({now:()=>0,schedule:()=>({}),cancel(){}});manager.lease({close(){},getLeaseRemainingMs:()=>0},0,value=>{reason=value;});assert.equal(reason,'lease-expired');
+});

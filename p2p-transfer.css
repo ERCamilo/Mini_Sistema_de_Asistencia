@@ -628,3 +628,9 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
 .connections-mini-peer-actions button { min-height: 44px; min-width: 44px; flex: 1; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--input-bg); color: var(--text-color); font: inherit; }
 .connections-mini-peer-actions button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .connections-mini-peer-actions button:disabled { opacity: .6; }
+
+.connections-mini-peer-details { grid-column: 1 / -1; grid-row: 4; min-width: 0; padding: 10px; border-radius: 8px; background: var(--input-bg); color: var(--text-color); font-size: 12px; line-height: 1.5; }
+.connections-mini-peer-details p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.connections-mini-peer-details small { color: var(--text-muted); font-size: 12px; }
+.connections-mini-peer-link { font-family: ui-monospace, monospace; }
+.connections-mini-peer-actions { grid-row: 5; }

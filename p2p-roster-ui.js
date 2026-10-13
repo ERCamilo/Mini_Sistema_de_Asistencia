@@ -2043,15 +2043,25 @@
   function miniBackupConnectionSnapshot() {
     return [...miniBackupKnownPeers.values()].map(peer => {
       const entry = miniBackupListeners.get(String(peer.peerId));
-      return { peerId: String(peer.peerId), name: peerName(peer), state: !isNetworkOnline() ? 'error' : entry?.state || 'available',
-        authenticated: entry?.authenticated === true, channelOpen: entry?.channel?.readyState === 'open', leaseValid: entry?.lease?.valid() === true, busy: !!entry?.busy || entry?.lease?.busy() === true };
+      // Read validity first: existing expiry cleanup may clear this owner's refs.
+      const leaseValid = entry?.lease?.valid() === true, info = entry?.availability?.getInfo?.();
+      const state = !isNetworkOnline() ? 'error' : entry?.state || 'available';
+      const authenticated = entry?.authenticated === true, channelOpen = entry?.channel?.readyState === 'open';
+      return { peerId: String(peer.peerId), name: peerName(peer), state, authenticated, channelOpen, leaseValid,
+        busy: !!entry?.busy || entry?.lease?.busy() === true, linkFingerprint: entry?.linkFingerprintCurrent?.() ? entry.linkFingerprint || null : null,
+        phase: root.MiniConnectionPresentation?.observePhase({ state, authenticated, channelOpen, leaseValid,
+          preparing: info?.preparing, transportPresent: !!entry?.transport,
+          localDescription: !!entry?.session?.pc?.localDescription, remoteDescription: !!entry?.session?.pc?.remoteDescription }) || 'standby',
+        preparationRemainingMs: info?.preparationRemainingMs ?? null,
+        channelRemainingMs: entry?.lease ? Math.max(0, entry.lease.deadline - peerSessionManager().now()) : null,
+        lastCloseReason: entry?.lastCloseReason || null };
     });
   }
   function closeMiniBackupConnection(peerId) {
     const key = String(peerId || '').trim();
     miniBackupIntents?.invalidate(key);
     const entry = miniBackupListeners.get(key);
-    return entry ? retireMiniBackupTransport(entry) : false;
+    return entry ? retireMiniBackupTransport(entry, null, true, 'manual') : false;
   }
   function reconnectMiniBackupPeer(peerId) {
     const key = String(peerId || '').trim();
@@ -2075,7 +2085,7 @@
         }
         // A closed socket can rearm during listener setup; revoke that timer too.
         if (entry.retryTimer) { clearTimeout(entry.retryTimer); entry.retryTimer = null; }
-        retireMiniBackupTransport(entry);
+        retireMiniBackupTransport(entry, null, true, 'reconnect');
         intent.check();
         entry.reconnectIntent = intent;
         try { await entry.availability.demand(); }
@@ -2117,9 +2127,10 @@
     });
   }
 
-  function retireMiniBackupTransport(entry, transport = null, retireAvailability = true) {
+  function retireMiniBackupTransport(entry, transport = null, retireAvailability = true, reason = 'unknown') {
     if (transport && entry.transport !== transport) return false;
     const lease = entry.lease, session = entry.session;
+    if (entry.transport || lease || session || entry.availability?.getInfo?.()?.preparing || (reason !== 'unknown' && reason !== 'reconnect')) entry.lastCloseReason = reason;
     const detachOffers = entry.detachOffers, detachReceiver = entry.detachReceiver;
     entry.transport = null; entry.lease = null; entry.session = null;
     entry.channel = null; entry.authenticated = false; entry.busy = false; entry.state = 'available';
@@ -2127,7 +2138,7 @@
     try { detachOffers?.(); } catch (_) {}
     try { detachReceiver?.(); } catch (_) {}
     try { if (lease) lease.retire(); else session?.close?.(); } catch (_) {}
-    if (retireAvailability) entry.availability?.retire();
+    if (retireAvailability) entry.availability?.retire(reason);
     publishMiniBackupConnections();
     return true;
   }
@@ -2177,9 +2188,16 @@
     }
     let finishSetup;
     const setup = new Promise(resolve => { finishSetup = resolve; });
-    const entry = { setup, peer, state: 'available', reconnectIntent: null, availability: null, transport: null, session: null, signaling: null, lease: null, channel: null, busy: false, retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
+    const entry = { setup, peer, state: 'available', linkFingerprint: null, lastCloseReason: null, reconnectIntent: null, availability: null, transport: null, session: null, signaling: null, lease: null, channel: null, busy: false, retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
     miniBackupListeners.set(peerId, entry);
     const isCurrent = () => !entry.stopped && miniBackupListeners.get(peerId) === entry && accountEpoch.current(peerId);
+    // Public display digest only; never delay standby on this optional observation.
+    const fingerprintToken = peer.linkToken;
+    entry.linkFingerprintCurrent = () => isCurrent() && miniBackupKnownPeers.get(peerId)?.linkToken === fingerprintToken;
+    root.MiniConnectionPresentation?.createLinkFingerprint?.(core, fingerprintToken)?.then(value => {
+      if (!entry.linkFingerprintCurrent()) return;
+      entry.linkFingerprint = value; publishMiniBackupConnections();
+    }).catch(() => {});
     try {
       const self = await identityStore.getSelf();
       if (!isCurrent()) return entry;
@@ -2187,12 +2205,12 @@
       if (!isCurrent()) return entry;
       entry.signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
       entry.availability = root.MiniPeerAvailability.create({
-        signaling: entry.signaling, localPeerId: String(self.deviceId), remotePeerId: peerId,
+        signaling: entry.signaling, localPeerId: String(self.deviceId), remotePeerId: peerId, now: () => peerSessionManager().now(),
         validateFrame: core.validateSignalFrameObject,
         onState: status => {
           if (!isCurrent()) return;
           entry.state = ['error', 'signaling-error'].includes(status) ? 'error' : status;
-          if (status === 'available') retireMiniBackupTransport(entry, null, false);
+          if (status === 'available') retireMiniBackupTransport(entry, null, false, entry.availability?.getInfo?.()?.lastCloseReason || 'unknown');
           if (status === 'signaling-error') scheduleMiniBackupRetry(peer, attempt++, entry);
           publishMiniBackupConnections();
         },
@@ -2202,15 +2220,16 @@
           const transport = {}, startedAt = peerSessionManager().now();
           entry.transport = transport; entry.state = 'connecting'; publishMiniBackupConnections();
           const ownsTransport = () => isCurrent() && entry.transport === transport;
-          const retire = () => { if (ownsTransport()) retireMiniBackupTransport(entry, transport); };
+          const retire = (reason = 'unknown') => { if (ownsTransport()) retireMiniBackupTransport(entry, transport, true, reason); };
           let finishAuthentication = null;
           const session = await core.createRtcSession({ ...options,
             onState: (status, error) => {
-              if (error || ['disconnected', 'failed', 'closed'].includes(status)) retire();
+              if (error || ['disconnected', 'failed', 'closed'].includes(status)) retire(error || status === 'failed' ? 'transport-error' : status === 'disconnected' ? 'transport-disconnected' : 'unknown');
+              if (ownsTransport()) publishMiniBackupConnections();
             },
             onChannel: channel => {
               if (!ownsTransport()) { try { channel?.close?.(); } catch (_) {} return; }
-              entry.channel = channel;
+              entry.channel = channel; publishMiniBackupConnections();
               const offers = root.P2PBackupConsent.bufferOffers(channel, core);
               entry.detachOffers = offers.detach;
               pairing.attachTrusted(channel, {
@@ -2226,7 +2245,7 @@
                   };
                   finishAuthentication();
                 },
-                onError: retire
+                onError: () => retire('transport-error')
               });
             }
           });
