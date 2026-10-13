@@ -2055,10 +2055,13 @@
   }
   function reconnectMiniBackupPeer(peerId) {
     const key = String(peerId || '').trim();
-    const initialEntry = miniBackupListeners.get(key), initialTransport = initialEntry?.transport;
+    const initialEntry = miniBackupListeners.get(key), initialTransport = initialEntry?.transport, pendingRetry = initialEntry?.retryTimer;
     return miniBackupIntentRegistry().run(key, async intent => {
       let entry, ownedTransport;
       try {
+        if (initialEntry?.busy || initialEntry?.lease?.busy()) throw new Error('El dispositivo está ocupado. Reintenta.');
+        // A manual owner supersedes the armed backoff before any acquisition await.
+        if (initialEntry?.retryTimer) { clearTimeout(initialEntry.retryTimer); initialEntry.retryTimer = null; }
         watchMiniBackupAccount();
         const peer = await identityStore.getPeer(key);
         intent.check();
@@ -2070,6 +2073,8 @@
         if (entry.busy || entry.lease?.busy() || (initialEntry && entry !== initialEntry) || entry.transport !== (initialTransport || null)) {
           throw new Error('La conexión cambió o está ocupada. Reintenta.');
         }
+        // A closed socket can rearm during listener setup; revoke that timer too.
+        if (entry.retryTimer) { clearTimeout(entry.retryTimer); entry.retryTimer = null; }
         retireMiniBackupTransport(entry);
         intent.check();
         entry.reconnectIntent = intent;
@@ -2085,6 +2090,10 @@
       } catch (error) {
         if (intent.current() && entry && !entry.stopped && miniBackupListeners.get(key) === entry && (entry.reconnectIntent === intent || (ownedTransport && entry.transport === ownedTransport))) {
           entry.state = 'error'; publishMiniBackupConnections();
+        }
+        const recoveryEntry = entry || initialEntry;
+        if (intent.current() && recoveryEntry && (pendingRetry || recoveryEntry.signaling?.closed === true)) {
+          scheduleMiniBackupRetry(recoveryEntry.peer, 0, recoveryEntry);
         }
         throw error;
       } finally { if (entry?.reconnectIntent === intent) entry.reconnectIntent = null; }

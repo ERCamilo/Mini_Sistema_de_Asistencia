@@ -461,3 +461,61 @@ test('account logout cancels a pending lookup before any listener exists', async
   assert.equal(typeof accountChanged, 'function'); accountChanged(null); await rejected;
   release(inboxPeer); await settleInbox(); assert.equal(h.options.length, 0); assert.equal(h.ctx.miniBackupListeners.size, 0);
 });
+
+for (const delayed of ['lookup', 'factory']) test(`manual reconnect revokes an armed retry before delayed ${delayed} and ignores its queued callback`, async () => {
+  const h = reconnectHarness(), entry = await h.ctx.ensure(inboxPeer);
+  h.signals[0].emit({ type: 'socket-error' }); const automatic = h.timers[0]; assert.equal(entry.retryTimer, automatic);
+  let resumeLookup, resumeFactory, factoryOptions;
+  if (delayed === 'lookup') h.ctx.identityStore.getPeer = () => new Promise(resolve => { resumeLookup = resolve; });
+  h.ctx.core.createRtcSession = options => { factoryOptions = options; return new Promise(resolve => { resumeFactory = resolve; }); };
+  const connecting = h.ctx.reconnect(inboxPeer.peerId), duplicate = h.ctx.reconnect(inboxPeer.peerId);
+  assert.equal(connecting, duplicate);
+  const outcome = connecting.then(() => 'connected', () => 'cancelled');
+  await settleInbox(); await automatic.fn();
+  if (resumeLookup) resumeLookup(inboxPeer); await settleInbox();
+  assert.equal(h.ctx.miniBackupListeners.get(inboxPeer.peerId), entry, 'queued old retry must not replace manually acquired listener');
+  assert.equal(h.signals[0].closed, 0); assert.equal(automatic.cancelled, true); assert.equal(entry.retryTimer, null);
+  assert.ok(resumeFactory, 'manual demand reaches its owned factory');
+  resumeFactory({ startNegotiation: async () => {}, close() {} }); await settleInbox();
+  factoryOptions.onChannel({ readyState: 'open', close() {} }); h.handshakes[0].onAuthenticated();
+  assert.equal(await outcome, 'connected'); h.ctx.stop(inboxPeer.peerId);
+});
+
+test('manual failure returns automatic availability recovery to a fresh bounded retry owner', async () => {
+ for (const stage of ['lookup', 'factory']) {
+  const h = reconnectHarness(), entry = await h.ctx.ensure(inboxPeer);
+  h.signals[0].emit({ type: 'socket-error' }); const oldTimer = h.timers[0];
+  if(stage === 'lookup') h.ctx.identityStore.getPeer = async () => { throw new Error('synthetic lookup failure'); };
+  else h.ctx.core.createRtcSession = async () => { throw new Error('synthetic factory failure'); };
+  await assert.rejects(h.ctx.reconnect(inboxPeer.peerId));
+  assert.equal(oldTimer.cancelled, true); assert.notEqual(entry.retryTimer, oldTimer);
+  const recovery = entry.retryTimer; assert.ok(recovery); assert.equal(recovery.delay, 1500);
+  await oldTimer.fn(); assert.equal(h.ctx.miniBackupListeners.get(inboxPeer.peerId), entry); assert.equal(h.signals[0].closed, 0);
+  await recovery.fn(); const replacement = h.ctx.miniBackupListeners.get(inboxPeer.peerId);
+  assert.notEqual(replacement, entry); assert.equal(h.signals[0].closed, 1); assert.equal(h.options.length, 0); h.ctx.stop(inboxPeer.peerId);
+ }
+});
+
+test('manual reconnect cancels closed-socket setup rearming without disabling later socket failure recovery', async () => {
+ const h = reconnectHarness(), entry = await h.ctx.ensure(inboxPeer);
+ h.signals[0].emit({ type: 'socket-error' }); const oldTimer = h.timers[0]; h.signals[0].closed = true;
+ const connecting = h.ctx.reconnect(inboxPeer.peerId); const outcome = connecting.then(() => 'connected', () => 'cancelled');
+ await settleInbox(); const setupTimer = h.timers[1]; assert.ok(setupTimer);
+ assert.equal(oldTimer.cancelled, true); assert.equal(setupTimer.cancelled, true); assert.equal(entry.retryTimer, null);
+ await oldTimer.fn(); await setupTimer.fn(); assert.equal(h.ctx.miniBackupListeners.get(inboxPeer.peerId), entry);
+ h.options[0].onChannel({readyState:'open',close(){}}); h.handshakes[0].onAuthenticated(); assert.equal(await outcome,'connected');
+ h.signals[0].closed = false; h.signals[0].emit({type:'socket-error'}); assert.ok(entry.retryTimer); assert.notEqual(entry.retryTimer,setupTimer);
+ await entry.retryTimer.fn(); assert.notEqual(h.ctx.miniBackupListeners.get(inboxPeer.peerId),entry); h.ctx.stop(inboxPeer.peerId);
+});
+
+test('armed retry cannot stop manual acquisition while shared signaling setup is suspended', async () => {
+ const h = reconnectHarness(); let release;
+ const Base = h.ctx.core.SignalingClient;
+ h.ctx.core.SignalingClient = class extends Base { connect() { return new Promise(resolve => { release = resolve; }); } };
+ const setup = h.ctx.ensure(inboxPeer); await settleInbox(); const entry = h.ctx.miniBackupListeners.get(inboxPeer.peerId);
+ h.signals[0].emit({type:'socket-error'}); const automatic = entry.retryTimer;
+ const connecting = h.ctx.reconnect(inboxPeer.peerId), outcome = connecting.then(()=>'connected',()=>'cancelled');
+ await settleInbox(); await automatic.fn(); assert.equal(entry.stopped,false); assert.equal(h.signals[0].closed,0); assert.equal(automatic.cancelled,true);
+ release(); await setup; await settleInbox(); assert.equal(h.options.length,1);
+ h.options[0].onChannel({readyState:'open',close(){}}); h.handshakes[0].onAuthenticated(); assert.equal(await outcome,'connected'); h.ctx.stop(inboxPeer.peerId);
+});
