@@ -29,14 +29,14 @@ async function main() {
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     const fixture = path.join(temporary, 'app'); await fs.mkdir(fixture);
-    for (const name of [...modules, 'firebase-field-config.js', 'p2p-transfer.css']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
-    await fs.writeFile(path.join(fixture, 'index.html'), '<html><link rel="stylesheet" href="./p2p-transfer.css"><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
+    for (const name of [...modules, 'firebase-field-config.js', 'p2p-transfer.css', 'connection-screens.css']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
+    await fs.writeFile(path.join(fixture, 'index.html'), '<html><meta charset="utf-8"><link rel="stylesheet" href="./p2p-transfer.css"><link rel="stylesheet" href="./connection-screens.css"><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
     phase = 'BROWSER_LAUNCH';
     try { browser = await chromium.launch({ chromiumSandbox: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}), args: ['--ignore-certificate-errors-spki-list=' + spki, '--disable-background-networking'] }); }
     catch (error) { phase += '_' + browserLaunchReason(error); throw new Error('BROWSER_UNAVAILABLE'); }
     const ports = new Set();
     async function pageFor(forceRelay) {
-      const dev = await startDevServer({ forwardPort: upstream.address().port, port: 0, tls: { key, cert }, appRoot: fixture, assets: ['index.html', 'firebase-field-config.js', 'p2p-transfer.css', ...modules], bootstrap: { enabled: true, appIdentity: 'mini', canonicalRoot: ROOT, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, forceRelay } });
+      const dev = await startDevServer({ forwardPort: upstream.address().port, port: 0, tls: { key, cert }, appRoot: fixture, assets: ['index.html', 'firebase-field-config.js', 'p2p-transfer.css', 'connection-screens.css', ...modules], bootstrap: { enabled: true, appIdentity: 'mini', canonicalRoot: ROOT, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, forceRelay } });
       devs.push(dev); ports.add(new URL(dev.origin).port);
       const context = await browser.newContext(); contexts.push(context);
       await context.route('**/*', route => { const u = new URL(route.request().url()); if (['127.0.0.1', 'localhost'].includes(u.hostname) && ports.has(u.port)) return route.continue(); blocked++; return route.abort(); });
@@ -53,6 +53,43 @@ async function main() {
       return page;
     }
     const pages = [await pageFor(false), await pageFor(true)];
+    phase = 'PEER_VISUAL_STATES';
+    // Use the shipped theme definitions, not colors taught to agree with this test.
+    const appHtml = await fs.readFile(path.join(ROOT, 'index.html'), 'utf8');
+    const themeCss = [appHtml.match(/:root\s*\{[\s\S]*?\}/)[0], ...['light', 'contrast', 'ocean', 'sol'].map(theme => appHtml.match(new RegExp('\\[data-theme="' + theme + '"\\]\\s*\\{[\\s\\S]*?\\}'))[0])].join('\n');
+    for (const page of pages) {
+      await page.addStyleTag({ content: themeCss + '\nbody { margin: 16px; background: var(--bg-color); color: var(--text-color); font-family: sans-serif; }' });
+      await page.evaluate(() => {
+        const container = document.createElement('section'); document.body.append(container); window.visualContainer = container;
+        window.visualPeers = ['available', 'connecting', 'connected', 'error'].map(state => ({ peerId: state, name: 'Synthetic Mini — ' + state, state, authenticated: state === 'connected', channelOpen: state === 'connected', leaseValid: state === 'connected' }));
+        window.visualUi = window.MiniConnectionPresentation.mountPeers({ container, getPeers: () => window.visualPeers, subscribe: () => () => {}, connect: async () => {}, close() {}, notify() {} });
+      });
+      for (const width of [390, 1000]) for (const theme of ['dark', 'light', 'contrast', 'ocean', 'sol']) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+        const result = await page.evaluate(() => {
+          const color = value => { const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1; const c = canvas.getContext('2d'); c.fillStyle = value; c.fillRect(0, 0, 1, 1); return [...c.getImageData(0, 0, 1, 1).data].slice(0, 3); };
+          const lum = rgb => rgb.map(v => { v /= 255; return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+          const contrast = (a, b) => { const x = lum(color(a)), y = lum(color(b)); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
+          return [...window.visualContainer.children].map(row => {
+            const badge = row.querySelector('.connections-mini-peer-state'), style = getComputedStyle(badge), bounds = badge.getBoundingClientRect(), card = row.getBoundingClientRect();
+            return { state: row.dataset.state, label: badge.textContent, icon: badge.querySelector('svg').dataset.peerStateIcon, accessible: badge.getAttribute('role') === 'status' && badge.querySelector('svg').getAttribute('aria-hidden') === 'true', contrast: contrast(style.color, style.backgroundColor), fits: bounds.left >= card.left && bounds.right <= card.right, touch: [...row.querySelectorAll('button')].every(button => button.getBoundingClientRect().height >= 44) };
+          });
+        });
+        assert.deepEqual(result.map(x => [x.state, x.label, x.icon]), [['available', 'Disponible', 'unlink'], ['connecting', 'Conectando', 'clock'], ['connected', 'Conectado', 'check'], ['error', 'Error', 'warning']]);
+        for (const row of result) { assert.ok(row.accessible && row.fits && row.touch, 'visual geometry ' + theme + '/' + row.state + ' ' + JSON.stringify({accessible:row.accessible,fits:row.fits,touch:row.touch})); assert.ok(row.contrast >= 4.5, theme + '/' + row.state + ' badge contrast ' + row.contrast); }
+      }
+      assert.deepEqual(await page.evaluate(() => {
+        const row = window.visualContainer.querySelector('[data-mini-peer="connected"]'), button = row.querySelector('button'); button.focus();
+        window.visualPeers[2].channelOpen = false; window.visualUi.refresh();
+        return { state: row.dataset.state, label: row.querySelector('.connections-mini-peer-state').textContent, hint: row.querySelector('.connections-hint').textContent.includes('Sin conexión activa'), focused: document.activeElement === button, sameButton: row.querySelector('button') === button };
+      }), { state: 'available', label: 'Disponible', hint: true, focused: true, sameButton: true });
+      await page.evaluate(() => { window.visualUi.dispose(); window.visualContainer.remove(); });
+    }
+    if (process.env.PRIVATE_TURN_VISUAL_ONLY === '1') {
+      assert.equal(requests, 0); assert.equal(blocked, 0);
+      console.log('mini-backup-browser:visual-pass:two-contexts:mobile-desktop:five-project-themes:four-states:contrast>=4.5:no-credential-requests:no-external-requests'); return;
+    }
     phase = 'SIGNED_POLICY';
     for (let i = 0; i < pages.length; i++) {
       const before = requests;
@@ -260,4 +297,4 @@ async function main() {
     console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, managedLeaseExpiryWake: true, bilateralRetirementStandby: true, nativeMenuFocusPreserved: true, managedLeaseMessagesEachDirection: 3, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
   } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
-if (require.main === module) void main().catch(error => { console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });
+if (require.main === module) void main().catch(error => { if (phase === 'PEER_VISUAL_STATES' && error?.code === 'ERR_ASSERTION') console.error(error.message); console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });

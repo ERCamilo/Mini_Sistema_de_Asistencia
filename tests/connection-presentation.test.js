@@ -38,7 +38,7 @@ test('Mini peer state requires a valid authenticated open channel, not merely a 
 
 function peerDom() {
  const d={activeElement:null};
- function element(tag){return {tag,dataset:{},children:[],attributes:{},ownerDocument:d,classList:{add(){}},setAttribute(k,v){this.attributes[k]=v;},append(...nodes){for(const n of nodes){n.parent=this;this.children.push(n);}},remove(){if(this.parent)this.parent.children=this.parent.children.filter(n=>n!==this);},focus(){d.activeElement=this;}};}
+ function element(tag){return {tag,dataset:{},children:[],get childNodes(){return this.children;},replaceChildren(...nodes){this.children=[];this.append(...nodes);},attributes:{},ownerDocument:d,classList:{add(){}},setAttribute(k,v){this.attributes[k]=v;},append(...nodes){for(const n of nodes){n.parent=this;this.children.push(n);}},remove(){if(this.parent)this.parent.children=this.parent.children.filter(n=>n!==this);},focus(){d.activeElement=this;}};}
  d.createElement=element;d.createElementNS=(_ns,tag)=>element(tag);return {d,container:element('section')};
 }
 test('live peer updates retain card, focused button and literal alias text', () => {
@@ -48,7 +48,7 @@ test('live peer updates retain card, focused button and literal alias text', () 
  const row=container.children[0],actions=row.children[4],connect=actions.children[0];connect.focus();
  peers=[{peerId:'p',name:'New alias',state:'connecting'}];refresh();
  assert.equal(container.children[0],row);assert.equal(d.activeElement,connect);assert.equal(row.children[1].textContent,'New alias');
- assert.equal(row.children[2].textContent,'Conectando');view.dispose();
+ assert.equal(row.children[2].children[1].textContent,'Conectando');view.dispose();
 });
 test('peer view coalesces reconnect clicks and stale completion cannot enable a newer action', async () => {
  const {mountPeers}=require('../connection-presentation.js'),{container}=peerDom();let first,second,calls=0,closed=0;
@@ -58,4 +58,38 @@ test('peer view coalesces reconnect clicks and stale completion cannot enable a 
  close.onclick();connect.onclick();assert.equal(calls,2);assert.equal(closed,1);
  first();await new Promise(r=>setImmediate(r));assert.equal(connect.disabled,true);
  second();await new Promise(r=>setImmediate(r));assert.equal(connect.disabled,false);view.dispose();
+});
+
+test('peer cards show prominent semantic icon and text for all four current states', () => {
+ const {mountPeers}=require('../connection-presentation.js'),{d,container}=peerDom();let refresh;
+ let peer={peerId:'p',name:'Synthetic Mini',state:'available'};
+ const view=mountPeers({container,getPeers:()=>[peer],subscribe:fn=>{refresh=fn;return ()=>{};},connect:async()=>{},close(){},notify(){}});
+ const row=container.children[0],button=row.children[4].children[0];button.focus();
+ for(const [state,label,kind,hint] of [['available','Disponible','unlink','Sin conexión activa'],['connecting','Conectando','clock','Esperando'],['connected','Conectado','check','Listo para enviar y recibir'],['error','Error','warning','Reintenta']]){
+  peer={...peer,state,authenticated:state==='connected',channelOpen:state==='connected',leaseValid:state==='connected'};refresh();
+  assert.equal(row.dataset.state,state);const badge=row.children[2];assert.equal(badge.attributes.role,'status');assert.equal(badge.attributes['aria-atomic'],'true');
+  assert.equal(badge.children[0].attributes['data-peer-state-icon'],kind);assert.equal(badge.children[0].attributes['aria-hidden'],'true');assert.equal(badge.children[1].textContent,label);
+  assert.ok(row.children[3].textContent.includes(hint));assert.equal(d.activeElement,button);assert.equal(container.children[0],row);
+ }
+ view.dispose();
+});
+
+test('connected badge resets for closed, expired or unauthenticated linked peers', () => {
+ const {mountPeers}=require('../connection-presentation.js'),{container}=peerDom();let refresh;
+ let peer={peerId:'p',name:'Mini',state:'connected',authenticated:true,channelOpen:true,leaseValid:true};
+ const view=mountPeers({container,getPeers:()=>[peer],subscribe:fn=>{refresh=fn;return ()=>{};},connect:async()=>{},close(){},notify(){}});
+ const row=container.children[0];
+ for(const field of ['authenticated','channelOpen','leaseValid']){
+  peer={...peer,authenticated:true,channelOpen:true,leaseValid:true,[field]:false};refresh();
+  assert.equal(row.dataset.state,'available');assert.equal(row.children[2].children[1].textContent,'Disponible');assert.match(row.children[3].textContent,/Sin conexión activa/);
+ }
+ view.dispose();
+});
+
+test('unchanged peer refresh does not rewrite the live status or replace its drawing', () => {
+ const {mountPeers}=require('../connection-presentation.js'),{container}=peerDom();
+ const view=mountPeers({container,getPeers:()=>[{peerId:'p',name:'Mini',state:'available'}],subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){}});
+ const badge=container.children[0].children[2],label=badge.children[1],drawing=badge.children[0].children[0];let writes=0;
+ Object.defineProperty(label,'textContent',{get:()=> 'Disponible',set(){writes++;}});
+ view.refresh();view.refresh();assert.equal(writes,0);assert.equal(badge.children[0].children[0],drawing);view.dispose();
 });
