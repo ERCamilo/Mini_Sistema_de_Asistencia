@@ -4,15 +4,15 @@ const Core = require('../p2p-core.js');
 const Consent = require('../p2p-backup-consent.js');
 
 class LinkedChannel {
-  constructor() { this.readyState = 'open'; this.listeners = new Set(); this.peer = null; this.sent = []; }
-  addEventListener(type, fn) { if (type === 'message') this.listeners.add(fn); }
-  removeEventListener(type, fn) { if (type === 'message') this.listeners.delete(fn); }
+  constructor() { this.readyState = 'open'; this.listeners = new Set(); this.peer = null; this.sent = []; this.terminal=new Map([['close',new Set()],['error',new Set()]]); }
+  addEventListener(type, fn) { if (type === 'message') this.listeners.add(fn);else this.terminal.get(type)?.add(fn); }
+  removeEventListener(type, fn) { if (type === 'message') this.listeners.delete(fn);else this.terminal.get(type)?.delete(fn); }
   send(data) {
     this.sent.push(data);
     const peer = this.peer;
     queueMicrotask(() => { for (const fn of [...peer.listeners]) fn({ data }); });
   }
-  close() { this.readyState = 'closed'; }
+  close() { this.readyState = 'closed';for(const fn of [...this.terminal.get('close')])fn(); }
 }
 function linkedPair() { const a = new LinkedChannel(); const b = new LinkedChannel(); a.peer = b; b.peer = a; return [a, b]; }
 
@@ -122,4 +122,38 @@ test('persistent offer inbox bounds unanswered offers and retired responses cann
   assert.ok(delivered <= 64);
   const before = receiver.sent.length; inbox.detach(); respond(true);
   assert.equal(receiver.sent.length, before);
+});
+
+function clockedConsent() {
+  const vm=require('node:vm'),fs=require('node:fs'),timers=[];
+  const schedule=(fn,delay)=>{const timer={fn,delay,active:true};timers.push(timer);return timer;};
+  const cancel=timer=>{if(timer)timer.active=false;};
+  const context={module:{exports:{}},setTimeout:schedule,clearTimeout:cancel,setInterval:schedule,clearInterval:cancel};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../p2p-backup-consent.js'),'utf8'),context);
+  return {api:context.module.exports,timers};
+}
+test('abort promptly settles pending consent, clears resends/listeners and ignores late acceptance',async()=>{
+ const h=clockedConsent(),[sender,receiver]=linkedPair(),controller=new AbortController();
+ const pending=h.api.requestConsent(sender,Core,offer,{signal:controller.signal});const outcome=pending.then(value=>value);
+ try {controller.abort();assert.equal(await Promise.race([outcome,new Promise(r=>setImmediate(()=>r('pending')))]),'closed');
+ const before=sender.sent.length;for(const timer of h.timers)timer.fn();Core.sendControl(receiver,'backup-offer-reply',{offerId:offer.offerId,accepted:true});await new Promise(r=>setImmediate(r));
+ assert.equal(sender.sent.length,before);assert.equal(sender.listeners.size,0);assert.ok(h.timers.every(timer=>!timer.active));assert.equal(await pending,'closed');
+ }finally{h.timers.find(timer=>timer.delay===90000)?.fn();await pending;}
+});
+test('already-aborted consent emits no first offer and creates no timers/listeners',async()=>{
+ const h=clockedConsent(),[sender]=linkedPair(),controller=new AbortController();controller.abort();
+ const pending=h.api.requestConsent(sender,Core,offer,{signal:controller.signal});
+ try {assert.equal(sender.sent.length,0);assert.equal(h.timers.length,0);assert.equal(sender.listeners.size,0);assert.equal(await pending,'closed');}
+ finally{h.timers.find(timer=>timer.delay===90000)?.fn();await pending;}
+});
+
+
+for(const result of ['accepted','declined','timeout','close','error','abort'])test('consent terminal '+result+' removes every channel/abort listener and timer',async()=>{
+ const h=clockedConsent(),[sender,receiver]=linkedPair(),controller=new AbortController(),signal=controller.signal,abortListeners=new Set();
+ const add=signal.addEventListener.bind(signal),remove=signal.removeEventListener.bind(signal);
+ signal.addEventListener=(type,fn,options)=>{if(type==='abort')abortListeners.add(fn);add(type,fn,options);};signal.removeEventListener=(type,fn)=>{if(type==='abort')abortListeners.delete(fn);remove(type,fn);};
+ const pending=h.api.requestConsent(sender,Core,offer,{signal});
+ if(result==='accepted'||result==='declined')Core.sendControl(receiver,'backup-offer-reply',{offerId:offer.offerId,accepted:result==='accepted'});
+ else if(result==='timeout')h.timers.find(timer=>timer.delay===90000).fn();else if(result==='abort')controller.abort();else for(const fn of [...sender.terminal.get(result)])fn();
+ assert.equal(await pending,['close','error','abort'].includes(result)?'closed':result);assert.equal(sender.listeners.size,0);assert.ok([...sender.terminal.values()].every(set=>set.size===0));assert.equal(abortListeners.size,0);assert.ok(h.timers.every(timer=>!timer.active));
 });

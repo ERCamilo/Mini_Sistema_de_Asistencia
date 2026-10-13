@@ -13,8 +13,8 @@ interface ConsentOffer {
 
 interface ConsentChannel {
   readyState?: string;
-  addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void;
-  removeEventListener(type: 'message', listener: (event: { data: unknown }) => void): void;
+  addEventListener(type: 'message' | 'close' | 'error', listener: (event: { data: unknown }) => void): void;
+  removeEventListener(type: 'message' | 'close' | 'error', listener: (event: { data: unknown }) => void): void;
 }
 
 interface ConsentControlFrame {
@@ -54,16 +54,21 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
     channel: ConsentChannel,
     core: ConsentCore,
     offer: ConsentOffer,
-    options: { timeoutMs?: number; resendMs?: number } = {}
+    options: { timeoutMs?: number; resendMs?: number; signal?: AbortSignal } = {}
   ): Promise<ConsentResult> {
     return new Promise(resolve => {
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let resend: ReturnType<typeof setInterval> | null = null;
       const finish = (result: ConsentResult) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
-        clearInterval(resend);
+        if (timer !== null) clearTimeout(timer);
+        if (resend !== null) clearInterval(resend);
         channel.removeEventListener('message', onMessage);
+        channel.removeEventListener('close', onClosed);
+        channel.removeEventListener('error', onClosed);
+        options.signal?.removeEventListener('abort', onClosed);
         resolve(result);
       };
       const sendOffer = () => {
@@ -78,11 +83,38 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
         if (!control || control.type !== 'backup-offer-reply' || control.data.offerId !== offer.offerId) return;
         finish(control.data.accepted === true ? 'accepted' : 'declined');
       };
-      const timer = setTimeout(() => finish('timeout'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-      const resend = setInterval(() => { if (!settled) sendOffer(); }, options.resendMs ?? DEFAULT_RESEND_MS);
+      const onClosed = () => finish('closed');
+      if (options.signal?.aborted) { finish('closed'); return; }
       channel.addEventListener('message', onMessage);
+      channel.addEventListener('close', onClosed);
+      channel.addEventListener('error', onClosed);
+      options.signal?.addEventListener('abort', onClosed, { once: true });
+      timer = setTimeout(() => finish('timeout'), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      resend = setInterval(() => { if (!settled) sendOffer(); }, options.resendMs ?? DEFAULT_RESEND_MS);
       sendOffer();
     });
+  }
+
+  // Bounds only accepted-before-START waiting; transfer/staging retain their owner.
+  function guardAcceptedStart(channel: ConsentChannel, onAbandoned: () => void) {
+    let waiting = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const dispose = () => {
+      if (!waiting) return;
+      waiting = false;
+      if (timer !== null) clearTimeout(timer);
+      channel.removeEventListener('close', abandon);
+      channel.removeEventListener('error', abandon);
+    };
+    const abandon = () => {
+      if (!waiting) return;
+      dispose();
+      onAbandoned();
+    };
+    channel.addEventListener('close', abandon);
+    channel.addEventListener('error', abandon);
+    if (waiting) timer = setTimeout(abandon, 20000);
+    return { started: dispose, dispose, waiting: () => waiting };
   }
 
   type OfferHandler = (offer: ConsentOffer, respond: (accepted: boolean) => void) => void;
@@ -162,6 +194,7 @@ type ConsentResult = 'accepted' | 'declined' | 'timeout' | 'closed';
     DEFAULT_TIMEOUT_MS,
     createOfferId,
     requestConsent,
+    guardAcceptedStart,
     bufferOffers,
     listenForOffers,
     matchesOffer

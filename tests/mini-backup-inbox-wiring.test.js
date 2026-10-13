@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 
-const ui = readFileSync(require.resolve('../p2p-roster-ui.js'), 'utf8');
+const ui = process.env.T3U2_BASE_UI === '1' ? require('node:child_process').execFileSync('git',['show','HEAD:p2p-roster-ui.js'],{cwd:require('node:path').resolve(__dirname,'..'),encoding:'utf8'}) : readFileSync(require.resolve('../p2p-roster-ui.js'), 'utf8');
 const between = (start, end) => ui.slice(ui.indexOf(start), ui.indexOf(end, ui.indexOf(start)));
 
 test('passive Mini inbox is backup-only and never arms roster or attendance', () => {
@@ -84,7 +84,7 @@ test('completed transfer timer cannot clear or rearm a newer transfer', () => {
   for (const newer of [false, true]) {
     let callback, closed = 0, rearmed = 0;
     const owner = { close() { closed++; } }, next = {};
-    const attempt = {};
+    const attempt = {consentController:new AbortController()};
     const context = { attempt, activeSendAttempt: attempt, activeSession: owner, activeChannel: 'old', activeManualPeerId: 'old',
       setTimeout(fn, delay) { assert.equal(delay, 1500); callback = fn; },
       startMiniBackupInbox() { rearmed++; return Promise.resolve(); } };
@@ -118,6 +118,7 @@ test('sender setup failure rearms only its owner and never exposes provider erro
       root: { SaMiniP2PBackup: { createMiniBackupPayload: async () => ({}) } },
       core: { validateSignalFrameObject: require('../p2p-core.js').validateSignalFrameObject, deriveTrustedRoute: async () => ({}), SignalingClient: class { close() {} }, createRtcSession() { entered(); return pending; } },
       startMiniBackupInbox() { rearmed++; return Promise.resolve(); } };
+    ctx.AbortController=AbortController;
     vm.runInNewContext(source + '; this.send = sendBackupToPeer;', ctx);
     const sending = ctx.send('same-peer'); await ready;
     const newer = {}; if (stale) { ctx.activeSendAttempt = newer; ctx.activeSession = newer; ctx.activeChannel = newer; }
@@ -296,6 +297,7 @@ test('actual sender reuses one Mini lease for six consented acknowledged sends w
       SaMiniP2PBackup: { createMiniBackupPayload: async () => ({ size: 1, bytes: new Uint8Array([1]), sha256: 'test' }),
         sendBackupOnChannel: async value => { assert.equal(value, channel); transferred++; return { transfer: {}, ack: {} }; } } },
     backupSizeLabel: () => '1 byte', startMiniBackupInbox: async () => {} };
+  ctx.AbortController=AbortController;
   vm.runInNewContext(between('async function sendBackupToPeer', 'async function waitBackupTransfer') + '; this.send = sendBackupToPeer;', ctx);
   for (let i = 0; i < 6; i++) await ctx.send(peer.peerId);
   assert.equal(consented, 6); assert.equal(transferred, 6); assert.equal(closed, 0);
@@ -420,6 +422,7 @@ for (const wake of ['send', 'incoming']) test(`delayed reconnect cannot retire t
     h.ctx.root.SaMiniP2PBackup = { createMiniBackupPayload: async () => ({ size: 1, bytes: new Uint8Array([1]), sha256: 'test' }), sendBackupOnChannel: async () => ({ transfer: {}, ack: {} }) };
     h.ctx.root.P2PBackupConsent.createOfferId = () => 'synthetic'; h.ctx.root.P2PBackupConsent.requestConsent = async () => 'accepted';
     h.ctx.identityStore.getPeer = async () => inboxPeer;
+    h.ctx.AbortController=AbortController;
     require('node:vm').runInNewContext(between('async function sendBackupToPeer', 'async function waitBackupTransfer') + '; this.send = sendBackupToPeer;', h.ctx);
     const sending = h.ctx.send(inboxPeer.peerId); await settleInbox();
     assert.equal(h.options.length, 1); h.options[0].onChannel({ readyState: 'open', close() {} }); h.handshakes[0].onAuthenticated(); await sending;
@@ -627,4 +630,61 @@ test('a published fingerprint becomes unknown after link replacement and never r
  h.ctx.root.MiniConnectionPresentation={...require('../connection-presentation.js'),createLinkFingerprint:()=>new Promise(r=>{resolve=r;})};
  const vm=require('node:vm');vm.runInNewContext('this.snapshot=miniBackupConnectionSnapshot;',h.ctx);const entry=await h.ctx.ensure(peer);
  try {assert.ok(entry.availability,'standby must not await display digest');resolve('012345-abcdef-012345-abcdef');await settleInbox();assert.equal(h.ctx.snapshot()[0].linkFingerprint,'012345-abcdef-012345-abcdef');peer.linkToken='new-token';assert.equal(h.ctx.snapshot()[0].linkFingerprint,null);}finally{h.ctx.stop(inboxPeer.peerId);}
+});
+
+function acceptedReceiverHarness() {
+ const vm=require('node:vm'),Core=require('../p2p-core.js'),timers=[],updates=[],responses=[],events=new Map();let now=0;
+ const channel={readyState:'open',addEventListener(type,fn){if(!events.has(type))events.set(type,new Set());events.get(type).add(fn);},removeEventListener(type,fn){events.get(type)?.delete(fn);},close(){this.readyState='closed';this.closed=(this.closed||0)+1;},send(){}};
+ Core.markChannelAuthenticated(channel);
+ const schedule=(fn,delay)=>{const timer={fn,delay,due:now+delay,cancelled:false};timers.push(timer);return timer;},cancel=timer=>{if(timer)timer.cancelled=true;};
+ const consentContext={module:{exports:{}},setTimeout:schedule,clearTimeout:cancel,setInterval:schedule,clearInterval:cancel};vm.runInNewContext(readFileSync(require.resolve('../p2p-backup-consent.js'),'utf8'),consentContext);
+ const entry={transport:{},stopped:false,busy:false,retryTimer:null,detachReceiver:null};const peer={...inboxPeer};let stageOptions,noticeOptions,stageResolve;const stageReady=new Promise(resolve=>{stageResolve=resolve;});
+ const ctx={root:{P2PBackupConsent:consentContext.module.exports},core:{...Core,validateTransferStart:value=>Core.validateTransferStart(JSON.parse(JSON.stringify(value)))},activeTransferPeerId:null,refreshMiniP2PHeader:async()=>{},body:()=>null,renderError(){},boundedUserSafeError:()=> 'Validación fallida',miniBackupListeners:new Map([[peer.peerId,entry]]),OFFER_DECISION_MS:85000,
+ notices:()=>({show(options){noticeOptions=options;return {update(value){updates.push(value);},dismiss(){}};}}),peerName:()=> 'Mini',backupSizeLabel:()=> '2 bytes',receiveNoticeHooks:()=>({onProgress(){},onStaged(){updates.push({title:'staged'});},onFailed(reason){updates.push({title:'Respaldo no recibido',description:reason});}}),setTimeout:schedule,clearTimeout:cancel,
+ stageReceivedBackup(_result,_peer,_channel,options){stageOptions=options;stageResolve();}};
+ vm.runInNewContext(between('const backupReceiverCleanups','function isTransferModalOpen')+between('function promptIncomingBackup','let miniBackupAccountWatch')+';this.prompt=promptIncomingBackup;',ctx);
+ function accept(){ctx.prompt(peer,{offerId:'accepted-test',schema:'mini-backup/v1',size:2,senderName:'Mini'},value=>responses.push(value),channel,entry);noticeOptions.actions[1].onSelect();}
+ return {ctx,entry,peer,channel,timers,updates,responses,accept,advance(ms){now+=ms;for(const timer of [...timers])if(!timer.cancelled&&timer.due<=now){timer.cancelled=true;timer.fn();}},emit(type,data){for(const fn of [...events.get(type)||[]])fn({data});},stage:()=>stageOptions,async waitForStage(){let timeout;try{await Promise.race([stageReady,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('stage callback missing')),1000);})]);}finally{clearTimeout(timeout);}},events};
+}
+test('accepted receiver without START settles owned 20s guard without closing shared transport or replying twice',()=>{
+ const h=acceptedReceiverHarness();h.accept();const timeout=h.timers.find(timer=>timer.delay===20000);
+ try{h.advance(20000);assert.equal(h.entry.busy,false,'accepted receiver must release busy when no data starts for20s');assert.ok(timeout);assert.equal(h.entry.detachReceiver,null);assert.deepEqual(h.responses,[true]);assert.equal(h.channel.readyState,'open');assert.equal(h.channel.closed||0,0);assert.equal(h.events.get('message').size,0);assert.equal(h.updates.at(-1).title,'Respaldo no recibido');timeout.fn();assert.equal(h.updates.filter(v=>v.title==='Respaldo no recibido').length,1);}
+ finally{h.entry.detachReceiver?.();}
+});
+for(const terminal of ['close','error','detach'])test('accepted receiver cleans up before START on '+terminal,()=>{
+ const h=acceptedReceiverHarness();h.accept();const timeout=h.timers.find(timer=>timer.delay===20000);
+ try{if(terminal==='detach')h.entry.detachReceiver();else h.emit(terminal);assert.ok(timeout);assert.equal(timeout.cancelled,true);const before=h.updates.length;timeout.fn();assert.equal(h.updates.length,before);assert.equal(h.entry.busy,false);assert.equal(h.entry.detachReceiver,null);assert.equal(h.channel.closed||0,0);}
+ finally{h.entry.detachReceiver?.();}
+});
+test('a cancelled old guard cannot clear a replacement receiver, busy state or notice',()=>{
+ const h=acceptedReceiverHarness();h.accept();const old=h.timers.find(timer=>timer.delay===20000);h.entry.detachReceiver();h.entry.busy=false;h.accept();const replacement=h.entry.detachReceiver,before=h.updates.length;
+ try{assert.ok(old);old.fn();assert.equal(h.entry.busy,true);assert.equal(h.entry.detachReceiver,replacement);assert.equal(h.updates.length,before);}finally{h.entry.detachReceiver?.();}
+});
+test('matching validated START cancels pre-start timer despite delayed chunks and asynchronous staging',async()=>{
+ const h=acceptedReceiverHarness(),Core=require('../p2p-core.js'),frames=[];const sender={readyState:'open',bufferedAmount:0,send(frame){frames.push(frame);},addEventListener(){},removeEventListener(){}};Core.markChannelAuthenticated(sender);await Core.sendPayload(sender,{kind:'backup',schema:'mini-backup/v1',bytes:new Uint8Array([1,2])});h.accept();const timeout=h.timers.find(timer=>timer.delay===20000);
+ try{h.emit('message',frames[0]);assert.ok(timeout);assert.equal(timeout.cancelled,true);timeout.fn();assert.equal(h.entry.busy,true);assert.equal(h.channel.readyState,'open');h.emit('message',frames[1]);h.emit('message',frames[2]);await h.waitForStage();assert.ok(h.stage());assert.equal(h.entry.busy,true,'completion detach must not release busy during staging');timeout.fn();assert.equal(h.entry.busy,true);h.stage().onStaged({transferId:'test'});assert.equal(h.entry.busy,false);}
+ finally{h.entry.detachReceiver?.();}
+});
+for(const malformed of [true,false])test('malformed or mismatched START cannot be treated as a valid guard start: '+malformed,async()=>{
+ const h=acceptedReceiverHarness(),Core=require('../p2p-core.js');h.accept();const timeout=h.timers.find(timer=>timer.delay===20000);
+ try{h.emit('message',JSON.stringify({protocol:Core.TRANSFER_PROTOCOL,type:'start',transferId:'123e4567-e89b-12d3-a456-426614174000',kind:'backup',schema:'mini-backup/v1',size:malformed?2:3,chunkSize:malformed?1:Core.CHUNK_SIZE,totalChunks:1,sha256:'a'.repeat(64)}));await settleInbox();assert.equal(h.channel.readyState,'closed');assert.equal(h.entry.busy,false);assert.equal(h.stage(),undefined);assert.ok(timeout);const count=h.updates.length;timeout.fn();assert.equal(h.updates.length,count);}finally{h.entry.detachReceiver?.();}
+});
+
+
+test('production cleanup promptly abandons sender consent while stale cancel/finally cannot touch a newer send',async()=>{
+ const vm=require('node:vm'),Core=require('../p2p-core.js'),Consent=require('../p2p-backup-consent.js'),Manager=require('../mini-peer-session-manager.js');
+ const listeners=new Set(),sent=[],notices=[],buttons=new Map();let transfers=0;
+ const channel={readyState:'open',send(value){sent.push(value);},addEventListener(type,fn){if(type==='message')listeners.add(fn);},removeEventListener(type,fn){if(type==='message')listeners.delete(fn);}};
+ const lease=Manager.create({now:()=>0,schedule:()=>({}),cancel(){}}).lease({close(){throw Error('shared transport closed');}},0,()=>{},{guest:true,transportOwnedExternally:true});lease.ready(channel);
+ const entry={lease,busy:false},peer={...inboxPeer};const box={classList:{add(){},remove(){}},textContent:'',addEventListener(type,fn){buttons.set(type,fn);}};
+ const ctx={AbortController,activeSendAttempt:null,activeSession:null,activeChannel:null,activeManualPeerId:null,inFlightSendNotice:null,activePairConfirmation:null,activeAttendanceResponderDetach:null,activeBackupReceiverDetach:null,cleanupQrScanner(){},shell(){},renderBackupHub(){},
+ identityStore:{getSelf:async()=>({deviceId:'self',displayName:'Mini'}),getPeer:async()=>peer},peerName:()=> 'Mini',morphShell(fn){fn();},body:()=>({innerHTML:'',querySelector:()=>box}),backButton:()=>'',vectorIcon:()=>'',esc:value=>value,secondary:()=>'',
+ notices:()=>({show(){const notice={updates:[],dismissed:0,update(value){this.updates.push(value);},dismiss(){this.dismissed++;}};notices.push(notice);return notice;}}),
+ root:{P2PBackupConsent:{...Consent,requestConsent:(ch,core,offer,options)=>Consent.requestConsent(ch,core,offer,{...options,timeoutMs:50,resendMs:10})},SaMiniP2PBackup:{createMiniBackupPayload:async()=>({size:2,bytes:new Uint8Array([1,2]),sha256:'synthetic'}),sendBackupOnChannel:async()=>{transfers++;return {};}}},
+ core:{...Core,sendControl:(ch,type,value)=>Core.sendControl(ch,type,JSON.parse(JSON.stringify(value)))},isMiniBackupPeer:()=>true,ensureMiniBackupListener:async()=>entry,miniBackupIntents:{invalidate(){}},backupSizeLabel:()=> '2 bytes',statusMessage:()=>'',recordP2PActivity(){},signalTerminalSuccess(){},startMiniBackupInbox:async()=>{}};
+ vm.runInNewContext(between('function cleanupSession','function closeTransferModal')+between('async function sendBackupToPeer','async function waitBackupTransfer')+';this.send=sendBackupToPeer;this.cancel=cleanupSession;',ctx);
+ const old=ctx.send(peer.peerId);await settleInbox();const oldCancel=buttons.get('click');ctx.cancel();const fresh=ctx.send(peer.peerId);
+ try{assert.equal(await Promise.race([old.then(()=> 'settled'),new Promise(r=>setImmediate(()=>r('pending')))]),'settled');await settleInbox();const current=ctx.activeSendAttempt,notice=notices.at(-1);assert.ok(current);oldCancel();assert.equal(ctx.activeSendAttempt,current);assert.equal(notices.at(-1),notice);assert.equal(notice.dismissed,0);
+ const offers=sent.map(Core.parseControl).filter(Boolean);const accepted={data:JSON.stringify({protocol:Core.CONTROL_PROTOCOL,type:'backup-offer-reply',data:{offerId:offers.at(-1).data.offerId,accepted:true}})};for(const listener of [...listeners])listener(accepted);await fresh;assert.equal(transfers,1);assert.equal(lease.busy(),false);assert.equal(listeners.size,0);
+ }finally{ctx.cancel();await Promise.all([old,fresh]);lease.retire();}
 });

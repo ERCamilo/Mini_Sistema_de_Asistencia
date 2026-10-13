@@ -198,24 +198,32 @@ async function main() {
       await pages[1].evaluate(()=>{window.inboxBefore=window.inboxSignals.length;window.setGuest();});
       await pages[1].waitForFunction(()=>window.inboxSignals.length>window.inboxBefore&&window.productionInbox.listeners.size===1);
       assert.equal(await pages[1].evaluate(()=>window.inboxFactories),0);
-      async function transferOutsideMenu() {
+      async function transferOutsideMenu(side=0, reconnect=true) {
         phase='PRODUCTION_ATTENDANCE_CONNECT';
-        await Promise.race([pages[0].evaluate(()=>window.productionInbox.reconnect(window.productionInbox.peer.peerId)), new Promise((_,reject)=>setTimeout(()=>reject(new Error('INBOX_CONNECT_DEADLINE')),20000))]);
+        if(reconnect) await Promise.race([pages[side].evaluate(()=>window.productionInbox.reconnect(window.productionInbox.peer.peerId)), new Promise((_,reject)=>setTimeout(()=>reject(new Error('INBOX_CONNECT_DEADLINE')),20000))]);
         phase='PRODUCTION_ATTENDANCE_AUTHENTICATED_CHANNELS';
         for(const page of pages)await page.waitForFunction(()=>[...window.productionInbox.listeners.values()].some(entry=>entry.authenticated&&entry.channel?.readyState==='open'));
         phase='PRODUCTION_ATTENDANCE_VISIBLE_NOTICE';
-        const sending=pages[0].evaluate(async()=>{
+        const sending=pages[side].evaluate(async()=>{
           const entry=[...window.productionInbox.listeners.values()][0],bridge=window.SaMiniP2PBackup,core=window.SaMiniP2P,payload=await bridge.createMiniBackupPayload();
-          const decision=await window.P2PBackupConsent.requestConsent(entry.channel,core,{offerId:window.P2PBackupConsent.createOfferId(),schema:'mini-backup/v1',size:payload.size,senderName:'Synthetic sender'},{timeoutMs:15000});
-          if(decision!=='accepted')throw new Error('CONSENT_NOT_ACCEPTED');
-          await bridge.sendBackupOnChannel(entry.channel,{bytes:payload.bytes,schema:'mini-backup/v1',timeoutMs:15000});return true;
+          await entry.lease.run(async channel=>{
+            const decision=await window.P2PBackupConsent.requestConsent(channel,core,{offerId:window.P2PBackupConsent.createOfferId(),schema:'mini-backup/v1',size:payload.size,senderName:'Synthetic sender'},{timeoutMs:15000});
+            if(decision!=='accepted')throw new Error('CONSENT_NOT_ACCEPTED');
+            await bridge.sendBackupOnChannel(channel,{bytes:payload.bytes,schema:'mini-backup/v1',timeoutMs:15000});
+          });return true;
         });
-        await pages[1].getByRole('button',{name:'Aceptar',exact:true}).waitFor({state:'visible',timeout:15000});
-        assert.equal(await pages[1].locator('[data-connections-home],.mini-p2p-shell').count(),0);
-        await pages[1].getByRole('button',{name:'Aceptar',exact:true}).click();assert.equal(await sending,true);
-        assert.deepEqual(await pages[1].evaluate(()=>({attendance:!!document.querySelector('[data-fixture-attendance]'),staged:window.SaMiniP2PBackup.backupStagedStore.listStaged().length,unchanged:JSON.stringify(window.data)===window.beforeData})),{attendance:true,staged:1,unchanged:true});
+        await pages[1-side].getByRole('button',{name:'Aceptar',exact:true}).waitFor({state:'visible',timeout:15000});
+        assert.equal(await pages[1-side].locator('[data-connections-home],.mini-p2p-shell').count(),0);
+        await pages[1-side].getByRole('button',{name:'Aceptar',exact:true}).click();assert.equal(await sending,true);
+        for(const page of pages)await page.waitForFunction(()=>[...window.productionInbox.listeners.values()].every(entry=>!entry.busy&&!entry.lease?.busy()));
+        assert.deepEqual(await pages[1-side].evaluate(()=>({attendance:!!document.querySelector('[data-fixture-attendance]'),staged:window.SaMiniP2PBackup.backupStagedStore.listStaged().length,unchanged:JSON.stringify(window.data)===window.beforeData})),{attendance:true,staged:1,unchanged:true});
       }
       phase='PRODUCTION_ATTENDANCE_NOTICE_AND_STAGE';await transferOutsideMenu();
+      for(const page of pages)await page.evaluate(()=>{const entry=[...window.productionInbox.listeners.values()][0];window.inboxControlOwner={transport:entry.transport,session:entry.session,lease:entry.lease,channel:entry.channel,factories:window.inboxFactories};});
+      phase='PRODUCTION_ATTENDANCE_REVERSE';await transferOutsideMenu(1,false);
+      phase='PRODUCTION_ATTENDANCE_FORWARD_AGAIN';await transferOutsideMenu(0,false);
+      for(const page of pages)assert.equal(await page.evaluate(()=>{const entry=[...window.productionInbox.listeners.values()][0],owner=window.inboxControlOwner;return entry.transport===owner.transport&&entry.session===owner.session&&entry.lease===owner.lease&&entry.channel===owner.channel&&window.inboxFactories===owner.factories&&entry.authenticated&&entry.channel.readyState==='open'&&!entry.busy&&!entry.lease.busy()&&JSON.stringify(window.data)===window.beforeData;}),true);
+      console.log('mini-backup-browser:production-inbox-control:A-to-B-to-A:consent-transfer-staging-ACK:exact-owned-authenticated-channels:no-extra-factory:busy-released:no-restore');
       await pages[1].evaluate(()=>window.productionInbox.close(window.productionInbox.peer.peerId));
       for(const page of pages)await page.waitForFunction(()=>[...window.productionInbox.listeners.values()].every(entry=>!entry.lease));
       phase='PRODUCTION_ATTENDANCE_REPEAT_AFTER_CLOSE';await transferOutsideMenu();

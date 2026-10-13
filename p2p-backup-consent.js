@@ -32,15 +32,23 @@
     }
     function requestConsent(channel, core, offer, options = {}) {
         return new Promise(resolve => {
-            var _a, _b;
+            var _a, _b, _c, _d;
             let settled = false;
+            let timer = null;
+            let resend = null;
             const finish = (result) => {
+                var _a;
                 if (settled)
                     return;
                 settled = true;
-                clearTimeout(timer);
-                clearInterval(resend);
+                if (timer !== null)
+                    clearTimeout(timer);
+                if (resend !== null)
+                    clearInterval(resend);
                 channel.removeEventListener('message', onMessage);
+                channel.removeEventListener('close', onClosed);
+                channel.removeEventListener('error', onClosed);
+                (_a = options.signal) === null || _a === void 0 ? void 0 : _a.removeEventListener('abort', onClosed);
                 resolve(result);
             };
             const sendOffer = () => {
@@ -57,12 +65,45 @@
                     return;
                 finish(control.data.accepted === true ? 'accepted' : 'declined');
             };
-            const timer = setTimeout(() => finish('timeout'), (_a = options.timeoutMs) !== null && _a !== void 0 ? _a : DEFAULT_TIMEOUT_MS);
-            const resend = setInterval(() => { if (!settled)
-                sendOffer(); }, (_b = options.resendMs) !== null && _b !== void 0 ? _b : DEFAULT_RESEND_MS);
+            const onClosed = () => finish('closed');
+            if ((_a = options.signal) === null || _a === void 0 ? void 0 : _a.aborted) {
+                finish('closed');
+                return;
+            }
             channel.addEventListener('message', onMessage);
+            channel.addEventListener('close', onClosed);
+            channel.addEventListener('error', onClosed);
+            (_b = options.signal) === null || _b === void 0 ? void 0 : _b.addEventListener('abort', onClosed, { once: true });
+            timer = setTimeout(() => finish('timeout'), (_c = options.timeoutMs) !== null && _c !== void 0 ? _c : DEFAULT_TIMEOUT_MS);
+            resend = setInterval(() => { if (!settled)
+                sendOffer(); }, (_d = options.resendMs) !== null && _d !== void 0 ? _d : DEFAULT_RESEND_MS);
             sendOffer();
         });
+    }
+    // Bounds only accepted-before-START waiting; transfer/staging retain their owner.
+    function guardAcceptedStart(channel, onAbandoned) {
+        let waiting = true;
+        let timer = null;
+        const dispose = () => {
+            if (!waiting)
+                return;
+            waiting = false;
+            if (timer !== null)
+                clearTimeout(timer);
+            channel.removeEventListener('close', abandon);
+            channel.removeEventListener('error', abandon);
+        };
+        const abandon = () => {
+            if (!waiting)
+                return;
+            dispose();
+            onAbandoned();
+        };
+        channel.addEventListener('close', abandon);
+        channel.addEventListener('error', abandon);
+        if (waiting)
+            timer = setTimeout(abandon, 20000);
+        return { started: dispose, dispose, waiting: () => waiting };
     }
     // Listen from the moment the channel opens; hold offers until release() (called
     // once the channel is authenticated). Each offerId is delivered only once.
@@ -149,6 +190,7 @@
         DEFAULT_TIMEOUT_MS,
         createOfferId,
         requestConsent,
+        guardAcceptedStart,
         bufferOffers,
         listenForOffers,
         matchesOffer

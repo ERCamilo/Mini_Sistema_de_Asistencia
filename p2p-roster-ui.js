@@ -761,6 +761,7 @@
   let inFlightSendNotice = null;
   let activeSendAttempt = null;
   function cleanupSession() {
+    try { activeSendAttempt?.consentController?.abort(); } catch (_) {}
     activeSendAttempt = null;
     // An aborted send must not leave its "Conectando / Esperando" notice behind.
     try { inFlightSendNotice?.dismiss(); } catch (_) {}
@@ -1717,9 +1718,11 @@
 
     const background = options.background === true;
     const expectedOffer = options.expectedOffer || null;
+    let detached = false, started = false;
     const receiver = core.createTransferReceiver({
       channel,
       onProgress: progress => {
+        if (detached) return;
         activeTransferPeerId = peer?.peerId || null;
         refreshMiniP2PHeader().catch(() => {});
         try { options.onProgress?.(progress); } catch (_) {}
@@ -1728,12 +1731,14 @@
         if (box) box.textContent = 'Recibiendo respaldo… ' + Math.round(progress * 100) + '%';
       },
       onError: error => {
+        if (detached) return;
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
         try { options.onFailed?.(boundedUserSafeError(error)); } catch (_) {}
         if (!background) renderError(error);
       },
       onComplete: result => {
+        if (detached) return;
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
         // A consented receiver admits exactly one transfer; the next needs a new offer.
@@ -1743,6 +1748,7 @@
     });
 
     function handleBackupMessage(event) {
+      if (detached) return;
       const control = core.parseControl(event.data);
       if (control) return;
       if (typeof event.data === 'string') {
@@ -1754,11 +1760,13 @@
           if (parsed && parsed.protocol === core.TRANSFER_PROTOCOL && parsed.type === 'start') {
             if (expectedOffer && !root.P2PBackupConsent.matchesOffer(expectedOffer, parsed)) {
               const mismatch = new Error('La transferencia no coincide con el respaldo aceptado.');
-              detach();
               try { options.onFailed?.(mismatch.message); } catch (_) {}
+              detach();
               core.revokeChannel(channel, mismatch);
               return;
             }
+            core.validateTransferStart(parsed);
+            if (!started) { started = true; options.onStarted?.(); }
             activeTransferPeerId = peer?.peerId || null;
             refreshMiniP2PHeader().catch(() => {});
           }
@@ -1770,6 +1778,9 @@
     channel.addEventListener('message', handleBackupMessage);
 
     const detach = () => {
+      if (detached) return;
+      detached = true;
+      try { options.onDetached?.(); } catch (_) {}
       try { channel.removeEventListener('message', handleBackupMessage); } catch (_) {}
       if (backupReceiverCleanups.get(channel) === detach) {
         backupReceiverCleanups.delete(channel);
@@ -1996,11 +2007,27 @@
         notice.update({ state: 'info', title: 'Respaldo rechazado', description: 'No se recibió nada de ' + senderLabel + '.', actions: [], duration: 2500 });
         return;
       }
-      try { entry.detachReceiver?.(); } catch (_) {}
+      const previousReceiver = entry.detachReceiver; entry.detachReceiver = null;
+      try { previousReceiver?.(); } catch (_) {}
       const hooks = receiveNoticeHooks(notice, senderLabel);
-      entry.detachReceiver = armBackupReceiver(channel, peer, { background: true, expectedOffer: offer, ...hooks,
-        onStaged: record => { if (entry.transport !== transport || entry.stopped) return; entry.busy = false; hooks.onStaged(record); },
-        onFailed: reason => { if (entry.transport !== transport || entry.stopped) return; entry.busy = false; hooks.onFailed(reason); } });
+      let receiver = null;
+      const ownsReceiver = () => !entry.stopped && entry.transport === transport && miniBackupListeners.get(String(peer.peerId).trim()) === entry && entry.detachReceiver === receiver;
+      const fail = reason => {
+        if (!ownsReceiver()) return;
+        entry.detachReceiver = null;
+        try { receiver?.(); } catch (_) {}
+        entry.busy = false; hooks.onFailed(reason);
+      };
+      const guard = root.P2PBackupConsent.guardAcceptedStart(channel, () => fail('No llegaron datos. Pide al otro Mini que reintente el envío.'));
+      receiver = armBackupReceiver(channel, peer, { background: true, expectedOffer: offer, ...hooks,
+        onStarted: () => guard.started(),
+        onDetached: () => {
+          const waiting = guard.waiting(); guard.dispose();
+          if (waiting && ownsReceiver()) { entry.detachReceiver = null; entry.busy = false; notice.dismiss(); }
+        },
+        onStaged: record => { if (!ownsReceiver()) return; entry.detachReceiver = null; entry.busy = false; hooks.onStaged(record); },
+        onFailed: fail });
+      entry.detachReceiver = receiver;
       notice.update({ state: 'loading', title: 'Preparando recepción', description: 'Esperando datos de ' + senderLabel + '…', actions: [] });
       respond(true);
     };
@@ -2839,7 +2866,7 @@
 
   async function sendBackupToPeer(peerId, customPayload = null) {
     cleanupSession();
-    const attempt = {};
+    const attempt = { consentController: new AbortController() };
     activeSendAttempt = attempt;
     let setupSignaling = null;
     let sendNotice = null;
@@ -2866,7 +2893,7 @@
       });
 
       const center = notices();
-      const handleCancel = () => { sendNotice?.dismiss(); cleanupSession(); renderBackupHub(); };
+      const handleCancel = () => { if (activeSendAttempt !== attempt) return; sendNotice?.dismiss(); cleanupSession(); renderBackupHub(); };
       body().querySelector('[data-back]').addEventListener('click', handleCancel);
       body().querySelector('[data-cancel-send]').addEventListener('click', handleCancel);
 
@@ -2892,7 +2919,8 @@
             schema: 'mini-backup/v1',
             size: payload.size,
             senderName: String(self.displayName || 'Mini').slice(0, 80)
-          });
+          }, { signal: attempt.consentController.signal });
+          if (activeSendAttempt !== attempt) return;
           if (decision !== 'accepted') {
             const why = decision === 'declined' ? partnerName + ' rechazó el respaldo.'
               : decision === 'timeout' ? partnerName + ' no respondió a tiempo.'
@@ -2904,6 +2932,7 @@
             bytes: payload.bytes,
             schema: 'mini-backup/v1',
             onProgress: progress => {
+              if (activeSendAttempt !== attempt) return;
               const curBox = body()?.querySelector('[data-backup-send-status]');
               if (curBox) curBox.textContent = 'Enviando respaldo… ' + Math.round(progress * 100) + '%';
               sendNotice?.update({ state: 'progress', title: 'Enviando respaldo', progress, description: Math.round(progress * 100) + '% · a ' + partnerName });
@@ -2932,13 +2961,14 @@
           // A Mini lease owns the transport beyond this one transfer.
           // Legacy SA sends still retire their separate transport below.
           if (peer.peerApp === 'mini') {
-            if (activeSendAttempt === attempt) { activeSendAttempt = null; activeManualPeerId = null; }
+            if (activeSendAttempt === attempt) { attempt.consentController.abort(); activeSendAttempt = null; activeManualPeerId = null; }
             return;
           }
           const finished = activeSession;
           setTimeout(() => {
             if (activeSession === finished && activeSendAttempt === attempt) {
               try { finished?.close?.(); } catch (_) {}
+              attempt.consentController.abort();
               activeSendAttempt = null;
               activeSession = null;
               activeChannel = null;
@@ -2987,6 +3017,7 @@
             allowSameApp: peer.peerApp === self.appType,
             onAuthenticated: () => performSend(channel),
             onError: err => {
+              if (activeSendAttempt !== attempt) return;
               const liveBox = body()?.querySelector('[data-backup-send-status]');
               if (liveBox) {
                 liveBox.classList.add('is-error');
@@ -3006,6 +3037,7 @@
       // provider errors: those can contain authentication or server details.
       try { setupSignaling?.close?.(); } catch (_) {}
       if (activeSendAttempt !== attempt) return;
+      attempt.consentController.abort();
       activeSendAttempt = null;
       try { activeSession?.close?.(); } catch (_) {}
       activeSession = null;
