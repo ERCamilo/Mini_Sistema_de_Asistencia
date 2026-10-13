@@ -9,7 +9,7 @@ const { X509Certificate, createHash } = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const { browserLaunchReason } = require('./private-turn.browser.cjs');
 const ROOT = path.resolve(__dirname, '../..');
-const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js', 'p2p-demand-negotiation.js', 'mini-peer-availability.js', 'connection-menu.js', 'connection-presentation.js'];
+const modules = ['p2p-core.js', 'p2p-pairing.js', 'mini-backup-summary.js', 'p2p-backup-bridge.js', 'p2p-backup-consent.js', 'mini-peer-session-manager.js', 'p2p-demand-negotiation.js', 'mini-peer-availability.js', 'connection-menu.js', 'connection-presentation.js', 'mini-notice.js'];
 let phase = 'CAPABILITY';
 async function main() {
   assert.ok(process.env.PLAYWRIGHT_MODULE); assert.ok(process.env.PRIVATE_TURN_TOOL_OUTPUT);
@@ -29,14 +29,14 @@ async function main() {
     });
     await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve));
     const fixture = path.join(temporary, 'app'); await fs.mkdir(fixture);
-    for (const name of [...modules, 'firebase-field-config.js', 'p2p-transfer.css', 'connection-screens.css']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
-    await fs.writeFile(path.join(fixture, 'index.html'), '<html><meta charset="utf-8"><link rel="stylesheet" href="./p2p-transfer.css"><link rel="stylesheet" href="./connection-screens.css"><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
+    for (const name of [...modules, 'firebase-field-config.js', 'p2p-transfer.css', 'connection-screens.css', 'mini-notice.css']) await fs.copyFile(path.join(ROOT, name), path.join(fixture, name));
+    await fs.writeFile(path.join(fixture, 'index.html'), '<html><meta charset="utf-8"><link rel="stylesheet" href="./p2p-transfer.css"><link rel="stylesheet" href="./connection-screens.css"><link rel="stylesheet" href="./mini-notice.css"><script src="./firebase-field-config.js"></script>' + modules.map(name => '<script src="./' + name + '"></script>').join('') + '<textarea id="restore-backup-textarea"></textarea><section id="modal-restore-backup" hidden></section></html>');
     phase = 'BROWSER_LAUNCH';
     try { browser = await chromium.launch({ chromiumSandbox: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}), args: ['--ignore-certificate-errors-spki-list=' + spki, '--disable-background-networking'] }); }
     catch (error) { phase += '_' + browserLaunchReason(error); throw new Error('BROWSER_UNAVAILABLE'); }
     const ports = new Set();
     async function pageFor(forceRelay) {
-      const dev = await startDevServer({ forwardPort: upstream.address().port, port: 0, tls: { key, cert }, appRoot: fixture, assets: ['index.html', 'firebase-field-config.js', 'p2p-transfer.css', 'connection-screens.css', ...modules], bootstrap: { enabled: true, appIdentity: 'mini', canonicalRoot: ROOT, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, forceRelay } });
+      const dev = await startDevServer({ forwardPort: upstream.address().port, port: 0, tls: { key, cert }, appRoot: fixture, assets: ['index.html', 'firebase-field-config.js', 'p2p-transfer.css', 'connection-screens.css', 'mini-notice.css', ...modules], bootstrap: { enabled: true, appIdentity: 'mini', canonicalRoot: ROOT, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-milliseconds' }, forceRelay } });
       devs.push(dev); ports.add(new URL(dev.origin).port);
       const context = await browser.newContext(); contexts.push(context);
       await context.route('**/*', route => { const u = new URL(route.request().url()); if (['127.0.0.1', 'localhost'].includes(u.hostname) && ports.has(u.port)) return route.continue(); blocked++; return route.abort(); });
@@ -45,7 +45,8 @@ async function main() {
         const listeners = new Set(); window.authNames = [];
         const user = { uid: 'synthetic-user', getIdToken: async () => 'synthetic-token' };
         window.mockAuth = { currentUser: user, onAuthStateChanged(fn) { listeners.add(fn); fn(this.currentUser); return () => listeners.delete(fn); } };
-        window.setGuest = () => { window.mockAuth.currentUser = null; for (const fn of listeners) fn(null); };
+        window.setFixtureAuth = user => { window.mockAuth.currentUser = user; for (const fn of listeners) fn(user); };
+        window.setGuest = () => window.setFixtureAuth(null);
         window.firebase = { app(name) { window.authNames.push(name); if (name !== 'mini-field') throw new Error('WRONG_AUTH'); return { auth: () => window.mockAuth }; } };
         window.NativeRtc = window.RTCPeerConnection;
       });
@@ -57,6 +58,79 @@ async function main() {
     // Use the shipped theme definitions, not colors taught to agree with this test.
     const appHtml = await fs.readFile(path.join(ROOT, 'index.html'), 'utf8');
     const themeCss = [appHtml.match(/:root\s*\{[\s\S]*?\}/)[0], ...['light', 'contrast', 'ocean', 'sol'].map(theme => appHtml.match(new RegExp('\\[data-theme="' + theme + '"\\]\\s*\\{[\\s\\S]*?\\}'))[0])].join('\n');
+    if (process.env.PRIVATE_TURN_INBOX_ONLY === '1') {
+      phase = 'PRODUCTION_INBOX_AUTH_RESTORE';
+      const ui = await fs.readFile(path.join(ROOT, 'p2p-roster-ui.js'), 'utf8');
+      const section = (start, end) => { const a = ui.indexOf(start), b = ui.indexOf(end, a); assert.ok(a >= 0 && b > a); return ui.slice(a, b); };
+      // Execute the shipped receiver functions, not a substitute helper receiver.
+      const receiverSource = section('const backupReceiverCleanups', 'function isTransferModalOpen') + section('const MINI_BACKUP_BACKOFF_MS', '// A live lease') + section('async function startMiniBackupInbox', 'async function startPassiveInbox') + section('async function stageReceivedBackup', '// ---- Received Mini backup review');
+      let inboxTail = Promise.resolve();
+      for (let i = 0; i < 2; i++) await pages[i].exposeFunction('productionInboxBridge', (type, data) => {
+        if (type === 'ice' && !data.candidate) return;
+        inboxTail = inboxTail.then(() => pages[1-i].evaluate(({type,data}) => window.productionInboxSignal({type:'signal',frame:{v:1,type,data}}), {type,data}));
+        return inboxTail;
+      });
+      for (const [i, page] of pages.entries()) {
+        await page.addStyleTag({content:themeCss});
+        await page.evaluate(({i, receiverSource}) => {
+          window.setGuest();
+          document.body.insertAdjacentHTML('afterbegin', '<main data-fixture-attendance><h1>Asistencia — fixture sintético</h1></main>');
+          window.data = {schemaVersion:1,users:[{id:'synthetic-employee',name:'Synthetic employee'}],attendance:{'2026-10-01':{'synthetic-employee':{checkIn:'08:00'}}},requests:[]};
+          window.beforeData = JSON.stringify(window.data); window.buildMiniBackupData = () => window.data;
+          window.inboxSignals=[]; window.inboxFactories=0; window.inboxRtcStates=[]; window.inboxSessions=[];
+          const self={deviceId:'production-inbox-'+i,appType:'mini',displayName:'Synthetic Mini '+i};
+          const peer={peerId:'production-inbox-'+(1-i),peerApp:'mini',displayName:'Synthetic Mini '+(1-i),purpose:'backup',linkToken:'A'.repeat(43)};
+          const core={...window.SaMiniP2P,createRtcSession:async options=>{window.inboxFactories++;const session=await window.SaMiniP2P.createRtcSession({...options,iceServers:[],onState:(state,error)=>{window.inboxRtcStates.push({state,error:!!error});options.onState?.(state,error);}});window.inboxSessions.push(session);return session;},SignalingClient:class {
+            constructor(){this.listeners=new Set();this.closed=false;window.inboxSignals.push(this);} async connect(){this.closed=false;} onEvent(fn){this.listeners.add(fn);return()=>this.listeners.delete(fn);} send(type,data){void window.productionInboxBridge(type,data);} close(){this.closed=true;} emit(event){for(const fn of this.listeners)fn(event);}
+          }};
+          window.productionInboxSignal=event=>{for(const signal of window.inboxSignals)if(!signal.closed)signal.emit(event);};
+          const identityStore={getSelf:async()=>self,getPeer:async()=>peer,listPeers:async()=>[peer],savePeer:async value=>value};
+          const root=window,pairing=window.SaMiniP2PPairing;
+          const isNetworkOnline=()=>true,peerName=value=>value.displayName||'Synthetic Mini';
+          let activeTransferPeerId=null; const refreshMiniP2PHeader=async()=>{},recordP2PActivity=()=>{},signalTerminalSuccess=()=>{},boundedUserSafeError=()=> 'Synthetic transfer failed';
+          // These unused navigation dependencies deliberately cannot restore data.
+          const toast=()=>{},renderError=()=>{},renderBackupReview=async()=>{},body=()=>null,isTransferModalOpen=()=>false;
+          const activeManualPeerId=null;
+          eval(receiverSource + '; window.productionInbox={start:startMiniBackupInbox,reconnect:reconnectMiniBackupPeer,close:closeMiniBackupConnection,stop:stopAllMiniBackupListeners,listeners:miniBackupListeners,peer};');
+        },{i,receiverSource});
+        phase='PRODUCTION_INBOX_BOOT_'+i;
+        await page.evaluate(()=>window.productionInbox.start());
+        await page.waitForFunction(()=>window.productionInbox.listeners.size===1);
+      }
+      for(const page of pages)assert.equal(await page.evaluate(()=>window.inboxFactories),0);
+      // A delayed callback simulates persisted account restoration after standby boot.
+      phase='PRODUCTION_INBOX_DELAYED_HYDRATION';
+      await pages[1].evaluate(()=>{window.inboxBefore=window.inboxSignals.length;window.setFixtureAuth({uid:'synthetic-restored',getIdToken:async()=>{throw new Error('NO_REAL_TOKEN');}});});
+      await pages[1].waitForFunction(()=>window.inboxSignals.length>window.inboxBefore&&window.productionInbox.listeners.size===1);
+      // Actual hydration is proven above; use guest transport to keep native ICE host-only.
+      await pages[1].evaluate(()=>{window.inboxBefore=window.inboxSignals.length;window.setGuest();});
+      await pages[1].waitForFunction(()=>window.inboxSignals.length>window.inboxBefore&&window.productionInbox.listeners.size===1);
+      assert.equal(await pages[1].evaluate(()=>window.inboxFactories),0);
+      async function transferOutsideMenu() {
+        phase='PRODUCTION_ATTENDANCE_CONNECT';
+        await Promise.race([pages[0].evaluate(()=>window.productionInbox.reconnect(window.productionInbox.peer.peerId)), new Promise((_,reject)=>setTimeout(()=>reject(new Error('INBOX_CONNECT_DEADLINE')),20000))]);
+        phase='PRODUCTION_ATTENDANCE_AUTHENTICATED_CHANNELS';
+        for(const page of pages)await page.waitForFunction(()=>[...window.productionInbox.listeners.values()].some(entry=>entry.authenticated&&entry.channel?.readyState==='open'));
+        phase='PRODUCTION_ATTENDANCE_VISIBLE_NOTICE';
+        const sending=pages[0].evaluate(async()=>{
+          const entry=[...window.productionInbox.listeners.values()][0],bridge=window.SaMiniP2PBackup,core=window.SaMiniP2P,payload=await bridge.createMiniBackupPayload();
+          const decision=await window.P2PBackupConsent.requestConsent(entry.channel,core,{offerId:window.P2PBackupConsent.createOfferId(),schema:'mini-backup/v1',size:payload.size,senderName:'Synthetic sender'},{timeoutMs:15000});
+          if(decision!=='accepted')throw new Error('CONSENT_NOT_ACCEPTED');
+          await bridge.sendBackupOnChannel(entry.channel,{bytes:payload.bytes,schema:'mini-backup/v1',timeoutMs:15000});return true;
+        });
+        await pages[1].getByRole('button',{name:'Aceptar',exact:true}).waitFor({state:'visible',timeout:15000});
+        assert.equal(await pages[1].locator('[data-connections-home],.mini-p2p-shell').count(),0);
+        await pages[1].getByRole('button',{name:'Aceptar',exact:true}).click();assert.equal(await sending,true);
+        assert.deepEqual(await pages[1].evaluate(()=>({attendance:!!document.querySelector('[data-fixture-attendance]'),staged:window.SaMiniP2PBackup.backupStagedStore.listStaged().length,unchanged:JSON.stringify(window.data)===window.beforeData})),{attendance:true,staged:1,unchanged:true});
+      }
+      phase='PRODUCTION_ATTENDANCE_NOTICE_AND_STAGE';await transferOutsideMenu();
+      await pages[1].evaluate(()=>window.productionInbox.close(window.productionInbox.peer.peerId));
+      for(const page of pages)await page.waitForFunction(()=>[...window.productionInbox.listeners.values()].every(entry=>!entry.lease));
+      phase='PRODUCTION_ATTENDANCE_REPEAT_AFTER_CLOSE';await transferOutsideMenu();
+      for(const page of pages)await page.evaluate(()=>window.productionInbox.stop());
+      assert.equal(requests,0);assert.equal(blocked,0);
+      console.log('mini-backup-browser:production-inbox-pass:two-contexts:isolated-attendance-screen:no-connections-menu:auth-restoration:visible-MiniNotice:accepted-and-staged:repeat-after-close:no-auto-restore:no-external-requests:host-only-not-live-TURN');return;
+    }
     for (const page of pages) {
       await page.addStyleTag({ content: themeCss + '\nbody { margin: 16px; background: var(--bg-color); color: var(--text-color); font-family: sans-serif; }' });
       await page.evaluate(() => {
@@ -295,6 +369,6 @@ async function main() {
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
     console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, managedLeaseExpiryWake: true, bilateralRetirementStandby: true, nativeMenuFocusPreserved: true, managedLeaseMessagesEachDirection: 3, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
-  } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
+  } catch(error) { if(process.env.PRIVATE_TURN_INBOX_ONLY==='1') console.error(JSON.stringify({scope:'synthetic-production-inbox',phase,endpoints:await Promise.all(contexts.map(async context=>{const page=context.pages()[0];try{return await page.evaluate(()=>({listeners:window.productionInbox?.listeners.size,signals:window.inboxSignals?.length,factories:window.inboxFactories,rtcEvents:window.inboxRtcStates,retainedSessions:window.inboxSessions?.map(session=>({connection:session.pc?.connectionState,ice:session.pc?.iceConnectionState,channel:session.channel?.readyState,remaining:session.getLeaseRemainingMs?.()})),states:[...(window.productionInbox?.listeners.values()||[])].map(entry=>({state:entry.state,stopped:entry.stopped,authenticated:entry.authenticated,channel:entry.channel?.readyState,connection:entry.session?.pc?.connectionState}))}));}catch{return {unavailable:true};}}))}));throw error; } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { if (phase === 'PEER_VISUAL_STATES' && error?.code === 'ERR_ASSERTION') console.error(error.message); console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });

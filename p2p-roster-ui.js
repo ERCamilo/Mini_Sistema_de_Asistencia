@@ -2100,15 +2100,21 @@
     });
   }
 
+  function stopAllMiniBackupListeners() {
+    miniBackupAccountWatch?.(); miniBackupAccountWatch = null;
+    miniBackupIntents?.invalidateAll();
+    for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key);
+  }
   function watchMiniBackupAccount() {
     if (miniBackupAccountWatch) return;
-    try {
-      const auth = root.firebase?.app('mini-field').auth();
-      if (auth) miniBackupAccountWatch = root.MiniPeerAvailability.watchAccount(auth, () => {
-        miniBackupIntents?.invalidateAll();
-        for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key);
-      });
-    } catch (_) { /* An unavailable Google SDK must not prevent guest P2P. */ }
+    let auth = null;
+    try { auth = root.firebase?.app('mini-field').auth() || null; }
+    catch (_) { /* An unavailable Google SDK must not prevent guest P2P. */ }
+    miniBackupAccountWatch = root.MiniPeerAvailability.watchAccount(auth, epoch => {
+      miniBackupIntents?.invalidateAll();
+      for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key, null, true);
+      startMiniBackupInbox(epoch).catch(() => {});
+    });
   }
 
   function retireMiniBackupTransport(entry, transport = null, retireAvailability = true) {
@@ -2126,10 +2132,11 @@
     return true;
   }
 
-  function stopMiniBackupListener(peerId, owner = null) {
+  function stopMiniBackupListener(peerId, owner = null, accountTransition = false) {
     const key = String(peerId || '').trim(), entry = miniBackupListeners.get(key);
     if (owner && entry !== owner) return false;
     miniBackupIntents?.invalidate(key);
+    if (!accountTransition) miniBackupAccountWatch?.invalidatePeer(key);
     if (!entry) return false;
     entry.stopped = true; miniBackupListeners.delete(key);
     if (entry.retryTimer) clearTimeout(entry.retryTimer);
@@ -2155,11 +2162,13 @@
     entry.retryTimer = timer;
   }
 
-  async function ensureMiniBackupListener(peer, attempt = 0) {
+  async function ensureMiniBackupListener(peer, attempt = 0, epoch = null) {
     if (!isMiniBackupPeer(peer)) return null;
     miniBackupKnownPeers.set(String(peer.peerId), peer);
     if (!isNetworkOnline()) { publishMiniBackupConnections(); return null; }
     watchMiniBackupAccount();
+    const accountEpoch = epoch || miniBackupAccountWatch.capture();
+    if (!accountEpoch.current(String(peer.peerId).trim())) return null;
     const peerId = String(peer.peerId).trim(), existing = miniBackupListeners.get(peerId);
     if (existing && !existing.stopped) {
       await existing.setup;
@@ -2170,7 +2179,7 @@
     const setup = new Promise(resolve => { finishSetup = resolve; });
     const entry = { setup, peer, state: 'available', reconnectIntent: null, availability: null, transport: null, session: null, signaling: null, lease: null, channel: null, busy: false, retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
     miniBackupListeners.set(peerId, entry);
-    const isCurrent = () => !entry.stopped && miniBackupListeners.get(peerId) === entry;
+    const isCurrent = () => !entry.stopped && miniBackupListeners.get(peerId) === entry && accountEpoch.current(peerId);
     try {
       const self = await identityStore.getSelf();
       if (!isCurrent()) return entry;
@@ -2240,12 +2249,16 @@
     // Do not silently allocate a replacement after ordinary lease expiry.
   }
 
-  async function startMiniBackupInbox() {
+  async function startMiniBackupInbox(epoch = null) {
+    if (!epoch) watchMiniBackupAccount();
+    const accountEpoch = epoch || miniBackupAccountWatch.capture();
     let peers = [];
     try { peers = (await identityStore.listPeers()).filter(isMiniBackupPeer); } catch (_) { return 0; }
+    if (!accountEpoch.current()) return 0;
+    peers = peers.filter(peer => accountEpoch.current(String(peer.peerId).trim()));
     const ids = new Set(peers.map(peer => String(peer.peerId)));
     for (const key of miniBackupKnownPeers.keys()) if (!ids.has(key)) miniBackupKnownPeers.delete(key);
-    for (const peer of peers) { miniBackupKnownPeers.set(String(peer.peerId), peer); ensureMiniBackupListener(peer, 0).catch(() => {}); }
+    for (const peer of peers) { miniBackupKnownPeers.set(String(peer.peerId), peer); ensureMiniBackupListener(peer, 0, accountEpoch).catch(() => {}); }
     publishMiniBackupConnections();
     return peers.length;
   }
@@ -3245,8 +3258,8 @@
   };
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
   root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
-  root.addEventListener?.('pagehide', () => { miniBackupIntents?.invalidateAll(); for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key); });
-  root.MiniP2PBackupInbox={ snapshot: miniBackupConnectionSnapshot, subscribe: subscribeMiniBackupConnections, reconnect: reconnectMiniBackupPeer, start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, retire: closeMiniBackupConnection, stopAll: () => { miniBackupIntents?.invalidateAll(); for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key); }, listeners: miniBackupListeners };
+  root.addEventListener?.('pagehide', stopAllMiniBackupListeners);
+  root.MiniP2PBackupInbox={ snapshot: miniBackupConnectionSnapshot, subscribe: subscribeMiniBackupConnections, reconnect: reconnectMiniBackupPeer, start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, retire: closeMiniBackupConnection, stopAll: stopAllMiniBackupListeners, listeners: miniBackupListeners };
   root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel, isPeerOnline, isNetworkOnline };
   root.MiniP2PPresence = { isPeerOnline, getPeerState: getPeerVisualState, getPresence: getPeerPresence, attach: attachPresence, detach: detachPresence, isNetworkOnline, expireStale: expireStalePresence, handleOffline: handleNetworkOffline, handleOnline: handleNetworkOnline, HEARTBEAT_MS: core.PRESENCE_HEARTBEAT_MS || 25000, TTL_MS: core.PRESENCE_TTL_MS || 60000, BACKOFF_SCHEDULE_MS: PASSIVE_BACKOFF_SCHEDULE_MS };
   root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };

@@ -187,15 +187,29 @@
     }
     function watchAccount(auth, changed) {
         var _a;
-        const initialUid = ((_a = auth.currentUser) === null || _a === void 0 ? void 0 : _a.uid) || null;
-        let first = true;
-        return auth.onAuthStateChanged(user => {
+        const initialUid = ((_a = auth === null || auth === void 0 ? void 0 : auth.currentUser) === null || _a === void 0 ? void 0 : _a.uid) || null;
+        let first = true, generation = 0, disposed = false;
+        const peers = new Map();
+        function capture() {
+            const ownGeneration = generation, snapshot = new Map(peers);
+            return { current: peerId => !disposed && generation === ownGeneration && (peerId === undefined || (peers.get(peerId) || 0) === (snapshot.get(peerId) || 0)) };
+        }
+        const off = (auth === null || auth === void 0 ? void 0 : auth.onAuthStateChanged(user => {
+            if (disposed)
+                return;
             if (first) {
                 first = false;
                 if (((user === null || user === void 0 ? void 0 : user.uid) || null) === initialUid)
                     return;
             }
-            changed();
+            generation++;
+            peers.clear();
+            changed(capture());
+        })) || (() => { });
+        return Object.assign(() => { if (disposed)
+            return; disposed = true; generation++; peers.clear(); off(); }, {
+            capture,
+            invalidatePeer: (peerId) => { peers.set(peerId, (peers.get(peerId) || 0) + 1); }
         });
     }
     return { create, watchAccount };

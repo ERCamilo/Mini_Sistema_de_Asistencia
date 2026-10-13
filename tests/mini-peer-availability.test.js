@@ -84,3 +84,12 @@ test('retirement promptly rejects callers during delayed negotiation', async () 
   const result = await Promise.race([pending.then(() => 'resolved', () => 'rejected'), new Promise(r => setTimeout(() => r('hung'), 20))]);
   assert.equal(result, 'rejected'); finish(); f.owner.stop();
 });
+
+test('account watcher checkpoints invalidate older account, stopped peer and disposed work', () => {
+ let changed; const epochs=[]; const auth={currentUser:null,onAuthStateChanged(fn){changed=fn;return ()=>{};}};
+ const watch=api.watchAccount(auth,epoch=>epochs.push(epoch)); const boot=watch.capture();
+ changed({uid:'A'}); assert.equal(boot.current(),false); const current=epochs[0];assert.equal(current.current('p'),true);
+ watch.invalidatePeer('p'); assert.equal(current.current('p'),false); assert.equal(current.current('other'),true);
+ changed({uid:'B'}); assert.equal(current.current(),false); assert.equal(epochs[1].current('p'),true);
+ watch(); assert.equal(epochs[1].current(),false);
+});

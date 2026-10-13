@@ -1,3 +1,5 @@
+interface MiniAvailabilityAccountEpoch { current(peerId?: string): boolean; }
+interface MiniAvailabilityAccountWatch { (): void; capture(): MiniAvailabilityAccountEpoch; invalidatePeer(peerId: string): void; }
 interface MiniAvailabilityEvent { type: string; frame?: { type: string; data: { sdp?: string; usernameFragment?: string } }; }
 interface MiniAvailabilitySignal {
   expiresAt?: number | null;
@@ -133,13 +135,25 @@ interface MiniAvailabilityOptions {
       getSession: () => active
     };
   }
-  function watchAccount(auth: { currentUser?: { uid?: string } | null; onAuthStateChanged(callback: (user: { uid?: string } | null) => void): () => void }, changed: () => void): () => void {
-    const initialUid = auth.currentUser?.uid || null;
-    let first = true;
-    return auth.onAuthStateChanged(user => {
+  function watchAccount(auth: { currentUser?: { uid?: string } | null; onAuthStateChanged(callback: (user: { uid?: string } | null) => void): () => void } | null, changed: (epoch: MiniAvailabilityAccountEpoch) => void): MiniAvailabilityAccountWatch {
+    const initialUid = auth?.currentUser?.uid || null;
+    let first = true, generation = 0, disposed = false;
+    const peers = new Map<string, number>();
+    function capture(): MiniAvailabilityAccountEpoch {
+      const ownGeneration = generation, snapshot = new Map(peers);
+      return { current: peerId => !disposed && generation === ownGeneration && (peerId === undefined || (peers.get(peerId) || 0) === (snapshot.get(peerId) || 0)) };
+    }
+    const off = auth?.onAuthStateChanged(user => {
+      if (disposed) return;
       if (first) { first = false; if ((user?.uid || null) === initialUid) return; }
-      changed();
+      generation++; peers.clear();
+      changed(capture());
+    }) || (() => {});
+    return Object.assign(() => { if (disposed) return; disposed = true; generation++; peers.clear(); off(); }, {
+      capture,
+      invalidatePeer: (peerId: string) => { peers.set(peerId, (peers.get(peerId) || 0) + 1); }
     });
   }
+
   return { create, watchAccount };
 });

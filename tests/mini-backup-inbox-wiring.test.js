@@ -137,7 +137,7 @@ function inboxHarness(overrides = {}) {
     peerSessionManager: () => require('../mini-peer-session-manager.js').create({ now: () => 0, schedule: () => ({}), cancel() {} }),
     miniBackupListeners: new Map(), MINI_BACKUP_BACKOFF_MS: [1500, 5000], activeManualPeerId: null,
     isNetworkOnline: () => true, isMiniBackupPeer: () => true,
-    identityStore: { getSelf: async () => ({ deviceId: 'self' }) },
+    identityStore: { getSelf: async () => ({ deviceId: 'self' }), listPeers: async () => [inboxPeer] },
     core: { validateSignalFrameObject: require('../p2p-core.js').validateSignalFrameObject, deriveTrustedRoute: async () => ({}), SignalingClient: class {
       constructor() { this.closed = 0; this.listeners = new Set(); signals.push(this); } async connect() {} send() {} onEvent(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); } emit(event) { for (const fn of this.listeners) fn(event); } close() { this.closed++; }
     }, createRtcSession: async opts => {
@@ -151,8 +151,8 @@ function inboxHarness(overrides = {}) {
     clearTimeout(timer) { timer.cancelled = true; }
   };
   Object.assign(ctx, overrides);
-  vm.runInNewContext(between('let miniBackupAccountWatch', '// A live lease') +
-    '; this.ensure = ensureMiniBackupListener; this.stop = stopMiniBackupListener;', ctx);
+  vm.runInNewContext(between('let miniBackupAccountWatch', '// A live lease') + between('async function startMiniBackupInbox', 'async function startPassiveInbox') +
+    '; this.ensure = ensureMiniBackupListener; this.stop = stopMiniBackupListener; this.start = startMiniBackupInbox;', ctx);
   return { ctx, timers, options, sessions, signals, handshakes,
     counts: () => ({ detached, released, prompted }) };
 }
@@ -322,8 +322,8 @@ test('actual account invalidation stops standby and late factory cannot recreate
   const entry = await h.ctx.ensure(inboxPeer);
   h.ctx.core.createRtcSession = () => { entered(); return new Promise(r => { resolve = r; }); };
   const pending = entry.availability.demand(); const rejected = assert.rejects(pending); await ready;
-  authChanged(null); await rejected; assert.equal(h.ctx.miniBackupListeners.size, 0); assert.equal(h.signals[0].closed, 1);
-  let closed = 0; resolve({ close() { closed++; } }); await settleInbox(); assert.equal(closed, 1);
+  authChanged(null); await rejected; await settleInbox(); assert.equal(h.ctx.miniBackupListeners.size, 1); assert.notEqual(h.ctx.miniBackupListeners.get(inboxPeer.peerId), entry); assert.equal(h.signals[0].closed, 1);
+  let closed = 0; resolve({ close() { closed++; } }); await settleInbox(); assert.equal(closed, 1); h.ctx.stop(inboxPeer.peerId);
 });
 test('actual lease expiry preserves standby with zero renewal until explicit demand', async () => {
   let now = 0; const h = inboxHarness({ peerSessionManager: () => require('../mini-peer-session-manager.js').create({ now: () => now, schedule: () => ({}), cancel() {} }) });
@@ -459,7 +459,7 @@ test('account logout cancels a pending lookup before any listener exists', async
   h.ctx.identityStore.getPeer = () => new Promise(r => { release = r; });
   const connecting = h.ctx.reconnect(inboxPeer.peerId); const rejected = assert.rejects(connecting);
   assert.equal(typeof accountChanged, 'function'); accountChanged(null); await rejected;
-  release(inboxPeer); await settleInbox(); assert.equal(h.options.length, 0); assert.equal(h.ctx.miniBackupListeners.size, 0);
+  release(inboxPeer); await settleInbox(); assert.equal(h.options.length, 0); assert.equal(h.ctx.miniBackupListeners.size, 1); h.ctx.stop(inboxPeer.peerId);
 });
 
 for (const delayed of ['lookup', 'factory']) test(`manual reconnect revokes an armed retry before delayed ${delayed} and ignores its queued callback`, async () => {
@@ -518,4 +518,45 @@ test('armed retry cannot stop manual acquisition while shared signaling setup is
  await settleInbox(); await automatic.fn(); assert.equal(entry.stopped,false); assert.equal(h.signals[0].closed,0); assert.equal(automatic.cancelled,true);
  release(); await setup; await settleInbox(); assert.equal(h.options.length,1);
  h.options[0].onChannel({readyState:'open',close(){}}); h.handshakes[0].onAuthenticated(); assert.equal(await outcome,'connected'); h.ctx.stop(inboxPeer.peerId);
+});
+
+function accountInboxHarness(initial = null) {
+ const h = inboxHarness(); let changed;
+ const auth = { currentUser: initial, onAuthStateChanged(fn) { changed = fn; return () => { changed = null; }; } };
+ h.ctx.root.firebase = { app: () => ({ auth: () => auth }) };
+ return { ...h, auth, change(user) { auth.currentUser = user; changed?.(user); } };
+}
+const authenticatedOffer = { type:'signal', frame:{v:1,type:'offer',data:{type:'offer',sdp:'v=0\r\no=- 300 1 IN IP4 0.0.0.0\r\na=ice-ufrag:restored\r\n'}} };
+
+test('persisted auth hydration rearms current credential-free receiver on attendance without opening a menu', async () => {
+ const h = accountInboxHarness(); await h.ctx.start(); await settleInbox(); const old = h.ctx.miniBackupListeners.get(inboxPeer.peerId);
+ assert.ok(old); assert.equal(h.options.length,0); h.change({uid:'restored'}); await settleInbox();
+ const current = h.ctx.miniBackupListeners.get(inboxPeer.peerId); assert.ok(current,'auth hydration must prepare new standby without menu/focus'); assert.notEqual(current,old);
+ assert.equal(old.stopped,true); assert.equal(h.signals[0].closed,1); assert.equal(h.options.length,0);
+ h.signals.at(-1).emit(authenticatedOffer); await settleInbox(); assert.equal(h.options.length,1); assert.ok(current.lease); h.ctx.stop(inboxPeer.peerId);
+});
+
+test('rapid account changes retire old owners and ignore older delayed peer listings', async () => {
+ const h = accountInboxHarness({uid:'A'}); await h.ctx.start(); await settleInbox(); let releaseB;
+ h.ctx.identityStore.listPeers = () => new Promise(r=>{releaseB=r;}); h.change({uid:'B'}); await settleInbox();
+ h.ctx.identityStore.listPeers = async()=>[inboxPeer]; h.change({uid:'C'}); await settleInbox();
+ const current = h.ctx.miniBackupListeners.get(inboxPeer.peerId); assert.ok(current); const count=h.signals.length;
+ releaseB([inboxPeer]); await settleInbox(); assert.equal(h.ctx.miniBackupListeners.get(inboxPeer.peerId),current); assert.equal(h.signals.length,count); assert.equal(h.options.length,0);
+ h.change(null); await settleInbox(); const guest=h.ctx.miniBackupListeners.get(inboxPeer.peerId); assert.ok(guest); assert.notEqual(guest,current); h.ctx.stop(inboxPeer.peerId);
+});
+
+for(const invalidation of ['stop','shutdown']) test(`delayed account peer listing cannot resurrect receivers after ${invalidation}`,async()=>{
+ const h=accountInboxHarness();await h.ctx.start();await settleInbox();let release;
+ h.ctx.identityStore.listPeers=()=>new Promise(r=>{release=r;});h.change({uid:'restored'});await settleInbox();
+ if(invalidation==='stop')h.ctx.stop(inboxPeer.peerId);
+ else require('node:vm').runInNewContext('stopAllMiniBackupListeners();',h.ctx);
+ release([inboxPeer]);await settleInbox();assert.equal(h.ctx.miniBackupListeners.size,0);assert.equal(h.options.length,0);
+ if(invalidation==='shutdown'){h.change({uid:'later'});await settleInbox();assert.equal(h.ctx.miniBackupListeners.size,0);}
+});
+
+test('older auth setup continuation cannot replace or stop newest account standby',async()=>{
+ const h=accountInboxHarness({uid:'A'});await h.ctx.start();await settleInbox();let release;
+ h.ctx.identityStore.getSelf=()=>new Promise(r=>{release=r;});h.change({uid:'B'});await settleInbox();const old=h.ctx.miniBackupListeners.get(inboxPeer.peerId);
+ h.ctx.identityStore.getSelf=async()=>({deviceId:'self'});h.change({uid:'C'});await settleInbox();const current=h.ctx.miniBackupListeners.get(inboxPeer.peerId);
+ release({deviceId:'self'});await settleInbox();assert.notEqual(old,current);assert.equal(old.stopped,true);assert.equal(current.stopped,false);assert.equal(h.signals.at(-1).closed,0);assert.equal(h.options.length,0);h.ctx.stop(inboxPeer.peerId);
 });
