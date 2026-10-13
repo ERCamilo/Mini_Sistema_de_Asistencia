@@ -59,3 +59,17 @@ test('a retired hung lease promptly rejects future operations too', async () => 
   const late = h.lease.run(async () => 1);
   assert.equal(await Promise.race([late.then(() => 'resolved', () => 'rejected'), new Promise(r => setTimeout(() => r('hung'), 20))]), 'rejected');
 });
+
+test('intent cancellation promptly settles a suspended caller and guards late continuations', async () => {
+  const intents = Manager.createIntents(); let resume, observed;
+  const action = intents.run('peer', async token => { observed = token; await new Promise(r => { resume = r; }); token.check(); });
+  const duplicate = intents.run('peer', async () => { throw new Error('duplicate ran'); });
+  assert.equal(action, duplicate); intents.invalidate('peer'); await assert.rejects(action);
+  const fresh = intents.run('peer', async token => { token.check(); return 'fresh'; });
+  resume(); assert.throws(() => observed.check()); assert.equal(await fresh, 'fresh');
+});
+
+test('invalidateAll cancels intents even when no transport entry exists', async () => {
+  const intents = Manager.createIntents(); const action = intents.run('peer', async () => new Promise(() => {}));
+  intents.invalidateAll(); await assert.rejects(action);
+});

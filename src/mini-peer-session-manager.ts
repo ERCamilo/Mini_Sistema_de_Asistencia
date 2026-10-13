@@ -5,12 +5,44 @@ interface MiniPeerLeaseOptions {
   schedule?: (callback: () => void, delay: number) => unknown;
   cancel?: (timer: unknown) => void;
 }
+interface MiniPeerIntent { check(): void; current(): boolean; }
+interface MiniPeerIntentRecord { token: MiniPeerIntent; promise: Promise<unknown>; reject(error: Error): void; }
 (function exposeMiniPeerSessionManager(root: any, factory: () => unknown) {
   const api = factory();
   if (typeof module === 'object' && module && module.exports) module.exports = api;
   if (root) root.MiniPeerSessionManager = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createMiniPeerSessionManagerModule() {
   const MAX_LEASE_MS = 300000;
+  // Intents outlive replaceable transport entries and own acquisition, not RTC.
+  function createIntents() {
+    const pending = new Map<string, MiniPeerIntentRecord>();
+    const cancelled = () => new Error('Conexión Mini retirada. Reintenta.');
+    function invalidate(key: string) {
+      const record = pending.get(key);
+      if (!record) return;
+      pending.delete(key);
+      record.reject(cancelled());
+    }
+    function run<T>(key: string, operation: (token: MiniPeerIntent) => Promise<T>): Promise<T> {
+      const existing = pending.get(key);
+      if (existing) return existing.promise as Promise<T>;
+      let resolve!: (value: T | PromiseLike<T>) => void;
+      let reject!: (error: unknown) => void;
+      const result = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+      const token: MiniPeerIntent = {
+        current: () => pending.get(key)?.token === token,
+        check: () => { if (!token.current()) throw cancelled(); }
+      };
+      pending.set(key, { token, promise: result, reject });
+      // Reserve even the delivered promise before calling code that can re-enter.
+      // Cancellation settles the caller; it does not physically abort arbitrary work.
+      try { void operation(token).then(resolve, reject); } catch (error) { reject(error); }
+      const finish = () => { if (token.current()) pending.delete(key); };
+      void result.then(finish, finish);
+      return result;
+    }
+    return { run, invalidate, invalidateAll: () => { for (const key of [...pending.keys()]) invalidate(key); } };
+  }
   function create(options: MiniPeerLeaseOptions = {}) {
     const now = options.now || (() => performance.now());
     const schedule = options.schedule || ((fn: () => void, delay: number) => setTimeout(fn, delay));
@@ -77,5 +109,5 @@ interface MiniPeerLeaseOptions {
     }
     return { lease, now };
   }
-  return { create, MAX_LEASE_MS };
+  return { create, createIntents, MAX_LEASE_MS };
 });

@@ -7,6 +7,46 @@
         root.MiniPeerSessionManager = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function createMiniPeerSessionManagerModule() {
     const MAX_LEASE_MS = 300000;
+    // Intents outlive replaceable transport entries and own acquisition, not RTC.
+    function createIntents() {
+        const pending = new Map();
+        const cancelled = () => new Error('Conexión Mini retirada. Reintenta.');
+        function invalidate(key) {
+            const record = pending.get(key);
+            if (!record)
+                return;
+            pending.delete(key);
+            record.reject(cancelled());
+        }
+        function run(key, operation) {
+            const existing = pending.get(key);
+            if (existing)
+                return existing.promise;
+            let resolve;
+            let reject;
+            const result = new Promise((done, fail) => { resolve = done; reject = fail; });
+            const token = {
+                current: () => { var _a; return ((_a = pending.get(key)) === null || _a === void 0 ? void 0 : _a.token) === token; },
+                check: () => { if (!token.current())
+                    throw cancelled(); }
+            };
+            pending.set(key, { token, promise: result, reject });
+            // Reserve even the delivered promise before calling code that can re-enter.
+            // Cancellation settles the caller; it does not physically abort arbitrary work.
+            try {
+                void operation(token).then(resolve, reject);
+            }
+            catch (error) {
+                reject(error);
+            }
+            const finish = () => { if (token.current())
+                pending.delete(key); };
+            void result.then(finish, finish);
+            return result;
+        }
+        return { run, invalidate, invalidateAll: () => { for (const key of [...pending.keys()])
+                invalidate(key); } };
+    }
     function create(options = {}) {
         const now = options.now || (() => performance.now());
         const schedule = options.schedule || ((fn, delay) => setTimeout(fn, delay));
@@ -103,5 +143,5 @@
         }
         return { lease, now };
     }
-    return { create, MAX_LEASE_MS };
+    return { create, createIntents, MAX_LEASE_MS };
 });
