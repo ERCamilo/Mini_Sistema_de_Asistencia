@@ -58,6 +58,98 @@ async function main() {
     // Use the shipped theme definitions, not colors taught to agree with this test.
     const appHtml = await fs.readFile(path.join(ROOT, 'index.html'), 'utf8');
     const themeCss = [appHtml.match(/:root\s*\{[\s\S]*?\}/)[0], ...['light', 'contrast', 'ocean', 'sol'].map(theme => appHtml.match(new RegExp('\\[data-theme="' + theme + '"\\]\\s*\\{[\\s\\S]*?\\}'))[0])].join('\n');
+    if (process.env.PRIVATE_TURN_H3_ONLY === '1') {
+      let tail = Promise.resolve();
+      for (let i = 0; i < 2; i++) await pages[i].exposeFunction('h3Bridge', (type, data) => {
+        if (type === 'ice' && !data.candidate) return;
+        tail = tail.then(() => pages[1-i].evaluate(({type,data}) => window.h3Emit({type:'signal',frame:{v:1,type,data}}), {type,data}));
+        return tail;
+      });
+      for (const [i,page] of pages.entries()) await page.evaluate(i => {
+        window.setGuest(); window.h3Count = 0; window.h3Messages = []; window.h3States = [];
+        const listeners = new Set();
+        window.h3Emit = event => { for (const fn of listeners) fn(event); };
+        window.h3Owner = window.MiniPeerAvailability.create({
+          localPeerId: 'h3-'+i, remotePeerId: 'h3-'+(1-i), setupTimeoutMs: 2000,
+          signaling: { connect: async()=>{}, onEvent(fn){listeners.add(fn);return()=>listeners.delete(fn);},send(type,data){void window.h3Bridge(type,data);},close(){} },
+          validateFrame: window.SaMiniP2P.validateSignalFrameObject,
+          onState(state){window.h3States.push(state);},
+          async createSession(options) {
+            window.h3Count++;
+            if(window.h3Hold) await new Promise(resolve=>{window.h3Release=resolve;});
+            return window.SaMiniP2P.createRtcSession({...options,iceServers:[],onChannel(channel){
+              window.h3Channel=channel;
+              // Component-only readiness: native open, not production trusted authentication.
+              options.onReady();
+              channel.addEventListener('message',()=>window.h3Messages.push('received'));
+            }});
+          }
+        });
+        return window.h3Owner.start();
+      }, i);
+      for(const role of [0,1]) {
+        phase='H3_HELD_ANSWERER_ROLE_'+role;
+        await pages[1-role].evaluate(()=>{window.h3Hold=true;});
+        await pages[role].evaluate(()=>window.h3Owner.demand());
+        await pages[1-role].waitForFunction(()=>!!window.h3Release);
+        await pages[1-role].evaluate(()=>{window.h3Owner.retire();window.h3Hold=false;window.h3Release();window.h3Release=null;});
+        await pages[role].waitForFunction(()=>window.h3Owner.getSession()===null);
+        for(const page of pages) assert.equal(await page.evaluate(()=>window.h3Owner.getSession()===null),true);
+        const before=await Promise.all(pages.map(page=>page.evaluate(()=>window.h3Count)));
+        await new Promise(resolve=>setTimeout(resolve,50));
+        assert.deepEqual(await Promise.all(pages.map(page=>page.evaluate(()=>window.h3Count))),before);
+        phase='H3_EXPLICIT_RETRY_ROLE_'+role;
+        await pages[role].evaluate(()=>window.h3Owner.demand());
+        for(const page of pages) await page.waitForFunction(()=>{
+          const session=window.h3Owner.getSession();
+          return session?.pc instanceof window.NativeRtc&&session.pc.connectionState==='connected'&&session.channel===window.h3Channel&&session.channel?.readyState==='open';
+        });
+        phase='H3_BIDIRECTIONAL_MESSAGES_ROLE_'+role;
+        for(const page of pages)await page.evaluate(()=>{window.h3Messages=[];});
+        for(const page of pages)await page.evaluate(()=>{
+          const session=window.h3Owner.getSession();
+          if(!session||session.channel!==window.h3Channel||session.channel.readyState!=='open')throw new Error('H3_CURRENT_CHANNEL_REQUIRED');
+          for(let n=0;n<3;n++)session.channel.send('synthetic');
+        });
+        for(const page of pages)await page.waitForFunction(()=>{
+          const session=window.h3Owner.getSession();
+          return session?.channel===window.h3Channel&&session.channel?.readyState==='open'&&window.h3Messages.length===3;
+        });
+        console.log(JSON.stringify({scope:'native-direct-component',role,phase:'bidirectional-messages',messagesEachWay:3}));
+        phase='H3_SELECTED_PAIR_ROLE_'+role;
+        const pairs=[];
+        for(const page of pages) {
+          const measured=await page.waitForFunction(async()=>{
+            const session=window.h3Owner.getSession();
+            if(!(session?.pc instanceof window.NativeRtc)||session.pc.connectionState!=='connected'||session.channel!==window.h3Channel||session.channel?.readyState!=='open')return false;
+            const stats=await session.pc.getStats();
+            if(window.h3Owner.getSession()!==session)return false;
+            for(const transport of stats.values()) {
+              if(transport.type!=='transport'||!transport.selectedCandidatePairId)continue;
+              const pair=stats.get(transport.selectedCandidatePairId);
+              if(pair?.type!=='candidate-pair'||pair.state!=='succeeded')continue;
+              const local=stats.get(pair.localCandidateId),remote=stats.get(pair.remoteCandidateId);
+              // https://www.w3.org/TR/webrtc/#rtcicecandidatetype-enum
+              if(local?.type==='local-candidate'&&local.candidateType==='host'&&remote?.type==='remote-candidate'&&['host','prflx'].includes(remote.candidateType))return {state:pair.state,local:local.candidateType,remote:remote.candidateType};
+            }
+            return false;
+          });
+          try { pairs.push(await measured.jsonValue()); } finally { await measured.dispose(); }
+        }
+        console.log(JSON.stringify({scope:'native-direct-component',role,phase:'selected-pair',pairs}));
+        for(const pair of pairs) {
+          assert.equal(pair.state,'succeeded');
+          assert.equal(pair.local,'host');
+          assert.ok(['host','prflx'].includes(pair.remote));
+        }
+        console.log(JSON.stringify({scope:'native-direct-component',role,expiredToStandby:true,freshRetry:true,pairs,messagesEachWay:3}));
+        for(const page of pages)await page.evaluate(()=>{window.h3Owner.retire();window.h3Channel=null;window.h3Messages=[];});
+        await tail;
+      }
+      for(const page of pages)await page.evaluate(()=>window.h3Owner.stop());
+      assert.equal(requests,0);assert.equal(blocked,0);
+      console.log('mini-backup-browser:h3-pass:both-ID-roles:deadline-standby:explicit-retry:native-direct-component:no-ICE-servers:not-live-TURN');return;
+    }
     if (process.env.PRIVATE_TURN_INBOX_ONLY === '1') {
       phase = 'PRODUCTION_INBOX_AUTH_RESTORE';
       const ui = await fs.readFile(path.join(ROOT, 'p2p-roster-ui.js'), 'utf8');
@@ -216,7 +308,7 @@ async function main() {
       window.demandOwner = window.MiniPeerAvailability.create({ signaling: signal, localPeerId: 'demand-' + i, remotePeerId: 'demand-' + (1 - i), validateFrame: window.SaMiniP2P.validateSignalFrameObject,
         createSession: async options => {
           const generation = ++window.demandCalls, startedAt = window.demandLeaseClock;
-          let session; session = await window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); if (['error', 'disconnected', 'failed', 'closed'].includes(state) && session && window.demandOwner.getSession() === session) window.demandLease?.retire(); }, onChannel(channel) { window.demandChannel = channel; window.demandLease.ready(channel); channel.addEventListener('message', event => window.demandMessages.push(event.data)); } });
+          let session; session = await window.SaMiniP2P.createRtcSession({ ...options, iceServers: [], onState(state) { if (state === 'error') window.demandErrors.push(generation); if (['error', 'disconnected', 'failed', 'closed'].includes(state) && session && window.demandOwner.getSession() === session) window.demandLease?.retire(); }, onChannel(channel) { window.demandChannel = channel; window.demandLease.ready(channel); options.onReady(); channel.addEventListener('message', event => window.demandMessages.push(event.data)); } });
           window.demandLease = window.MiniPeerSessionManager.create({ now: () => window.demandLeaseClock, schedule: () => ({}), cancel() {} }).lease(session, startedAt, () => window.demandOwner.retire(), { transportOwnedExternally: true });
           return session;
         }
@@ -369,6 +461,6 @@ async function main() {
     assert.equal(requests, 2); assert.equal(blocked, 0);
     for (const page of pages) await page.evaluate(() => { window.offerInbox.detach(); window.pairing.detach(); window.session.close(); window.privateTurnTest.dispose(); });
     console.log(JSON.stringify({ scope: 'production-module-component-fixture', independentMiniContexts: 2, sameAppBackupPairing: true, consentDeclineUnchanged: true, nativeHostBackupTransfers: 6, sharedBidirectionalLease: true, nativeSimultaneousDemand: demandProof.simultaneous, nativeDemandRoles: demandProof.unilateralRoles, retirementWake: demandProof.retirementWake, oneSidedRetirementWake: demandProof.oneSidedRetirementWake, managedLeaseExpiryWake: true, bilateralRetirementStandby: true, nativeMenuFocusPreserved: true, managedLeaseMessagesEachDirection: 3, fixedLeaseExpiry: true, stagingAck: true, explicitReviewNoRestore: true, mockSignedPolicies: ['all', 'relay'], controlledMockSelectedRelay: true, externalRequests: 0, liveTurnProof: false }));
-  } catch(error) { if(process.env.PRIVATE_TURN_INBOX_ONLY==='1') console.error(JSON.stringify({scope:'synthetic-production-inbox',phase,endpoints:await Promise.all(contexts.map(async context=>{const page=context.pages()[0];try{return await page.evaluate(()=>({listeners:window.productionInbox?.listeners.size,signals:window.inboxSignals?.length,factories:window.inboxFactories,rtcEvents:window.inboxRtcStates,retainedSessions:window.inboxSessions?.map(session=>({connection:session.pc?.connectionState,ice:session.pc?.iceConnectionState,channel:session.channel?.readyState,remaining:session.getLeaseRemainingMs?.()})),states:[...(window.productionInbox?.listeners.values()||[])].map(entry=>({state:entry.state,stopped:entry.stopped,authenticated:entry.authenticated,channel:entry.channel?.readyState,connection:entry.session?.pc?.connectionState}))}));}catch{return {unavailable:true};}}))}));throw error; } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
+  } catch(error) { if(process.env.PRIVATE_TURN_H3_ONLY==='1') console.error(JSON.stringify({scope:'native-h3',phase,endpoints:await Promise.all(contexts.map(async context=>{try{return await context.pages()[0].evaluate(()=>({factories:window.h3Count,states:window.h3States,active:!!window.h3Owner?.getSession(),connection:window.h3Owner?.getSession()?.pc?.connectionState,channel:window.h3Channel?.readyState,messages:window.h3Messages?.length}));}catch{return {unavailable:true};}}))})); if(process.env.PRIVATE_TURN_INBOX_ONLY==='1') console.error(JSON.stringify({scope:'synthetic-production-inbox',phase,endpoints:await Promise.all(contexts.map(async context=>{const page=context.pages()[0];try{return await page.evaluate(()=>({listeners:window.productionInbox?.listeners.size,signals:window.inboxSignals?.length,factories:window.inboxFactories,rtcEvents:window.inboxRtcStates,retainedSessions:window.inboxSessions?.map(session=>({connection:session.pc?.connectionState,ice:session.pc?.iceConnectionState,channel:session.channel?.readyState,remaining:session.getLeaseRemainingMs?.()})),states:[...(window.productionInbox?.listeners.values()||[])].map(entry=>({state:entry.state,stopped:entry.stopped,authenticated:entry.authenticated,channel:entry.channel?.readyState,connection:entry.session?.pc?.connectionState}))}));}catch{return {unavailable:true};}}))}));throw error; } finally { for (const context of contexts) await context.close(); await browser?.close(); for (const dev of devs) await dev.close(); if (upstream) { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); } await fs.rm(temporary, { recursive: true, force: true }); }
 }
 if (require.main === module) void main().catch(error => { if (phase === 'PEER_VISUAL_STATES' && error?.code === 'ERR_ASSERTION') console.error(error.message); console.error('mini-backup-browser:failed:' + phase + ':' + (error?.code === 'ERR_ASSERTION' ? 'ASSERTION' : error?.name === 'TimeoutError' ? 'TIMEOUT' : 'OPERATION'));  process.exitCode = 1; });

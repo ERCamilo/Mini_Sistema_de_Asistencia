@@ -93,3 +93,26 @@ test('account watcher checkpoints invalidate older account, stopped peer and dis
  changed({uid:'B'}); assert.equal(current.current(),false); assert.equal(epochs[1].current('p'),true);
  watch(); assert.equal(epochs[1].current(),false);
 });
+
+test('completed unanswered negotiation expires while standby remains available', async () => {
+  let closes = 0;
+  const f = fixture(async () => ({ close() { closes++; }, startNegotiation: async () => {} }), { setupTimeoutMs: 5 });
+  await f.owner.start(); await f.owner.demand();
+  await new Promise(resolve => setTimeout(resolve, 15));
+  assert.equal(f.owner.getSession(), null); assert.equal(closes, 1); assert.equal(f.closes, 0); f.owner.stop();
+});
+test('trusted current readiness cancels only its generation deadline including early readiness', async () => {
+  let ready, closes = 0;
+  const f = fixture(async options => { ready = options.onReady; assert.equal(ready(), true); return { close() { closes++; } }; }, { setupTimeoutMs: 5 });
+  await f.owner.start(); await f.owner.demand(); await new Promise(resolve => setTimeout(resolve, 15));
+  assert.ok(f.owner.getSession()); assert.equal(closes, 0);
+  f.owner.retire(); assert.equal(ready(), false); f.owner.stop();
+});
+test('cancelled but already queued ready timer cannot retire its current session', async () => {
+  const vm = require('node:vm'), fs = require('node:fs'); let deadline;
+  const context = { module: { exports: {} }, setTimeout(fn) { deadline = fn; return {}; }, clearTimeout() {} };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../mini-peer-availability.js'), 'utf8'), context);
+  const session = { close() { throw new Error('ready session must remain owned'); } };
+  let ready; const owner = context.module.exports.create({localPeerId:'a',remotePeerId:'b',signaling:{connect:async()=>{},onEvent:()=>()=>{},close(){},send(){}},validateFrame:v=>v,createSession:async options=>{ready=options.onReady;return session;}});
+  await owner.start(); await owner.demand(); assert.equal(ready(),true); deadline(); assert.equal(owner.getSession(),session); owner.stop();
+});

@@ -368,3 +368,23 @@ No RTC or credential request is made simply to restore standby. A validated inco
 Proof combines deterministic actual-function UI VM hydration/account/listing/setup/disposal tests with a bounded native two-context fixture executing the production inbox, promptIncomingBackup, armBackupReceiver, stageReceivedBackup, and real MiniNotice. Its receiver stays on an isolated synthetic attendance screen with no Connections menu; delayed SDK-shaped hydration rebuilds standby, then guest host-only transport permits visible acceptance, staging/ACK, and one repeat after RTC close. This is production-function component proof, not the complete index.html application or live TURN/real Google proof. An earlier native channel-phase timeout remains unclassified; the final instrumented run passed without transport changes.
 
 Selective payload choices and consolidation/merge remain deferred backlog, with conflict/identity/deduplication policy unresolved and no automatic restoration authorized.
+
+
+## T3s — preparation deadline through trusted readiness
+The generation-owned preparation deadline remains armed after factory completion/channel opening until current trusted authentication with a valid owned lease. Default 10 seconds, bounded 1–30000 ms: timeout retires half-open RTC and pending readiness waiters while preserving credential-free standby. Early readiness is retained; stale readiness/queued cancelled timers cannot affect replacements. Authentication precedes connected publication/offer release. Readiness cancels preparation only, not the unchanged five-minute lease; collision protocol, ignored-offer replay and automatic RTC renewal are unchanged.
+
+### Verified outcome
+- Retained deterministic RED: 75/77, expanded 76/79. Fresh focused 80/80 (`/tmp/t3s-recovery-focused.log`), strict changed-module compile/generated comparison, syntax/diff/doc readback passed.
+- Native final `/tmp/t3s-native-h3-coherent-observation.log` passed once: BOTH ID roles reached deadline/retirement standby without idle factory renewal, explicitly retried with current native connected/open channels and exchanged three messages each direction; all four measured selected pairs were `succeeded/host/host`. Zero credential/external requests.
+- Full closure passed once: 966/966, zero failures/cancellations/skips (`/tmp/t3s-full.log`). Retained production trusted inbox/notice/staging outside Connections PASS (`/tmp/t3s-native-inbox.log`), repeat after close/no restore, was not rerun.
+- Fixture proof resets both counters before sends, verifies current owned-channel traffic before stats and returns measurements from one coherent current-session report through a disposed handle. Referenced pair/candidates must exist with correct types, pair `succeeded`, local `host`, remote only `host`/`prflx`; no missing/historical/relay/server-reflexive values accepted. Retirement clears old references/counters. [W3C defines `prflx` as peer-reflexive, distinct from relay](https://www.w3.org/TR/webrtc/#rtcicecandidatetype-enum). This is native direct-component/no-ICE-servers proof, not live TURN.
+
+### Preserved counterexamples
+| Failed artifact | Actual observation and limit |
+| --- | --- |
+| `/tmp/t3s-native-h3.log` | Role-0 retry assertion without pair details; original cause remains unclassified. |
+| `/tmp/t3s-native-h3-diagnostic.log` | Role-0 pair assertion: connected/open, `host/prflx` and `host/host`; payload/role 1 not reached. |
+| `/tmp/t3s-native-h3-final.log` | Role-0 message timeout after bilateral succeeded host pairs; counts 3/0, role 1 not reached. |
+| `/tmp/t3s-native-h3-ordered-counters.log` | Role 0 passed three messages each way; role-1 pair assertion with `{}`/succeeded host pair; payload not reached, displayed counters were from role 0. |
+
+All failed logs remain unchanged. Counter-reset ordering and inconsistent wait/snapshot selectors were real fixture defects, but their correction does not retrospectively classify failed-run causes; final single-run acceptance is not a stability/repeatability claim. Native simultaneous glare/ordinary controls were not rerun; fresh glare evidence is deterministic. Tutorials N/A. Native review, commit, preview activation, authoritative Engram mirror and broader SA/full-index/physical/live/selective-merge acceptance remain pending. Fixture recovery did not alter production bytes.

@@ -560,3 +560,31 @@ test('older auth setup continuation cannot replace or stop newest account standb
  h.ctx.identityStore.getSelf=async()=>({deviceId:'self'});h.change({uid:'C'});await settleInbox();const current=h.ctx.miniBackupListeners.get(inboxPeer.peerId);
  release({deviceId:'self'});await settleInbox();assert.notEqual(old,current);assert.equal(old.stopped,true);assert.equal(current.stopped,false);assert.equal(h.signals.at(-1).closed,0);assert.equal(h.options.length,0);h.ctx.stop(inboxPeer.peerId);
 });
+
+function preparationHarness() {
+  const vm = require('node:vm'), fs = require('node:fs');
+  const deadlines = [], context = { module: { exports: {} }, setTimeout(fn) { const timer = { fn, cancelled: false }; deadlines.push(timer); return timer; }, clearTimeout(timer) { timer.cancelled = true; } };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../mini-peer-availability.js'), 'utf8'), context);
+  const h = inboxHarness(); h.ctx.root.MiniPeerAvailability = context.module.exports;
+  return { h, deadlines };
+}
+test('preparation expiry after channel open clears entry and rejects readiness without trusted auth', async () => {
+  const { h, deadlines } = preparationHarness(), entry = await h.ctx.ensure(inboxPeer);
+  await entry.availability.demand();
+  h.options[0].onChannel({ readyState: 'open', close() {} });
+  const pending = entry.lease.run(async () => 'should not send');
+  const rejected = assert.rejects(pending);
+  assert.equal(deadlines[0].cancelled, false, 'channel/factory are not trusted readiness');
+  deadlines[0].fn(); await rejected;
+  assert.equal(entry.session, null); assert.equal(entry.lease, null); assert.equal(h.signals[0].closed, 0);
+  assert.equal(h.counts().released, 0); h.ctx.stop(inboxPeer.peerId);
+});
+test('trusted readiness clears preparation deadline but queued old deadline and auth cannot alter replacement', async () => {
+  const { h, deadlines } = preparationHarness(), entry = await h.ctx.ensure(inboxPeer);
+  await entry.availability.demand(); h.options[0].onChannel({ readyState: 'open', close() {} });
+  h.handshakes[0].onAuthenticated(); assert.equal(deadlines[0].cancelled, true); assert.equal(entry.authenticated, true);
+  entry.availability.retire(); await entry.availability.demand();
+  const current = entry.session; deadlines[0].fn(); h.handshakes[0].onAuthenticated();
+  assert.equal(entry.session, current); assert.equal(entry.authenticated, false); assert.equal(h.sessions[1].closed, 0);
+  h.ctx.stop(inboxPeer.peerId);
+});

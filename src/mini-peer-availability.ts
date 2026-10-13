@@ -18,7 +18,7 @@ interface MiniAvailabilityOptions {
   localPeerId: string;
   remotePeerId: string;
   validateFrame(frame: unknown): NonNullable<MiniAvailabilityEvent['frame']>;
-  createSession(options: { signaling: MiniAvailabilitySignal; initiator: boolean; demandNegotiation: { localPeerId: string; remotePeerId: string } }): Promise<MiniAvailabilitySession>;
+  createSession(options: { signaling: MiniAvailabilitySignal; initiator: boolean; onReady(): boolean; demandNegotiation: { localPeerId: string; remotePeerId: string } }): Promise<MiniAvailabilitySession>;
   onState?(state: string, error?: unknown): void;
   setupTimeoutMs?: number;
 }
@@ -68,6 +68,14 @@ interface MiniAvailabilityOptions {
       if (active) return Promise.resolve(active);
       const ownGeneration = generation;
       const ownListeners = listeners;
+      let ready = false;
+      const onReady = () => {
+        if (stopped || ownGeneration !== generation) return false;
+        ready = true;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        return true;
+      };
       const borrowed: MiniAvailabilitySignal = {
         expiresAt: null,
         connect: () => signaling.connect(),
@@ -75,11 +83,11 @@ interface MiniAvailabilityOptions {
         onEvent: callback => { ownListeners.add(callback); return () => ownListeners.delete(callback); },
         close: () => { /* RTC retirement must leave shared signaling available. */ }
       };
-      timer = setTimeout(() => { if (ownGeneration === generation) { retire(); options.onState?.('error', new Error('La preparación Mini excedió el tiempo límite.')); } }, Math.min(30000, Math.max(1, options.setupTimeoutMs ?? 10000)));
+      timer = setTimeout(() => { if (!ready && ownGeneration === generation) { retire(); options.onState?.('error', new Error('La preparación Mini excedió el tiempo límite.')); } }, Math.min(30000, Math.max(1, options.setupTimeoutMs ?? 10000)));
       const cancelled = new Promise<MiniAvailabilitySession>((_resolve, reject) => { cancelSetup = reject; });
       const creation = Promise.resolve().then(() => {
         if (stopped || ownGeneration !== generation) throw new Error('Preparación Mini retirada.');
-        return options.createSession({ signaling: borrowed, initiator: false,
+        return options.createSession({ signaling: borrowed, initiator: false, onReady,
           demandNegotiation: { localPeerId: options.localPeerId, remotePeerId: options.remotePeerId } });
       }).then(async session => {
         if (stopped || ownGeneration !== generation) { session.close(); throw new Error('Preparación Mini retirada.'); }
@@ -89,8 +97,7 @@ interface MiniAvailabilityOptions {
         if (localDemand && !offerIdentity) await session.startNegotiation?.();
         if (stopped || ownGeneration !== generation) throw new Error('Preparación Mini retirada.');
         setup = null; cancelSetup = null;
-        if (timer) clearTimeout(timer); timer = null;
-        options.onState?.('connecting');
+        if (!ready) options.onState?.('connecting');
         return session;
       }).catch(error => {
         if (ownGeneration === generation && !stopped) { retire(); options.onState?.('error', error); }

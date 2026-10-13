@@ -67,6 +67,16 @@
                 return Promise.resolve(active);
             const ownGeneration = generation;
             const ownListeners = listeners;
+            let ready = false;
+            const onReady = () => {
+                if (stopped || ownGeneration !== generation)
+                    return false;
+                ready = true;
+                if (timer)
+                    clearTimeout(timer);
+                timer = null;
+                return true;
+            };
             const borrowed = {
                 expiresAt: null,
                 connect: () => signaling.connect(),
@@ -75,7 +85,7 @@
                 onEvent: callback => { ownListeners.add(callback); return () => ownListeners.delete(callback); },
                 close: () => { }
             };
-            timer = setTimeout(() => { var _a; if (ownGeneration === generation) {
+            timer = setTimeout(() => { var _a; if (!ready && ownGeneration === generation) {
                 retire();
                 (_a = options.onState) === null || _a === void 0 ? void 0 : _a.call(options, 'error', new Error('La preparación Mini excedió el tiempo límite.'));
             } }, Math.min(30000, Math.max(1, (_a = options.setupTimeoutMs) !== null && _a !== void 0 ? _a : 10000)));
@@ -83,7 +93,7 @@
             const creation = Promise.resolve().then(() => {
                 if (stopped || ownGeneration !== generation)
                     throw new Error('Preparación Mini retirada.');
-                return options.createSession({ signaling: borrowed, initiator: false,
+                return options.createSession({ signaling: borrowed, initiator: false, onReady,
                     demandNegotiation: { localPeerId: options.localPeerId, remotePeerId: options.remotePeerId } });
             }).then(async (session) => {
                 var _a, _b;
@@ -104,10 +114,8 @@
                     throw new Error('Preparación Mini retirada.');
                 setup = null;
                 cancelSetup = null;
-                if (timer)
-                    clearTimeout(timer);
-                timer = null;
-                (_b = options.onState) === null || _b === void 0 ? void 0 : _b.call(options, 'connecting');
+                if (!ready)
+                    (_b = options.onState) === null || _b === void 0 ? void 0 : _b.call(options, 'connecting');
                 return session;
             }).catch(error => {
                 var _a;

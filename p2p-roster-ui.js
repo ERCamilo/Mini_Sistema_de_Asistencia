@@ -2203,6 +2203,7 @@
           entry.transport = transport; entry.state = 'connecting'; publishMiniBackupConnections();
           const ownsTransport = () => isCurrent() && entry.transport === transport;
           const retire = () => { if (ownsTransport()) retireMiniBackupTransport(entry, transport); };
+          let finishAuthentication = null;
           const session = await core.createRtcSession({ ...options,
             onState: (status, error) => {
               if (error || ['disconnected', 'failed', 'closed'].includes(status)) retire();
@@ -2215,12 +2216,15 @@
               pairing.attachTrusted(channel, {
                 self, peer, store: identityStore, allowSameApp: true,
                 onAuthenticated: () => {
-                  if (!ownsTransport()) return;
-                  entry.authenticated = true; entry.state = 'connected'; entry.lease?.ready(channel); publishMiniBackupConnections();
-                  offers.release((offer, respond) => {
-                    if (!ownsTransport()) return;
-                    promptIncomingBackup(peer, offer, respond, channel, entry);
-                  });
+                  finishAuthentication = () => {
+                    if (!ownsTransport() || !entry.lease?.valid() || !options.onReady()) return;
+                    entry.authenticated = true; entry.state = 'connected'; entry.lease.ready(channel); publishMiniBackupConnections();
+                    offers.release((offer, respond) => {
+                      if (!ownsTransport()) return;
+                      promptIncomingBackup(peer, offer, respond, channel, entry);
+                    });
+                  };
+                  finishAuthentication();
                 },
                 onError: retire
               });
@@ -2229,7 +2233,7 @@
           if (!ownsTransport()) { session.close(); throw new Error('Conexión Mini retirada.'); }
           entry.session = session;
           entry.lease = peerSessionManager().lease(session, startedAt, retire, { guest: !root.privateTurnTest?.active, transportOwnedExternally: true });
-          if (entry.authenticated) entry.lease.ready(entry.channel);
+          finishAuthentication?.();
           return session;
         }
       });
