@@ -27,9 +27,14 @@
         if (options.enabled !== true)
             return { active: false, dispose: () => { } };
         const origin = ((_a = root.location) === null || _a === void 0 ? void 0 : _a.origin) || '', identity = options.appIdentity, core = root.SaMiniP2P;
+        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test')
+            fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        const publicPreview = options.profile === 'mini-pages-turn-test';
+        if (publicPreview && (origin !== 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev' || identity !== 'mini' || options.forceRelay !== true || options.diagnostics !== true || (options.allowedOrigins || []).length))
+            fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         try {
             const url = new URL(origin);
-            if (url.protocol !== 'https:' || (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity))
+            if (url.protocol !== 'https:' || (!publicPreview && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity))
                 fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         }
         catch {
@@ -82,7 +87,7 @@
         // may complete later; the label observer preserves this same identity.
         const readyVersion = () => { var _a; (_a = doc === null || doc === void 0 ? void 0 : doc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(doc, 'DOMContentLoaded', readyVersion); void Promise.resolve().then(decorateVersion); };
         let unsubscribe = () => { };
-        const provider = root.PrivateTurn.createProvider({ enabled: true, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => (auth === null || auth === void 0 ? void 0 : auth.currentUser) || null, fetcher, now: options.now });
+        const provider = root.PrivateTurn.createProvider({ enabled: true, profile: options.profile, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => (auth === null || auth === void 0 ? void 0 : auth.currentUser) || null, fetcher, now: options.now });
         // Private observations are bounded and never become connection authority.
         const observations = new Map();
         const history = new Map();

@@ -549,3 +549,23 @@ test('signed demand reuse does not trust preexisting frozen lease metadata', asy
   const f = fixture({ SaMiniP2P: { createRtcSession: async () => frozen } }); const handle = f.install();
   await assert.rejects(f.root.SaMiniP2P.createRtcSession({ demandNegotiation: {} }), /TURN_LEASE_METADATA_UNAVAILABLE/); handle.dispose();
 });
+test('named public bootstrap keeps existing Mini auth and guest original path', async () => {
+  const origin='https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev';
+  const f=fixture({location:{origin}});f.auth.currentUser=null;
+  const handle=f.install({profile:'mini-pages-turn-test',forceRelay:true,diagnostics:true,contract:{ttlUnit:'seconds',expiresAtFormat:'unix-seconds',clockSource:'issuer'}});
+  const options={signaling:{}};await f.root.SaMiniP2P.createRtcSession(options);
+  assert.equal(f.requests(),0);assert.equal(f.calls()[0].signaling,options.signaling);assert.equal(f.calls()[0].iceServers,undefined);assert.ok(f.appNames.every(name=>name==='mini-field'));handle.dispose();
+});
+test('public bootstrap cannot be applied to SA or alternate hosts', () => {
+  const options={profile:'mini-pages-turn-test',forceRelay:true,diagnostics:true,contract:{ttlUnit:'seconds',expiresAtFormat:'unix-seconds',clockSource:'issuer'}};
+  assert.throws(()=>fixture().install(options),/TURN_BOOTSTRAP_CONFIGURATION_INVALID/);
+  assert.throws(()=>fixture({location:{origin:'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev'}}).install({...options,appIdentity:'sa',loadSaAuth:async()=>({})}),/TURN_BOOTSTRAP_CONFIGURATION_INVALID/);
+});
+test('public signed bootstrap reuses named Mini user with fixed issuer Date contract', async () => {
+  let url; const time=1700000000000;
+  const f=fixture({performance:{now:()=>0},location:{origin:'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev'},fetch:async endpoint=>{
+    url=endpoint;return Response.json({username:'synthetic-user',credential:'synthetic-password',ttl:300,expiresAt:1700000300,iceServers:[{urls:'turn:turn.test.invalid:3478',username:'synthetic-user',credential:'synthetic-password'}]}, {headers:{Date:new Date(time).toUTCString()}});
+  }});
+  const handle=f.install({profile:'mini-pages-turn-test',forceRelay:true,diagnostics:true,contract:{ttlUnit:'seconds',expiresAtFormat:'unix-seconds',clockSource:'issuer'}});
+  await f.root.SaMiniP2P.createRtcSession({});assert.equal(url,'https://turn-api.erlin.do/turn-creds');assert.equal(f.calls()[0].iceTransportPolicy,'relay');assert.ok(f.appNames.every(name=>name==='mini-field'));handle.dispose();
+});

@@ -5,6 +5,7 @@ interface PrivateTurnBootstrapAuth {
 interface PrivateTurnBootstrapSession { pc: unknown; channel?: unknown; close(...args: unknown[]): void; getLeaseRemainingMs?: () => number; }
 interface PrivateTurnBootstrapCore { createRtcSession(options: Record<string, unknown>): Promise<PrivateTurnBootstrapSession>; }
 interface PrivateTurnBootstrapOptions {
+    profile?: 'mini-pages-turn-test';
     enabled: boolean;
     forceRelay?: boolean;
     diagnostics?: boolean;
@@ -91,9 +92,12 @@ interface PrivateTurnBootstrapRoot {
     function install(options: PrivateTurnBootstrapOptions): PrivateTurnBootstrapHandle {
         if (options.enabled !== true) return { active: false, dispose: () => {} };
         const origin = root.location?.origin || '', identity = options.appIdentity, core = root.SaMiniP2P;
+        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test') fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        const publicPreview = options.profile === 'mini-pages-turn-test';
+        if (publicPreview && (origin !== 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev' || identity !== 'mini' || options.forceRelay !== true || options.diagnostics !== true || (options.allowedOrigins || []).length)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         try {
             const url = new URL(origin);
-            if (url.protocol !== 'https:' || (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+            if (url.protocol !== 'https:' || (!publicPreview && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         } catch { fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID'); }
         if ((options.allowedOrigins || []).some(value => !['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'].includes(value))) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         if (!core || !root.PrivateTurn || !root.fetch || (identity === 'sa' && !options.loadSaAuth)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
@@ -133,7 +137,7 @@ interface PrivateTurnBootstrapRoot {
         // may complete later; the label observer preserves this same identity.
         const readyVersion = () => { doc?.removeEventListener?.('DOMContentLoaded', readyVersion); void Promise.resolve().then(decorateVersion); };
         let unsubscribe: () => void = () => {};
-        const provider = root.PrivateTurn.createProvider({ enabled: true, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => auth?.currentUser || null, fetcher, now: options.now });
+        const provider = root.PrivateTurn.createProvider({ enabled: true, profile: options.profile, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => auth?.currentUser || null, fetcher, now: options.now });
         // Private observations are bounded and never become connection authority.
         const observations = new Map<number, () => void>();
         const history = new Map<number, PrivateTurnBootstrapDiagnostic>();

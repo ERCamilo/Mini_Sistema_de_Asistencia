@@ -271,3 +271,26 @@ test('issuer body-reading delay is reserved before accepting near-expiry credent
 test('issuer observer exceptions cannot change credential or lease acquisition', async () => {
   const f = issuerFixture(); assert.ok(await f.provider.getConfiguration(() => { throw new Error('synthetic-secret'); })); assert.equal(f.provider.getLeaseRemainingMs(), 299000);
 });
+
+test('named public preview uses fixed endpoint and issuer Date without token diagnostics', async () => {
+  const seen = [], events = [];
+  const f = fixture({ profile: 'mini-pages-turn-test', origin: 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev', forceRelay: true,
+    contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds', clockSource: 'issuer' },
+    fetcher: async (url, options) => { seen.push({ url, options }); return Response.json({ username: 'synthetic-user', credential: 'synthetic-password', ttl: 300, expiresAt: 1700000300, iceServers: [{ urls: 'turn:turn.test.invalid:3478', username: 'synthetic-user', credential: 'synthetic-password' }] }, { headers: { Date: new Date(1700000000000).toUTCString() } }); } });
+  assert.equal((await f.provider.getConfiguration(event => events.push(event))).iceTransportPolicy, 'relay');
+  assert.equal(seen[0].url, 'https://turn-api.erlin.do/turn-creds');
+  assert.equal(seen[0].options.credentials, 'omit');
+  assert.equal(seen[0].options.redirect, 'error');
+  assert.ok(f.provider.getLeaseRemainingMs() > 0 && f.provider.getLeaseRemainingMs() <= 300000);
+  assert.doesNotMatch(JSON.stringify(events), /synthetic-token|synthetic-password/);
+});
+test('public profile rejects foreign/private origins, missing relay and wrong clock contracts', () => {
+  const options = { profile: 'mini-pages-turn-test', origin: 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev', forceRelay: true, contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds', clockSource: 'issuer' } };
+  for (const change of [{origin:'https://foreign.invalid'}, {origin:'https://127.0.0.1:9443'}, {forceRelay:false}, {contract}, {profile:'unknown'}]) assert.throws(() => fixture({...options,...change}), /TURN_CONFIGURATION_INVALID/);
+});
+test('public guest never fetches and public Date does not fall back to private header', async () => {
+  const options={profile:'mini-pages-turn-test',origin:'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev',forceRelay:true,contract:{ttlUnit:'seconds',expiresAtFormat:'unix-seconds',clockSource:'issuer'}};
+  const guest=fixture(options);guest.setUser(null);assert.equal(await guest.provider.getConfiguration(),null);assert.equal(guest.calls(),0);
+  const events=[];const f=fixture({...options,fetcher:async()=>Response.json({username:'synthetic-user',credential:'synthetic-password',ttl:300,expiresAt:1700000300,iceServers:[{urls:'turn:turn.test.invalid:3478',username:'synthetic-user',credential:'synthetic-password'}]},{headers:{'X-Turn-Issued-Date':new Date(1700000000000).toUTCString()}})});
+  await assert.rejects(f.provider.getConfiguration(event=>events.push(event)));assert.ok(events.some(event=>event.detail==='CLOCK_MISSING'));
+});
