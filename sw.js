@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.17.0-20261002-081509-375';
+const CACHE_VERSION = 'asistencia-v2.17.1-20261014-214401-522';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -35,6 +35,8 @@ const PRECACHE_ASSETS = [
   './local-db.js',
   './mini-sa-envelope.js',
   './roster-package.js',
+  './employee-proposal.js',
+  './employee-proposal-sender.js',
   './employee-positions.js',
   './sheet-import.js',
   './sa-roster-import.js',

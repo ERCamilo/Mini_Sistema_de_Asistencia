@@ -77,7 +77,7 @@ test('a blocking layer (welcome gate) keeps the user in place', async () => {
 test('index.html resolves back layers in keyboard-Escape order plus P2P steps and tabs', () => {
   const html = readFileSync(require.resolve('../index.html'), 'utf8');
   const resolver = html.slice(html.indexOf('function resolveBackLayer'), html.indexOf('window.BackNavigation.createBackNavigation'));
-  const order = ['MiniWelcome', 'modal-confirm', 'employee-number-conflict-modal', 'mini-p2p', 'activeBigModal', 'add-menu-open', ".modal.active", "currentView !== 'attendance'"];
+  const order = ['MiniWelcome', 'modal-confirm', 'employee-number-conflict-modal', 'employee-send-overlay', 'mini-p2p', 'activeBigModal', 'add-menu-open', ".modal.active", "currentView !== 'attendance'"];
   let last = -1;
   for (const marker of order) {
     const at = resolver.indexOf(marker);

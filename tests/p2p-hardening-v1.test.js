@@ -61,7 +61,7 @@ test('1. P2P home capabilities: exactly 4 surfaces (Personal, Asistencia, Backup
 
   // Exactly 4 capability declarations in the home view
   const capabilityMatches = [
-    uiSource.match(/capability\('users',\s*'Personal',\s*'Recibir de SA',\s*'is-ready'\)/),
+    uiSource.match(/capability\('users',\s*'Personal',\s*'Enviar y recibir',\s*'is-ready'\)/),
     uiSource.match(/capability\('attendance',\s*'Asistencia',\s*'Responder a SA',\s*'is-ready'\)/),
     uiSource.match(/capability\('backup',\s*'Backup',\s*'Respaldos P2P',\s*'is-ready',\s*'data-open-backup-hub'\)/),
     uiSource.match(/capability\('restore',\s*'Archivos',\s*'Próximamente',\s*'is-disabled'\)/)
