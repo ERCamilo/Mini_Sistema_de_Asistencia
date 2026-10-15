@@ -12,7 +12,7 @@ Confirmation must wait for startup hydration and the reference snapshot write be
 
 ## Task
 
-- [ ] T1 Reproduce delayed reference persistence, gate UI success on startup and completed storage, and verify reload retains the reference.
+- [x] T1 Reproduce delayed reference persistence, gate UI success on startup and completed storage, and verify reload retains the reference.
   - Acceptance: pending confirmation stays busy/unconfirmed; duplicate confirmation, refresh, and export are blocked; rejection is retryable; success occurs once after durable IndexedDB or explicit localStorage fallback.
   - Startup must finish before reporter mutation; scope is checked again after waiting.
   - Strict test-first: deferred readiness/write unit tests RED → GREEN; deterministic browser snapshot delay if local tooling is usable.
@@ -20,7 +20,7 @@ Confirmation must wait for startup hydration and the reference snapshot write be
 
 ## Progress and evidence
 
-- Implemented and functionally verified T1; parent commit and independent review remain pending, so the task is not yet closed.
+- T1 completed in local work-unit commit `edc0d6e`; parent spot check passed 12/12. Native assessment: medium, `review_due=false`, `under_budget` (279 changed lines). Review remains deferred in this slice; no approval is claimed.
 - Baseline browser without an injected delay: 1/1 passed (race is timing dependent). Holding only the actual reference snapshot write reproduced reload loss: 0/1 passed, expected `Número: 22 → 33`, actual full roster including Beto.
 - Focused unit RED: 6 passed / 6 failed before implementation. GREEN and post-normalization: 12/12 passed, no skipped/cancelled tests.
 - Focused browser GREEN: 2/2 passed; delayed snapshot blocks success and controls until release, reload retains delta, existing write-failure fallback also retains delta.
@@ -29,9 +29,9 @@ Confirmation must wait for startup hydration and the reference snapshot write be
 - Browser prerequisites: existing Playwright Core 1.63.0 and system Chromium 155. Cached Chromium 1194 has no binary. An in-memory Node preload supplies `/snap/bin/chromium`; `TMPDIR=/home/ubuntu/snap/chromium/common` permits isolated snap browser profiles. No install or harness-file edit was required.
 - Storage policy is unchanged: a completed startup with `localDbReady=false` and the legacy database still enabled fails closed. This includes existing `legacy-authoritative` migration results without explicit fallback. No MiniData attendance flag or migration behavior changed.
 - No success guarantee exists for reload/abrupt termination before confirmation reports success.
-- Parent owns commit, independent verification, native review and any publication. No commit, remote operation, PR, merge, or production access performed.
+- Parent completed the local commit and spot check. Publication, PR creation, merge, production access and any deferred native review remain pending; no remote mutation was performed for this fix.
 - Engram mirror pending. A discovery write (#1043) accidentally occurred without authoritative session identity; no further memory writes or repairs were attempted after the parent clarified the prohibition.
 
 ## Next step
 
-Parent spot check: `node --test tests/employee-report-ui.test.js tests/employee-report-wiring.test.js`. Review the local diff and complete the commit/review decision; use the fixed build timestamp for any convergent commit hook. Task completion checkbox, commit identity, review outcome and publication remain pending.
+Keep this fix separate from tutorial PR #17. Before publication, complete the deferred review if requested and obtain authorization for this separate branch/PR. Preserve the fixed build timestamp for convergent hooks. The TURN integration is not part of this bugfix.
