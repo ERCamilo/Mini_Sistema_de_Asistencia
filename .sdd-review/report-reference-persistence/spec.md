@@ -19,3 +19,9 @@ Wire the page to the actual startup promise and current snapshot queue. Readines
 - Focused browser delay must expose premature baseline success and confirm reload delta after release on the fixed code.
 
 No guarantee is made for reload/abrupt termination before the UI reports success. No global persistence redesign or schema migration is included.
+
+## Reviewed-test integration
+
+Reuse only the exact theme browser-test blob from `64f1fd0`, with its existing delayed-write RED evidence and approved lineage `review-4c9317dd0a719704`. The report fix was independently approved in `review-c82823af85637de1`. This integration changes no application behavior or tutorial/CI source. Verify the combined candidate with the complete unit and browser/tutorial suites, convergent generated stamps, and unchanged protected source repositories.
+
+PR #18 remains the report fix against `main`; PR #17 will subsequently stack its separate CI opt-in unit on the report branch. Commit, fresh integration review and remote operations remain parent-owned; no main merge or force push.
