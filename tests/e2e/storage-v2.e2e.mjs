@@ -53,12 +53,18 @@ async function device() {
 
 async function openApp(page, { name = true } = {}) {
   await page.goto(base, { waitUntil: 'networkidle' });
+  await waitForStorageBoot(page);
   if (name && await page.isVisible('#mini-welcome-name')) {
     await page.fill('#mini-welcome-name', 'Mini V2');
     await page.click('.mini-welcome-submit');
   }
-  await page.waitForFunction(() => typeof attendanceRepository !== 'undefined' && document.querySelector('#users-container'));
-  await page.waitForTimeout(400);
+}
+
+// renderStorageMode runs from init(), after bootStorage settles. The static
+// users container and usingMiniDataV2 function already exist during migration.
+async function waitForStorageBoot(page) {
+  await page.waitForFunction(() => typeof usingMiniDataV2 === 'function' &&
+    document.querySelector('#storage-mode-hint')?.textContent.includes('días guardados'));
 }
 
 const idbState = page => page.evaluate(async () => {
@@ -183,10 +189,8 @@ test('when the old IndexedDB snapshot is the newest copy, the migration uses it'
 async function confirmStorageToggle(page) {
   await page.evaluate(() => { switchView('more'); setMoreTab('settings'); });
   await page.click('#btn-storage-mode');
-  await page.click('#modal-confirm.active #confirm-ok');
-  await page.waitForLoadState('load');
-  await page.waitForFunction(() => typeof usingMiniDataV2 === 'function' && document.querySelector('#users-container'));
-  await page.waitForTimeout(800);
+  await Promise.all([page.waitForEvent('domcontentloaded'),page.click('#modal-confirm.active #confirm-ok')]);
+  await waitForStorageBoot(page);
 }
 
 test('Ajustes: back to the old storage and forward again, keeping every mark (round trip)', async () => {

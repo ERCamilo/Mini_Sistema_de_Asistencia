@@ -10,6 +10,7 @@
   const CONTROL_PROTOCOL = 'sa-mini-p2p-control/v1';
   const ROSTER_KIND = 'roster';
   const ROSTER_SCHEMA = 'sa-roster/v1';
+  const MINI_ROSTER_PROPOSAL_SCHEMA = 'mini-roster-proposal/v1';
   const BACKUP_KIND = 'backup';
   const MINI_BACKUP_SCHEMA = 'mini-backup/v1';
   const SA_BACKUP_SCHEMA = 'sa-backup/v1';
@@ -635,7 +636,7 @@
     const isRoster = message.kind === ROSTER_KIND;
     const isBackup = message.kind === BACKUP_KIND;
     if (!isRoster && !isBackup) throw new Error('Sólo se admite roster o backup.');
-    if (isRoster && message.schema !== ROSTER_SCHEMA) throw new Error('Sólo se admite roster sa-roster/v1.');
+    if (isRoster && ![ROSTER_SCHEMA, MINI_ROSTER_PROPOSAL_SCHEMA].includes(message.schema)) throw new Error('Sólo se admite roster sa-roster/v1.');
     if (isBackup && message.schema !== MINI_BACKUP_SCHEMA && message.schema !== SA_BACKUP_SCHEMA) {
       throw new Error('Esquema de backup no admitido.');
     }
@@ -676,7 +677,7 @@
     const isRoster = kind === ROSTER_KIND;
     const isBackup = kind === BACKUP_KIND;
     if (!isRoster && !isBackup) throw new Error('Sólo se admite roster o backup.');
-    if (isRoster && schema !== ROSTER_SCHEMA) throw new Error('Sólo se admite roster sa-roster/v1.');
+    if (isRoster && ![ROSTER_SCHEMA, MINI_ROSTER_PROPOSAL_SCHEMA].includes(schema)) throw new Error('Sólo se admite roster sa-roster/v1.');
     if (isBackup && schema !== MINI_BACKUP_SCHEMA && schema !== SA_BACKUP_SCHEMA) {
       throw new Error('Esquema de backup no admitido.');
     }

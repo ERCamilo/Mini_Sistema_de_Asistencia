@@ -2801,7 +2801,7 @@
                     <input type="text" id="user-position-3" list="position-options" placeholder="Otra posición (opcional)" aria-label="Tercera posición (opcional)" class="search-input">
                 </div>
                 <div style="margin-bottom: 16px;"><input type="text" id="user-sueldo"
-                        placeholder="Sueldo (Opcional)" aria-label="Sueldo (opcional)" class="search-input"></div>
+                        placeholder="Salario por día (opcional)" aria-label="Salario por día (opcional)" class="search-input"></div>
                 <div style="margin-bottom: 16px;">
                     <select id="user-work-context" class="search-input" style="cursor:pointer;" aria-label="Obra o cuadrilla">
                         <option value="">(Sin obra / cuadrilla)</option>
@@ -3611,6 +3611,8 @@
     <script src="./vendor/qrcode.js"></script>
     <script src="./back-navigation.js"></script>
     <script src="./mini-welcome.js"></script>
+    <script src="./employee-proposal.js"></script>
+    <script src="./employee-proposal-sender.js"></script>
     <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
@@ -5389,6 +5391,8 @@
             if (document.getElementById('modal-confirm').classList.contains('active')) return () => closeModal('modal-confirm');
             const conflictModal = document.getElementById('employee-number-conflict-modal');
             if (conflictModal && conflictModal.classList.contains('active')) return () => closeModal('employee-number-conflict-modal');
+            const employeeSelection = document.querySelector('.employee-send-overlay');
+            if (employeeSelection) return () => employeeSelection.querySelector('[data-employee-send-cancel]').click();
             const transfer = document.querySelector('.mini-p2p-overlay');
             if (transfer) {
                 return () => {

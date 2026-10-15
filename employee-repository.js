@@ -433,6 +433,47 @@
             persistUsers([]);
             persistTombstones([]);
         }
+        function applySaEmployeeBindings(rawResult, proposal) {
+            const contract = globalThis.MiniEmployeeProposal;
+            const result = contract.validateResult(rawResult, proposal);
+            const users = loadUsers(), original = new Map(proposal.employees.map(e => [e.miniLocalId, e]));
+            const mapping = new Map(result.mappings.map(e => [e.miniLocalId, e]));
+            let changed = 0;
+            const next = users.map(employee => {
+                const target = mapping.get(employee.id);
+                if (!target)
+                    return employee;
+                if (employee._saProposalId === proposal.proposalId) {
+                    if (employee.saEmployeeId !== target.saEmployeeId || employee.saProjectId !== proposal.saProjectId)
+                        throw new Error('La respuesta repetida tiene otra vinculación.');
+                    return employee;
+                }
+                const sent = original.get(employee.id);
+                const currentSalary = employee.sueldo ? Number(employee.sueldo) : null;
+                if (!sent || String(employee.number).trim() !== sent.number || employee.name.trim() !== sent.name || String(employee.position || '').trim() !== sent.position || currentSalary !== sent.dailySalary || String(employee.phone || '').trim() !== sent.phone || String(employee.email || '').trim() !== sent.email)
+                    throw new Error('El empleado cambió después del envío. Revisa los cambios en Mini antes de vincular.');
+                if (employee.saProjectId && employee.saProjectId !== proposal.saProjectId)
+                    throw new Error('El empleado ya está vinculado a otra obra.');
+                changed++;
+                return { ...employee, number: target.number, name: target.name, position: target.position, sueldo: target.dailySalary === null ? undefined : String(target.dailySalary), phone: target.phone, email: target.email, saProjectId: proposal.saProjectId, saEmployeeId: target.saEmployeeId, _saProposalId: proposal.proposalId, updatedAt: nowFn() };
+            });
+            if (result.mappings.some(m => !users.some(e => e.id === m.miniLocalId)))
+                throw new Error('Un empleado enviado ya no existe en Mini.');
+            for (const target of result.mappings) {
+                if (next.some(e => e.id !== target.miniLocalId && e.saProjectId === proposal.saProjectId && e.saEmployeeId === target.saEmployeeId))
+                    throw new Error('Ese empleado de SA ya está vinculado a otra ficha de Mini. Resuelve el duplicado antes de aplicar.');
+            }
+            const numbers = new Set();
+            for (const e of next) {
+                const value = Number(e.number);
+                if (numbers.has(value))
+                    throw new Error('La ficha confirmada está ocupada en Mini. Resuelve el duplicado antes de aplicar.');
+                numbers.add(value);
+            }
+            if (changed)
+                persistUsers(next);
+            return changed;
+        }
         return {
             getAll,
             getById,
@@ -443,6 +484,7 @@
             remove,
             importBatch,
             importSaRoster,
+            applySaEmployeeBindings,
             exportSnapshot,
             getTombstones,
             clearTombstones,
