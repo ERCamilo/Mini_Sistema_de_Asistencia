@@ -33,7 +33,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Playwright is test tooling only: installed globally, never a dependency.
-      - run: npm install -g playwright@1.56.1
+      # Browser/axe tools are installed globally, never runtime dependencies.
+      - run: npm install -g playwright@1.56.1 axe-core@4.14.0
       - run: playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: AXE_PATH="$(npm root -g)/axe-core/axe.min.js" npm run test:e2e

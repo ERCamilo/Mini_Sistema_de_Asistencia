@@ -393,6 +393,13 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - La selección usa relleno sólido y alto contraste; la alternativa usa una superficie sólida más oscura o de menor énfasis.
 - Está prohibido usar `borde de color + centro transparente + texto de color` como lenguaje principal en botones, chips, badges o etiquetas. Los bordes sólo apoyan la estructura.
 
+### 8.5.1 Reporte de empleados
+
+- Entrada desde Empleados; modal existente con vista previa de texto, scope humano y opciones Listado completo / Solo cambios con selección sólida.
+- La referencia se actualiza sólo con Ya lo envié después de compartir/copiar. La interfaz distingue preparar/abrir WhatsApp de confirmar el reporte; no anuncia entrega automática.
+- Tras confirmar, ocultar acciones de compartido ya completadas y ofrecer Ver cambios pendientes. Mantener el texto revisado; cambios posteriores siguen pendientes.
+- Controles de 44 px como mínimo, texto que pueda envolver y estado inline. Reutilizar tokens de los cinco temas, iconos vectoriales y navegación atrás del modal grande; no reconstruir el formulario al cambiar estado.
+
 ### 8.6 Presencia P2P en tiempo real y estados de conexión (F3.4)
 
 - **Compuerta de red (`navigator.onLine`):** `navigator.onLine === false` es la compuerta primaria infranqueable. Mientras el dispositivo esté desconectado de la red, no se inician sondas WebRTC ni reintentos pasivos; el estado de presencia expira de inmediato a desconectado. Al regresar a `online`, se dispara una verificación acotada inmediata. Estar `online` en el navegador no garantiza disponibilidad del par (no es prueba suficiente).
