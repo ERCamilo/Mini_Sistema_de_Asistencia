@@ -17,6 +17,7 @@
     <script>try { var savedTheme = localStorage.getItem('appTheme'); if (/^(dark|light|contrast|ocean|sol)$/.test(savedTheme || '')) document.documentElement.setAttribute('data-theme', savedTheme); } catch (e) { /* default theme */ }</script>
     <link rel="stylesheet" href="./p2p-transfer.css">
     <link rel="stylesheet" href="./mini-notice.css">
+    <link rel="stylesheet" href="./employee-report.css">
 
     <style>
         /* --- DEFINICIÓN DE TEMAS (VARIABLES CSS) --- */
@@ -2596,6 +2597,7 @@
     <!-- VISTA EMPLEADOS -->
     <div id="employees-view" class="hidden">
         <div class="dashboard-panel">
+            <button type="button" class="employee-report-entry" id="btn-employee-report" onclick="window.EmployeeReportUI.open()"><span class="ic" data-icon="reports" data-icon-vector></span> Reporte de empleados</button>
             <div class="category-pills" id="work-context-pills-emp" style="margin-bottom: 10px; display: none;"></div>
             <div class="category-pills" id="emp-status-pills" style="margin-bottom: 12px; display: flex;">
                 <button type="button" class="category-pill active" id="pill-emp-status-all" onclick="setEmployeeStatusFilter('all')">Todos <span id="emp-count-all" style="font-weight:600;opacity:0.8;"></span></button>
@@ -2634,6 +2636,27 @@
                 <button type="button" class="export-btn" style="color:var(--danger-color);min-width:44px;padding:8px 6px;" onclick="doBulkDelete()" aria-label="Eliminar seleccionados" title="Eliminar">
                     <span class="ic" data-icon="trash"></span>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal big" id="modal-employee-report" role="dialog" aria-modal="true" aria-labelledby="employee-report-title">
+        <div class="modal-content employee-report-panel">
+            <div class="modal-handle"></div>
+            <div class="modal-header"><div class="modal-title" id="employee-report-title">Reporte de empleados</div><div class="modal-subtitle" id="employee-report-scope"></div></div>
+            <div class="employee-report-modes" aria-label="Contenido del reporte">
+                <button type="button" id="employee-report-full" aria-pressed="false">Listado completo</button>
+                <button type="button" id="employee-report-changes" aria-pressed="false">Solo cambios</button>
+            </div>
+            <p id="employee-report-status" role="status" aria-live="polite"></p>
+            <textarea id="employee-report-text" readonly aria-label="Vista previa del reporte"></textarea>
+            <p class="employee-report-hint">Elige WhatsApp al compartir. Abrirlo no registra el reporte como enviado.</p>
+            <div class="employee-report-actions">
+                <button type="button" class="btn-full btn-primary" id="employee-report-share">Compartir reporte</button>
+                <button type="button" class="btn-full btn-secondary" id="employee-report-copy">Copiar</button>
+                <button type="button" class="btn-full btn-primary" id="employee-report-confirm" hidden>Ya lo envié</button>
+                <button type="button" class="btn-full btn-secondary" id="employee-report-refresh">Actualizar vista previa</button>
+                <button type="button" class="btn-full btn-secondary" onclick="closeModal('modal-employee-report')">Cerrar</button>
             </div>
         </div>
     </div>
@@ -3623,6 +3646,8 @@
     <script src="./import-history-repository.js"></script>
     <script src="./work-context.js"></script>
     <script src="./bulk-actions.js"></script>
+    <script src="./employee-change-report.js"></script>
+    <script src="./employee-report-ui.js"></script>
     <script src="./build-info.js"></script>
     <script>
         let users = [];
@@ -3702,6 +3727,12 @@
         window.workContextManager = workContextManager;
         window.employeeRepository = employeeRepository;
         window.attendanceRepository = attendanceRepository;
+        window.EmployeeReportUI.configure({
+            getData: () => ({scope: {id: workContextManager.getActiveId() || 'all', name: workContextManager.getActive()?.name || 'Todos los empleados'}, employees: workContextManager.filterEmployees(employeeRepository.getAll()), attendance: attendanceRepository.getAll(), tombstones: attendanceRepository.getTombstones(), today: window.LocalDate.toLocalDateKey()}),
+            isReady: () => !!document.getElementById('storage-mode-hint')?.textContent.includes('días guardados'),
+            openModal, toast: showToast, copy: copyTextToClipboard,
+            storage: {getItem: key => localStorage.getItem(key), setItem: saveLocalSetting}
+        });
         window.exportCanonicalAttendanceSubmission = function (workDate, saProjectId, options = {}) {
             if (!window.AttendanceExport) throw new Error('AttendanceExport module is not available');
             return window.AttendanceExport.generateAttendanceSubmission({
@@ -7764,7 +7795,7 @@
             });
         };
 
-        const BACKUP_SETTINGS_KEYS = ['appTheme', 'iconStyle', 'checkMode', 'reminderConfig', 'expectedHoursPerDay'];
+        const BACKUP_SETTINGS_KEYS = ['appTheme', 'iconStyle', 'checkMode', 'reminderConfig', 'expectedHoursPerDay', 'mini_employee_report_v1'];
 
         // Single source of truth for Mini backups (file download and P2P send).
         function buildMiniBackupData() {
@@ -8437,7 +8468,7 @@
 
                 // 3. Limpiar todas las llaves legacy en localStorage
                 ['attendance', 'attendance_tombstones'].forEach(k => attendanceStorage.removeItem(k));
-                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp'].forEach(k => localStorage.removeItem(k));
+                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp', 'mini_employee_report_v1'].forEach(k => localStorage.removeItem(k));
                 
                 // 4. Persistir snapshot completamente limpio (localStorage + IndexedDB)
                 saveData();

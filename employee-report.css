@@ -1,0 +1,18 @@
+.employee-report-entry {display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;margin-bottom:12px;padding:10px 14px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);color:var(--text-color);font:inherit;font-weight:600;cursor:pointer;}
+.employee-report-panel {display:flex;flex-direction:column;gap:12px;}
+.employee-report-panel .modal-header {margin-bottom:0;}
+.employee-report-panel .modal-subtitle {overflow-wrap:anywhere;}
+.employee-report-modes {display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.employee-report-modes button {min-height:44px;padding:10px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);color:var(--text-color);font:inherit;cursor:pointer;}
+.employee-report-modes button.active {background:var(--accent-color);color:var(--bg-color);font-weight:700;}
+.employee-report-panel p {margin:0;color:var(--text-muted);line-height:1.5;font-size:.875rem;}
+#employee-report-status {color:var(--text-color);}
+#employee-report-text {width:100%;min-height:180px;height:30dvh;resize:vertical;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);color:var(--text-color);font:inherit;font-size:.875rem;line-height:1.6;}
+.employee-report-actions {display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.employee-report-actions .btn-full {margin:0;min-height:44px;font:inherit;padding:12px;}
+.employee-report-actions .btn-primary {background:var(--accent-color);color:var(--bg-color);}
+.employee-report-actions .btn-secondary {background:var(--input-bg);color:var(--text-color);}
+.employee-report-actions button[hidden] {display:none;}
+.employee-report-actions #employee-report-share,.employee-report-actions #employee-report-confirm {grid-column:1 / -1;}
+.employee-report-modes button:disabled,.employee-report-actions button:disabled {opacity:.55;cursor:default;}
+@media (max-width:360px) {.employee-report-actions {grid-template-columns:1fr;}}
