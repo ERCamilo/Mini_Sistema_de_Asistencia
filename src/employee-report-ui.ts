@@ -1,4 +1,14 @@
-interface EmployeeReportUIOptions {
+interface EmployeeReportUIConfirmationBoundary {
+  waitUntilReady?():Promise<void>;
+  waitUntilPersisted?():Promise<void>;
+}
+interface EmployeeReportUIPersistenceOptions {
+  getStartup():Promise<void>|null;
+  getWriteQueue():Promise<void>;
+  isReady():boolean;
+  isFallback():boolean;
+}
+interface EmployeeReportUIOptions extends EmployeeReportUIConfirmationBoundary {
   reporter: { prepare(input:EmployeeReportInput):EmployeeReportPrepared; confirm(report:EmployeeReportPrepared):void };
   getData():EmployeeReportInput;
   share(text:string):Promise<void>; copy(text:string):Promise<void>;
@@ -8,7 +18,7 @@ interface EmployeeReportUIView {
   report:EmployeeReportPrepared|null; busy:boolean; canConfirm:boolean;
   confirmed:boolean; message:string;
 }
-interface EmployeeReportUIConfig {
+interface EmployeeReportUIConfig extends EmployeeReportUIConfirmationBoundary {
   getData():EmployeeReportInput; isReady():boolean;
   openModal(id:string):void; toast(message:string):void;
   copy(text:string):Promise<void>; onConfirmed?():void; storage?:EmployeeReportStorage;
@@ -19,6 +29,23 @@ interface EmployeeReportUIConfig {
   if(typeof module==='object'&&module&&module.exports)module.exports=api;
   if(root)root.EmployeeReportUI=api;
 })(typeof globalThis!=='undefined'?globalThis:this,function(root:any){
+  // A resolved queue alone says nothing about startup hydration or skipped writes.
+  function createPersistenceBoundary(options:EmployeeReportUIPersistenceOptions) {
+    function assertAvailable():void {
+      if(!options.isReady()&&!options.isFallback())throw new Error('No se pudo guardar la referencia: el almacenamiento aún no está listo. Intenta de nuevo.');
+    }
+    return {
+      waitUntilReady():Promise<void> {
+        const startup=options.getStartup();
+        if(!startup)return Promise.reject(new Error('Mini está cargando los datos. Vuelve a intentarlo.'));
+        return startup.then(assertAvailable);
+      },
+      waitUntilPersisted():Promise<void> {
+        // Read after the synchronous ledger mutation has enqueued its snapshot.
+        return options.getWriteQueue().then(assertAvailable);
+      }
+    };
+  }
   function createController(options:EmployeeReportUIOptions) {
     let report:EmployeeReportPrepared|null=null, busy=false, offered=false, confirmed=false, message='';
     const getView=():EmployeeReportUIView=>({report,busy,canConfirm:offered&&!confirmed&&!busy,confirmed,message});
@@ -44,13 +71,18 @@ interface EmployeeReportUIConfig {
       }catch(error){message=error instanceof Error&&error.name==='AbortError'?'Compartido cancelado. Los cambios siguen pendientes.':error instanceof Error?error.message:'No se pudo compartir. Los cambios siguen pendientes.';return false;}
       finally{busy=false;publish();}
     }
-    function confirm():boolean {
+    async function confirm():Promise<boolean> {
       if(!report||!offered||busy||confirmed)return false;
-      try{assertScope();options.reporter.confirm(report);}
-      catch(error){message=error instanceof Error&&error.name==='QuotaExceededError'?'No se pudo guardar la referencia: el almacenamiento está lleno. El reporte sigue pendiente.':error instanceof Error?error.message:'No se pudo registrar el reporte. Los cambios siguen pendientes.';publish();return false;}
-      confirmed=true;message='Reporte registrado. Las próximas comparaciones usarán exactamente este listado.';
-      try{options.onConfirmed?.();}catch(_){message+=' La copia de respaldo local sigue pendiente.';}
-      publish();return true;
+      busy=true;message='Guardando la referencia del reporte…';publish();
+      try {
+        await options.waitUntilReady?.();
+        assertScope();options.reporter.confirm(report);
+        await options.waitUntilPersisted?.();
+        confirmed=true;message='Reporte registrado. Las próximas comparaciones usarán exactamente este listado.';
+        try{options.onConfirmed?.();}catch(_){message+=' La copia de respaldo local sigue pendiente.';}
+        return true;
+      }catch(error){message=error instanceof Error&&error.name==='QuotaExceededError'?'No se pudo guardar la referencia: el almacenamiento está lleno. El reporte sigue pendiente.':error instanceof Error?error.message:'No se pudo registrar el reporte. Los cambios siguen pendientes.';return false;}
+      finally{busy=false;publish();}
     }
     return {refresh,getView,share:()=>exportText('share'),copy:()=>exportText('copy'),confirm};
   }
@@ -76,7 +108,7 @@ interface EmployeeReportUIConfig {
       button.disabled=view.busy||mode==='changes'&&!view.report?.hasReference&&!view.confirmed;
       button.onclick=()=>controller?.refresh(mode);
     }
-    share.onclick=()=>{void controller?.share();};copy.onclick=()=>{void controller?.copy();};confirm.onclick=()=>controller?.confirm();
+    share.onclick=()=>{void controller?.share();};copy.onclick=()=>{void controller?.copy();};confirm.onclick=()=>{void controller?.confirm();};
     const refresh=doc.getElementById('employee-report-refresh') as HTMLButtonElement;
     refresh.textContent=view.confirmed?'Ver cambios pendientes':'Actualizar vista previa';
     refresh.classList.toggle('btn-primary',view.confirmed);refresh.classList.toggle('btn-secondary',!view.confirmed);
@@ -96,8 +128,8 @@ interface EmployeeReportUIConfig {
   function open():void {
     if(!config)return;
     if(!config.isReady()){config.toast('Mini está cargando los datos. Vuelve a intentarlo.');return;}
-    controller=createController({reporter:root.EmployeeChangeReport.createReporter({storage:config.storage||root.localStorage}),getData:config.getData,share:shareText,copy:config.copy,onConfirmed:config.onConfirmed,onView:render});
+    controller=createController({reporter:root.EmployeeChangeReport.createReporter({storage:config.storage||root.localStorage}),getData:config.getData,share:shareText,copy:config.copy,waitUntilReady:config.waitUntilReady,waitUntilPersisted:config.waitUntilPersisted,onConfirmed:config.onConfirmed,onView:render});
     controller.refresh();config.openModal('modal-employee-report');
   }
-  return {createController,configure,open};
+  return {createController,createPersistenceBoundary,configure,open};
 });
