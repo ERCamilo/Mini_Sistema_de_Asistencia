@@ -9,3 +9,10 @@ test('el reporte funciona offline y su referencia participa en respaldo/borrado 
  const settings=html.match(/const BACKUP_SETTINGS_KEYS = \[([^\]]+)\]/)[1];assert.match(settings,/mini_employee_report_v1/);
  const reset=html.slice(html.indexOf('window.clearAllData ='),html.indexOf('// --- COPIAR AL PORTAPAPELES ---'));assert.match(reset,/mini_employee_report_v1/);
 });
+
+test('report confirmation uses the real startup promise and current snapshot queue',()=>{
+ const html=read('index.html');
+ assert.match(html,/localPersistenceReady = initLocalPersistence\(\)/);
+ assert.match(html,/EmployeeReportUI\.createPersistenceBoundary\(\{[\s\S]*?getStartup: \(\) => localPersistenceReady,[\s\S]*?getWriteQueue: \(\) => localDbWriteQueue,[\s\S]*?isReady: \(\) => localDbReady,[\s\S]*?isFallback: \(\) => !window\.MiniLocalDb\.isEnabled\(localStorage\)/);
+ assert.match(html,/EmployeeReportUI\.configure\(\{\s*\.\.\.employeeReportPersistence/);
+});

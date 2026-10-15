@@ -3673,6 +3673,7 @@
         let localDbReady = false;
         let localDataRevision = 0;
         let localDbWriteQueue = Promise.resolve();
+        let localPersistenceReady = null;
         let pendingEmployeeConflict = null;
         let draftSession = null;
         let pendingDraftConflict = null;
@@ -3729,7 +3730,14 @@
         window.workContextManager = workContextManager;
         window.employeeRepository = employeeRepository;
         window.attendanceRepository = attendanceRepository;
+        const employeeReportPersistence = window.EmployeeReportUI.createPersistenceBoundary({
+            getStartup: () => localPersistenceReady,
+            getWriteQueue: () => localDbWriteQueue,
+            isReady: () => localDbReady,
+            isFallback: () => !window.MiniLocalDb.isEnabled(localStorage)
+        });
         window.EmployeeReportUI.configure({
+            ...employeeReportPersistence,
             getData: () => ({scope: {id: workContextManager.getActiveId() || 'all', name: workContextManager.getActive()?.name || 'Todos los empleados'}, employees: workContextManager.filterEmployees(employeeRepository.getAll()), attendance: attendanceRepository.getAll(), tombstones: attendanceRepository.getTombstones(), today: window.LocalDate.toLocalDateKey()}),
             isReady: () => !!document.getElementById('storage-mode-hint')?.textContent.includes('días guardados'),
             openModal, toast: showToast, copy: copyTextToClipboard,
@@ -4777,7 +4785,7 @@
             applyIcons(document);
             updateUndoImportButton();
             renderWorkContextBar();
-            initLocalPersistence();
+            localPersistenceReady = initLocalPersistence();
             installBackNavigation();
             maybePromptStorageHelp();
             watchFirstRunTutorial();

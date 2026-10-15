@@ -6,6 +6,25 @@
     if (root)
         root.EmployeeReportUI = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (root) {
+    // A resolved queue alone says nothing about startup hydration or skipped writes.
+    function createPersistenceBoundary(options) {
+        function assertAvailable() {
+            if (!options.isReady() && !options.isFallback())
+                throw new Error('No se pudo guardar la referencia: el almacenamiento aún no está listo. Intenta de nuevo.');
+        }
+        return {
+            waitUntilReady() {
+                const startup = options.getStartup();
+                if (!startup)
+                    return Promise.reject(new Error('Mini está cargando los datos. Vuelve a intentarlo.'));
+                return startup.then(assertAvailable);
+            },
+            waitUntilPersisted() {
+                // Read after the synchronous ledger mutation has enqueued its snapshot.
+                return options.getWriteQueue().then(assertAvailable);
+            }
+        };
+    }
     function createController(options) {
         let report = null, busy = false, offered = false, confirmed = false, message = '';
         const getView = () => ({ report, busy, canConfirm: offered && !confirmed && !busy, confirmed, message });
@@ -51,29 +70,36 @@
                 publish();
             }
         }
-        function confirm() {
-            var _a;
+        async function confirm() {
+            var _a, _b, _c;
             if (!report || !offered || busy || confirmed)
                 return false;
+            busy = true;
+            message = 'Guardando la referencia del reporte…';
+            publish();
             try {
+                await ((_a = options.waitUntilReady) === null || _a === void 0 ? void 0 : _a.call(options));
                 assertScope();
                 options.reporter.confirm(report);
+                await ((_b = options.waitUntilPersisted) === null || _b === void 0 ? void 0 : _b.call(options));
+                confirmed = true;
+                message = 'Reporte registrado. Las próximas comparaciones usarán exactamente este listado.';
+                try {
+                    (_c = options.onConfirmed) === null || _c === void 0 ? void 0 : _c.call(options);
+                }
+                catch (_) {
+                    message += ' La copia de respaldo local sigue pendiente.';
+                }
+                return true;
             }
             catch (error) {
                 message = error instanceof Error && error.name === 'QuotaExceededError' ? 'No se pudo guardar la referencia: el almacenamiento está lleno. El reporte sigue pendiente.' : error instanceof Error ? error.message : 'No se pudo registrar el reporte. Los cambios siguen pendientes.';
-                publish();
                 return false;
             }
-            confirmed = true;
-            message = 'Reporte registrado. Las próximas comparaciones usarán exactamente este listado.';
-            try {
-                (_a = options.onConfirmed) === null || _a === void 0 ? void 0 : _a.call(options);
+            finally {
+                busy = false;
+                publish();
             }
-            catch (_) {
-                message += ' La copia de respaldo local sigue pendiente.';
-            }
-            publish();
-            return true;
         }
         return { refresh, getView, share: () => exportText('share'), copy: () => exportText('copy'), confirm };
     }
@@ -107,7 +133,7 @@
         }
         share.onclick = () => { void (controller === null || controller === void 0 ? void 0 : controller.share()); };
         copy.onclick = () => { void (controller === null || controller === void 0 ? void 0 : controller.copy()); };
-        confirm.onclick = () => controller === null || controller === void 0 ? void 0 : controller.confirm();
+        confirm.onclick = () => { void (controller === null || controller === void 0 ? void 0 : controller.confirm()); };
         const refresh = doc.getElementById('employee-report-refresh');
         refresh.textContent = view.confirmed ? 'Ver cambios pendientes' : 'Actualizar vista previa';
         refresh.classList.toggle('btn-primary', view.confirmed);
@@ -139,9 +165,9 @@
             config.toast('Mini está cargando los datos. Vuelve a intentarlo.');
             return;
         }
-        controller = createController({ reporter: root.EmployeeChangeReport.createReporter({ storage: config.storage || root.localStorage }), getData: config.getData, share: shareText, copy: config.copy, onConfirmed: config.onConfirmed, onView: render });
+        controller = createController({ reporter: root.EmployeeChangeReport.createReporter({ storage: config.storage || root.localStorage }), getData: config.getData, share: shareText, copy: config.copy, waitUntilReady: config.waitUntilReady, waitUntilPersisted: config.waitUntilPersisted, onConfirmed: config.onConfirmed, onView: render });
         controller.refresh();
         config.openModal('modal-employee-report');
     }
-    return { createController, configure, open };
+    return { createController, createPersistenceBoundary, configure, open };
 });
