@@ -10,7 +10,7 @@ La interfaz principal de Transferencias expone una franja compacta (`.mini-p2p-c
 
 | Capacidad | Dirección | Kind / Schema | Estado en UI | Comportamiento |
 | :--- | :--- | :--- | :--- | :--- |
-| **Personal** | SA → Mini | `kind: "roster"`<br>`schema: "sa-roster/v1"` | Activo (`is-ready`) | Espera roster enviado por SA; pasa a staging efímero; requiere revisión y confirmación manual previa a la aplicación. |
+| **Personal** | SA ↔ Mini | `kind: "roster"`<br>`sa-roster/v1` (SA → Mini)<br>`mini-roster-proposal/v1` (Mini → SA) | Activo (`is-ready`) | Recibir de SA exige revisión/aplicación en Mini. Enviar personal confirma obra/selección en Mini y altas/contactos/coincidencias en SA; devuelve vínculos con `mini-roster-result/v1`. |
 | **Asistencia** | Mini → SA | Query/Response<br>`attendance-submission/v1` | Activo (`is-ready`) | Escucha peticiones de SA y responde con la asistencia canónica del día/proyecto solicitada. |
 | **Backup** | Mini ↔ Mini<br>SA → Mini | `kind: "backup"`<br>`mini-backup/v1`<br>`sa-backup/v1` | Activo (`is-ready`) | Abre el Hub de Respaldos (`data-open-backup-hub`). Permite enviar el respaldo nativo de Mini o recibir respaldos same-app / cross-app. |
 | **Archivos** | Futuro | N/A | Deshabilitado (`is-disabled`) | Visible con etiqueta `Próximamente`. Sin listener, sin selector de archivos y con interacción bloqueada (`pointer-events: none; cursor: not-allowed;`). |
@@ -40,6 +40,17 @@ La interfaz principal de Transferencias expone una franja compacta (`.mini-p2p-c
 2. **Generación**: Mini invoca `AttendanceExport.generateAttendanceSubmission()` para construir el payload sellado.
 3. **Envío**: Respuesta transmitida por el canal autenticado sin persistir datos intermedios en servidores externos.
 
+### 2.4.1 Enviar personal nuevo a SA
+
+1. Abre ambos clientes actualizados y vinculados. En Mini, **Transferencias → Enviar personal** junto al SA; en SA también puedes iniciar con **Recibir personal** junto al Mini.
+2. SA indica la obra activa. Mini muestra su nombre y permite seleccionar empleados antes de transmitir. Se envían nombre, ficha, puesto **principal** y salario **por día** (DOP); teléfono y correo son opcionales. Los puestos adicionales se conservan en Mini, pero no se proponen en esta entrega.
+3. SA conserva una propuesta local pendiente, sin incorporar empleados o asistencia al recibirla. En **Personal recibido para revisar**, se puede crear, vincular con un empleado existente o dejar filas pendientes. La ficha repetida bloquea el alta; el nombre parecido requiere revisar la coincidencia. Vincular conserva los contactos y salarios de SA salvo que se marque actualizar. Para un empleado nuevo, revisar también la fecha de ingreso, especialmente si tiene asistencia anterior.
+4. **Aceptar personal revisado** confirma los cambios en SA. Los puestos reutilizados conservan su tarifa general; el salario aceptado se guarda como tarifa individual. Mini adopta los datos confirmados y el ID SA, conservando el ID local, obra/cuadrilla, puestos adicionales y asistencia.
+5. Si se pierde la respuesta, vuelve a enviar la misma selección sin editarla. SA recupera la resolución guardada y no repite el alta. Si hubo cambios locales posteriores, una ficha ocupada o un vínculo SA ya usado por otra ficha Mini, Mini muestra el problema y conserva sus datos para resolverlo.
+6. La asistencia se revisa y aprueba por separado. En SA, **Registrar empleado desde Mini** desde una fila desconocida abre este flujo; las horas siguen pendientes.
+
+La bandeja y las decisiones de propuestas son locales al dispositivo/cuenta SA receptor. Se admiten hasta 500 empleados por propuesta y 12 propuestas pendientes. Descartar libera una pendiente y conserva empleados ya aceptados. La copia pendiente de Mini se conserva hasta recibir la respuesta o el descarte; reenviar después de un descarte prepara otra propuesta. El personal aceptado utiliza la sincronización normal de SA. Mantén ambos clientes en versiones que incluyan esta función.
+
 ### 2.5 Envío y Recepción de Respaldos
 
 > **Actualización (respaldo pasivo con consentimiento):** entre Minis vinculados, el receptor ya no necesita abrir el menú. Cada Mini mantiene una escucha pasiva **sólo de respaldos** por par Mini. El emisor envía primero una oferta autenticada `backup-offer {offerId, schema, size, senderName}`; el receptor ve un aviso *Respaldo entrante* con **Aceptar / Rechazar** y responde `backup-offer-reply {offerId, accepted}`. Sólo tras aceptar se transmiten bytes, y el receptor admite exactamente una transferencia cuyo `schema` y `size` coincidan con la oferta (si no, revoca el canal). La oferta vence a los 85 s sin decisión. SA todavía no implementa la oferta: con pares SA se mantiene el envío directo y el botón **Esperar**. Los respaldos vacíos (sin empleados, asistencia ni solicitudes) no se envían, revisan ni restauran.
@@ -52,7 +63,7 @@ La interfaz principal de Transferencias expone una franja compacta (`.mini-p2p-c
 ## 3. Alcance Deshabilitado y Endurecimiento Genérico (AC-6)
 
 - **Fuera de alcance absoluto**: Archivos genéricos, documentos de oficina (.docx, .xlsx), fotografías arbitrarias, documentos PDF y binarios ejecutables o desconocidos están completamente excluidos del sistema P2P.
-- **Rechazo fail-closed**: Todo frame de transporte con un `kind` distinto de `roster` o `backup`, o con esquemas ajenos a `sa-roster/v1`, `mini-backup/v1` o `sa-backup/v1`, es rechazado inmediatamente. La recepción revoca el canal WebRTC y descarta cualquier dato en tránsito.
+- **Rechazo fail-closed**: Todo frame de transporte con un `kind` distinto de `roster` o `backup`, o con esquemas ajenos a `sa-roster/v1`, `mini-roster-proposal/v1`, `mini-backup/v1` o `sa-backup/v1`, es rechazado inmediatamente. La propuesta Mini sólo se admite en SA en respuesta a una solicitud autenticada, ligada a la obra y cuenta receptoras. La recepción revoca el canal WebRTC y descarta cualquier dato en tránsito.
 - **Ausencia de selectores**: Las superficies P2P no incluyen elementos `<input type="file">` ni llamadas a la API File System (`showOpenFilePicker()`).
 
 ---
@@ -60,7 +71,7 @@ La interfaz principal de Transferencias expone una franja compacta (`.mini-p2p-c
 ## 4. Staging Efímero y Regla de Cero Auto-Escritura (AC-4)
 
 - **Principio**: La recepción de datos por P2P jamás equivale a su incorporación o escritura autoritativa.
-- **Almacenamiento volátil**: Los respaldos y rosters recibidos residen exclusivamente en memoria (`backupStagedStore` / `pendingRoster`).
+- **Almacenamiento volátil**: Los respaldos y rosters SA→Mini recibidos residen en memoria (`backupStagedStore` / `pendingRoster`). Las propuestas de personal Mini→SA se conservan en una bandeja local por cuenta/obra para continuar la revisión y recuperar respuestas perdidas; recibirlas no modifica los empleados ni la asistencia.
 - **Límites**: Máximo 3 respaldos pendientes en total por dispositivo receptor. Un cuarto respaldo se rechaza explícitamente sin expulsiones silenciosas.
 - **Deduplicación**: Deduplicación previa al límite por `transferId` y SHA-256. Reenviar un respaldo idéntico no consume ranuras adicionales.
 - **Limpieza en fallo**: Si la transferencia se interrumpe, si un chunk se corrompe o si el hash SHA-256 final no coincide, el agregado en vuelo se elimina por completo sin dejar mutaciones en IndexedDB ni en almacenamiento local.

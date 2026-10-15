@@ -989,6 +989,7 @@
           <div class="mini-p2p-device-actions">
             <button type="button" class="mini-p2p-icon-btn" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre">${vectorIcon('edit', 16)}</button>
             ${uiButton('Roster', `data-wait-peer="${esc(peer.peerId)}" aria-label="Esperar roster de ${esc(peerName(peer))}"`, 'primary', 'users')}
+            ${uiButton('Enviar personal', `data-send-employees="${esc(peer.peerId)}"`, 'secondary', 'users')}
             ${uiButton('Asistencia', `data-wait-attendance="${esc(peer.peerId)}" aria-label="Esperar asistencia de ${esc(peerName(peer))}"`, 'secondary', 'attendance')}
             <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
           </div>
@@ -1031,7 +1032,7 @@
       <section class="mini-p2p-capabilities-wrap" aria-labelledby="mini-p2p-capabilities-title">
         <h3 id="mini-p2p-capabilities-title" class="mini-p2p-section-label">Capacidades</h3>
         <div class="mini-p2p-capabilities">
-          ${capability('users', 'Personal', 'Recibir de SA', 'is-ready')}
+          ${capability('users', 'Personal', 'Enviar y recibir', 'is-ready')}
           ${capability('attendance', 'Asistencia', 'Responder a SA', 'is-ready')}
           ${capability('backup', 'Backup', 'Respaldos P2P', 'is-ready', 'data-open-backup-hub')}
           ${capability('restore', 'Archivos', 'Próximamente', 'is-disabled')}
@@ -1057,6 +1058,7 @@
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
+    body().querySelectorAll('[data-send-employees]').forEach(btn => btn.addEventListener('click', async () => { try { const peer=await identityStore.getPeer(btn.dataset.sendEmployees); if(peer) await root.MiniEmployeeSender.openOffer(peer); } catch(error) { toast(error.message || 'No se pudo enviar el personal.'); } }));
     body().querySelectorAll('[data-wait-attendance]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')));
     body().querySelectorAll('[data-review-staged]').forEach(btn => btn.addEventListener('click', () => reviewPersistedStagedRoster(btn.dataset.reviewStaged)));
     body().querySelectorAll('[data-discard-staged]').forEach(btn => btn.addEventListener('click', async () => {
@@ -1609,6 +1611,7 @@
     } catch (_) { return null; }
   }
   function armAttendanceResponder(channel, peer, self, callbacks = {}) {
+    root.MiniEmployeeSender?.attach(channel, peer);
     if (!root.AttendanceExport || typeof root.AttendanceExport.attachAttendanceResponder !== 'function') return null;
     const deviceId = self?.deviceId || undefined;
     const userSent = callbacks.onResponseSent;
@@ -1635,6 +1638,7 @@
   }
 
   function armRosterReceiver(channel, peer, options = {}) {
+    root.MiniEmployeeSender?.attach(channel, peer);
     const background = options.background === true;
     const receiver=core.createTransferReceiver({
       channel,
@@ -2988,6 +2992,7 @@
 
   async function openP2PTransferModal(){await renderHome();}
   async function openP2PPairingScanner(){await renderQrScanner();}
+  root.MiniEmployeeSender?.configure({getChannel: peerId => (activeManualPeerId===peerId ? activeChannel : passivePeerListeners.get(peerId)?.channel) || null, ensureChannel: peer => ensurePeerListener(peer)});
   root.openP2PTransferModal=openP2PTransferModal;
   root.openP2PPairingScanner=openP2PPairingScanner;
   root.openP2PBackupHub=renderBackupHub;
