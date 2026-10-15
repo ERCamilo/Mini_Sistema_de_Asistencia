@@ -472,3 +472,16 @@ Antes de finalizar cualquier modificación en la interfaz, verificar:
 - Antes de transmitir, mostrar el nombre de la obra activa de SA y seleccionar empleados en una ventana con una sola acción primaria. El botón atrás cancela esta selección antes de cerrar Transferencias.
 - Usar etiquetas humanas: ficha, puesto principal, salario por día y contacto. La confirmación recibida informa que se conserva la asistencia, sin mostrar identificadores internos.
 - El nuevo contrato acotado `mini-roster-proposal/v1` amplía la lista permitida de 8.7 únicamente para esta dirección. Las propuestas se revisan en SA antes de crear/vincular; recibirlas no autoriza asistencia. No habilita archivos genéricos ni rutas Mini↔Mini.
+
+### 8.10 Intercambio organizativo autorizado
+
+La asistencia entre miembros usa autorización Google y permiso por instalación administrado por SA, dentro de una obra y grupo. Es independiente del emparejamiento P2P Mini↔Mini para respaldos; no amplía las capacidades de esos canales. El menú común ofrece Miembros y asistencia en cada vínculo de internet. El receptor conserva sus marcas por defecto; aplica solamente filas presentes elegidas explícitamente por IDs SA/obra. Cobertura sin marca es informativa. La bandeja no aplica datos automáticamente.
+
+
+### 8.11 Avisos y acciones primero
+
+La portada común prioriza personal disponible y asistencia recibida, con Revisar, después el envío del día y finalmente administración de vínculos/cuenta. Avisos MiniNotice accionables: Revisar y Después, sin aplicación automática. Consulta de metadatos cada 60 s con app visible/red/sesión; también al volver/reconectar y completar operaciones, con reintentos espaciados ante fallos. Dedupe y aplazamiento por cuenta/alcance/revisión persistidos. Después conserva la tarjeta; nueva revisión vuelve a avisar. Cerrar sesión limpia avisos de esa cuenta. Dentro de Conexiones se ocultan avisos flotantes organizativos para no tapar controles; los pendientes siguen en las tarjetas. No hay avisos push con app cerrada.
+
+### Alcance de los slices locales (2026-10-06)
+
+M5 incorpora únicamente las APIs de avisos y presentación y sus pruebas puras. Los apartados 8.10 y 8.11 describen el diseño integrado previsto: intercambio organizativo, menú común y cableado real de la app pertenecen a M6/M7/M8. No se certifica activación ni navegador desde este slice y no se concede permiso de publicación.

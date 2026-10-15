@@ -17,6 +17,8 @@ interface LocalDbMarker {
 }
 interface LocalDbStorage {
   getItem(key: string): string | null;
+  setItem?(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 interface LocalDbAdapter {
   readMarker(): Promise<LocalDbMarker | null>;
@@ -48,6 +50,7 @@ type LocalDbMigrationResult =
   const MARKER_KEY = 'legacy-migration-v1';
   const OUTBOX_KEY = 'mini-sa-outbox-v1';
   const FEATURE_FLAG_KEY = 'miniLocalDbEnabled';
+  const RESET_SNAPSHOT_KEY = 'mini-reset-snapshot-pending-v1';
   const SETTINGS_KEYS = [
     'appTheme',
     'iconStyle',
@@ -255,15 +258,31 @@ type LocalDbMigrationResult =
       options.indexedDB ? createIndexedDbAdapter(options.indexedDB) : null
     );
 
+    function prepareReset(value: LocalDbSnapshot): void {
+      if (!options.storage.setItem) throw new Error('Reset guard storage is unavailable');
+      options.storage.setItem(RESET_SNAPSHOT_KEY, JSON.stringify(normalizeSnapshot(value)));
+    }
     async function readState(): Promise<LocalDbSnapshot | null> {
       if (!isEnabled(options.storage) || !adapter || !await adapter.readMarker()) return null;
+      const reset = options.storage.getItem(RESET_SNAPSHOT_KEY);
+      if (reset) {
+        const clean = normalizeSnapshot(JSON.parse(reset));
+        await writeState(clean);
+        return clean;
+      }
       const snapshot = await adapter.readSnapshot();
       return snapshot ? normalizeSnapshot(snapshot) : null;
     }
     async function writeState(value: LocalDbSnapshot): Promise<LocalDbSnapshot> {
       if (!isEnabled(options.storage)) throw new Error('Local database is disabled');
       if (!adapter || !await adapter.readMarker()) throw new Error('Local database is not ready');
-      return adapter.writeSnapshot(normalizeSnapshot(value));
+      const normalized = normalizeSnapshot(value);
+      const verified = await adapter.writeSnapshot(normalized);
+      const pending = options.storage.getItem(RESET_SNAPSHOT_KEY);
+      if (pending && snapshotsMatch(normalized, normalizeSnapshot(JSON.parse(pending))) && snapshotsMatch(normalized, verified)) {
+        options.storage.removeItem?.(RESET_SNAPSHOT_KEY);
+      }
+      return verified;
     }
 
     async function migrateLegacyData(): Promise<LocalDbMigrationResult> {
@@ -306,7 +325,7 @@ type LocalDbMigrationResult =
       }
     }
 
-    return { migrateLegacyData, readState, writeState };
+    return { migrateLegacyData, readState, writeState, prepareReset };
   }
 
   return {
@@ -314,6 +333,7 @@ type LocalDbMigrationResult =
     DB_VERSION,
     STORE_NAME,
     FEATURE_FLAG_KEY,
+    RESET_SNAPSHOT_KEY,
     SETTINGS_KEYS,
     createIndexedDbAdapter,
     createOutboxStore,

@@ -105,7 +105,8 @@ class CountingDataChannel {
 
 class CountingRtcPeerConnection {
   static last = null;
-  constructor() {
+  constructor(configuration) {
+    this.configuration = configuration;
     this.connectionState = 'new';
     this.iceConnectionState = 'new';
     this.channel = null;
@@ -775,4 +776,60 @@ test('unexpected DataChannel close or error tears down once while clean close is
     assert.equal(clean.ws.closeCalls, 1, 'clean close closes signaling once');
     assert.equal(cleanStates.filter(({ status }) => status === 'error').length, 0, 'clean close reports no error');
   });
+});
+
+
+const customIceServers = [{ urls: 'stun:rtc-test.invalid:3478' }];
+for (const [label, options, expected] of [
+  ['explicit relay', { iceServers: customIceServers, iceTransportPolicy: 'relay' }, { iceServers: customIceServers, iceTransportPolicy: 'relay' }],
+  ['explicit all', { iceServers: customIceServers, iceTransportPolicy: 'all' }, { iceServers: customIceServers, iceTransportPolicy: 'all' }],
+  ['omitted policy', {}, { iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] }],
+  ['undefined policy', { iceTransportPolicy: undefined }, { iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] }],
+  ['omitted policy with custom servers', { iceServers: customIceServers }, { iceServers: customIceServers }],
+  ['undefined policy with empty servers', { iceServers: [], iceTransportPolicy: undefined }, { iceServers: [] }]
+]) {
+  test(`RTC configuration preserves ${label}`, async () => {
+    await withFakeRtcEnvironment(async () => {
+      const signaling = new Core.SignalingClient({ room: 'room', peerId: 'mini', proof: 'a'.repeat(64) });
+      const session = await Core.createRtcSession({ signaling, initiator: true, ...options });
+      try {
+        assert.deepEqual(session.pc.configuration, expected);
+        if (options.iceServers) assert.equal(session.pc.configuration.iceServers, options.iceServers);
+      } finally {
+        session.close();
+      }
+    });
+  });
+}
+
+test('opt-in demand session ignores membership and does not own borrowed signaling', async () => {
+  await withFakeRtcEnvironment(async () => {
+    let callback, signalCloses = 0;
+    const signaling = { onEvent(fn) { callback = fn; return () => {}; }, async connect() {}, close() { signalCloses++; }, send() {} };
+    const session = await Core.createRtcSession({ signaling, initiator: true, demandNegotiation: { localPeerId: 'a', remotePeerId: 'b' } });
+    await callback({ type: 'ready', peerCount: 2 }); await callback({ type: 'peer-joined' });
+    assert.equal(session.channel, null);
+    assert.equal(typeof session.startNegotiation, 'function'); session.close(); assert.equal(signalCloses, 0);
+  });
+});
+
+test('retired collision channel cannot revoke its replacement transport', async () => {
+  const previous = globalThis.RTCPeerConnection;
+  class DemandRtc extends CountingRtcPeerConnection {
+    constructor(options) { super(options); this.signalingState = 'stable'; this.remoteDescription = null; }
+    async createOffer() { return { type: 'offer', sdp: 'v=0\r\na=ice-ufrag:local\r\n' }; }
+    async createAnswer() { return { type: 'answer', sdp: 'v=0\r\na=ice-ufrag:answer\r\n' }; }
+    async setLocalDescription(value) { this.localDescription = value; this.signalingState = value.type === 'offer' ? 'have-local-offer' : 'stable'; }
+    async setRemoteDescription(value) { this.remoteDescription = value; this.signalingState = 'have-remote-offer'; }
+    async addIceCandidate() {}
+  }
+  try {
+    globalThis.RTCPeerConnection = DemandRtc; let callback;
+    const signaling = { expiresAt: null, onEvent(fn) { callback = fn; return () => {}; }, async connect() {}, send() {}, close() {} };
+    const session = await Core.createRtcSession({ signaling, demandNegotiation: { localPeerId: 'b', remotePeerId: 'a' } });
+    await session.startNegotiation(); const provisional = session.channel;
+    await callback({ type: 'signal', frame: { v: 1, type: 'offer', data: { type: 'offer', sdp: 'v=0\r\na=ice-ufrag:remote\r\n' } } });
+    Core.revokeChannel(provisional, new Error('stale failure'));
+    assert.equal(session.isClosed(), false); assert.equal(session.pc.closeCalls, 0); session.close();
+  } finally { if (previous === undefined) delete globalThis.RTCPeerConnection; else globalThis.RTCPeerConnection = previous; }
 });

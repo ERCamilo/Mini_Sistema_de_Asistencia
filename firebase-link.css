@@ -1,0 +1,20 @@
+.firebase-link-panel {display:grid;gap:12px;padding:16px;color:var(--text-color);}
+.firebase-link-panel button,.firebase-link-panel input {min-height:48px;}
+.firebase-link-panel [hidden] {display:none!important;}
+.firebase-link-panel input {width:100%;box-sizing:border-box;font-size:16px;}
+.firebase-link-details {padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);}
+.firebase-link-details dt {font-size:12px;color:var(--text-muted);}
+.firebase-link-details dd {margin:4px 0 12px;font-weight:600;overflow-wrap:anywhere;}
+.firebase-link-error {color:var(--danger-color);margin:0;}
+.firebase-link-status {color:var(--text-muted);margin:0;}
+.firebase-link-panel button:focus-visible,.firebase-link-panel input:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+
+#cloud-field-panel {display:grid;gap:12px;}
+#cloud-field-panel[hidden] {display:none!important;}
+#cloud-field-panel select {min-height:48px;width:100%;font-size:16px;}
+
+/* Member attendance review stays inside the common connection task. */
+.org-share-row {padding:12px 0;border-bottom:1px solid var(--border-color);}
+.org-share-row button {min-height:44px;margin-top:6px;}
+.org-share-row button[aria-pressed="true"] {background:var(--accent-color);color:var(--bg-color);}
+#cloud-field-members select {min-height:44px;width:100%;}
