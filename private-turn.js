@@ -82,12 +82,15 @@
         let hasTurn = false;
         const iceServers = body.iceServers.map((value) => {
             const server = checked('ICE_SERVER_INVALID', () => record(value));
-            if (Object.keys(server).some(key => !['urls', 'username', 'credential', 'credentialType'].includes(key)))
+            if (Object.keys(server).some(key => !['urls', 'username', 'credential', 'credentialType', 'expiresAt'].includes(key)))
                 invalid('ICE_FIELDS_INVALID');
             const list = Array.isArray(server.urls) ? server.urls : [server.urls];
             if (!list.length || list.length > 8)
                 invalid('ICE_URLS_INVALID');
             const urls = list.map(value => checked('ICE_URI_INVALID', () => uri(value))), isTurn = urls.some(value => value.turn);
+            // Issuer metadata must match the already validated root value, without guessing units.
+            if ('expiresAt' in server && (!isTurn || server.expiresAt !== body.expiresAt))
+                invalid('ICE_FIELDS_INVALID');
             if (server.credentialType !== undefined && server.credentialType !== 'password')
                 invalid('ICE_CREDENTIAL_TYPE_INVALID');
             if (isTurn) {

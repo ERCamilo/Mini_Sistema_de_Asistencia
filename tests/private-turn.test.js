@@ -294,3 +294,56 @@ test('public guest never fetches and public Date does not fall back to private h
   const events=[];const f=fixture({...options,fetcher:async()=>Response.json({username:'synthetic-user',credential:'synthetic-password',ttl:300,expiresAt:1700000300,iceServers:[{urls:'turn:turn.test.invalid:3478',username:'synthetic-user',credential:'synthetic-password'}]},{headers:{'X-Turn-Issued-Date':new Date(1700000000000).toUTCString()}})});
   await assert.rejects(f.provider.getConfiguration(event=>events.push(event)));assert.ok(events.some(event=>event.detail==='CLOCK_MISSING'));
 });
+
+function backendIssuerFixture(mutate = () => {}) {
+  const f = fixture({ profile: 'mini-pages-turn-test', origin: 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev', forceRelay: true,
+    contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds', clockSource: 'issuer' }, monotonicNow: () => 100,
+    fetcher: async () => {
+      const body = f.payload();
+      body.expiresAt /= 1000;
+      body.iceServers[1].expiresAt = body.expiresAt;
+      mutate(body);
+      return Response.json(body, { headers: { Date: new Date(1700000000000).toUTCString() } });
+    } });
+  return f;
+}
+test('backend-shaped public issuer accepts matching nested TURN expiry and strips RTC metadata', async () => {
+  const events = [], f = backendIssuerFixture();
+  const config = await f.provider.getConfiguration(event => events.push(event));
+  assert.deepEqual(config, { iceTransportPolicy: 'relay', iceServers: f.payload().iceServers });
+  assert.equal(config.iceServers.length, 2);
+  assert.ok(config.iceServers.every(server => !Object.hasOwn(server, 'expiresAt')));
+  assert.equal(f.provider.getLeaseRemainingMs(), 299000);
+  assert.equal(events.at(-1).code, 'READY');
+  assert.doesNotMatch(JSON.stringify(events), /synthetic|expiresAt|iceServers|idToken/);
+});
+for (const expiresAtFormat of ['unix-seconds', 'unix-milliseconds', 'iso8601']) {
+  test(`matching nested TURN expiry preserves declared ${expiresAtFormat}`, async () => {
+    const f = fixture({ contract: { ttlUnit: 'seconds', expiresAtFormat }, fetcher: async () => {
+      const body = f.payload();
+      body.expiresAt = expiresAtFormat === 'unix-seconds' ? body.expiresAt / 1000 : expiresAtFormat === 'iso8601' ? new Date(body.expiresAt).toISOString() : body.expiresAt;
+      body.iceServers[1].expiresAt = body.expiresAt;
+      return Response.json(body);
+    } });
+    assert.deepEqual(await f.provider.getConfiguration(), { iceTransportPolicy: 'all', iceServers: f.payload().iceServers });
+  });
+}
+for (const [label, mutate] of [
+  ['mismatched value', b => { b.iceServers[1].expiresAt++; }],
+  ['numeric string', b => { b.iceServers[1].expiresAt = String(b.expiresAt); }],
+  ['milliseconds against seconds', b => { b.iceServers[1].expiresAt *= 1000; }],
+  ['fractional value', b => { b.iceServers[1].expiresAt += 0.5; }],
+  ['null value', b => { b.iceServers[1].expiresAt = null; }],
+  ['boolean value', b => { b.iceServers[1].expiresAt = true; }],
+  ['object value', b => { b.iceServers[1].expiresAt = {}; }],
+  ['unsafe integer', b => { b.iceServers[1].expiresAt = Number.MAX_SAFE_INTEGER + 1; }],
+  ['STUN metadata', b => { b.iceServers[0].expiresAt = b.expiresAt; }],
+  ['unrelated key', b => { b.iceServers[1].unexpected = 'synthetic-secret'; }]
+]) test(`backend-shaped public issuer rejects nested expiry ${label}`, async () => {
+  const events = [], f = backendIssuerFixture(mutate);
+  await assert.rejects(f.provider.getConfiguration(event => events.push(event)), /TURN_INVALID_RESPONSE/);
+  assert.equal(events.at(-1).stage, 'validation');
+  assert.equal(events.at(-1).detail, 'ICE_FIELDS_INVALID');
+  assert.equal(f.provider.getLeaseRemainingMs(), 0);
+  assert.doesNotMatch(JSON.stringify(events), /synthetic|expiresAt|iceServers|idToken/);
+});
