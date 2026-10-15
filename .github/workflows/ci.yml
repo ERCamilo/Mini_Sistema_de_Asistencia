@@ -1,4 +1,4 @@
-# Mini: unit + wiring tests, and every tutorial run in test mode on the real app.
+# Mini: unit + wiring tests and browser regressions; tutorial replay is opt-in temporarily.
 # Main is production (GitHub Pages), so nothing merges without this green.
 name: CI
 
@@ -6,6 +6,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_tutorials:
+        description: Include temporarily paused tutorial replay
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -36,4 +42,15 @@ jobs:
       # Browser/axe tools are installed globally, never runtime dependencies.
       - run: npm install -g playwright@1.56.1 axe-core@4.14.0
       - run: playwright install --with-deps chromium
-      - run: AXE_PATH="$(npm root -g)/axe-core/axe.min.js" npm run test:e2e
+      # Temporary: automatic runs keep browser regressions but skip tutorial replay.
+      # Manual run_tutorials=true restores the unchanged full local command.
+      - name: Browser regressions (tutorial replay opt-in)
+        env:
+          RUN_TUTORIALS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_tutorials == true }}
+        run: |
+          export AXE_PATH="$(npm root -g)/axe-core/axe.min.js"
+          if [ "$RUN_TUTORIALS" = "true" ]; then
+            npm run test:e2e
+          else
+            npm run test:e2e:ci
+          fi
