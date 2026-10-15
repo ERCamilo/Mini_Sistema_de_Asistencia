@@ -32,7 +32,22 @@ test('primer reporte y sólo cambios: WhatsApp no confirma; copia/confirmación 
    assert.equal(await page.isDisabled('#employee-report-changes'),true);
    await page.click('#employee-report-share');assert.equal(await page.evaluate(()=>localStorage.getItem('mini_employee_report_v1')),null);
    assert.match(await page.evaluate(()=>decodeURIComponent(window.__reports[0].split('?text=')[1])),/Beto/);
+   // Hold the real reference snapshot write, not a synthetic delay after success.
+   await page.evaluate(()=>{
+     const write=localDb.writeState.bind(localDb);
+     const pending=new Promise(resolve=>window.__releaseReferenceWrite=resolve);
+     localDb.writeState=async snapshot=>{
+       if(snapshot.settings.mini_employee_report_v1){window.__referenceWriteStarted=true;await pending;}
+       return write(snapshot);
+     };
+   });
    await page.click('#employee-report-confirm');
+   await page.waitForFunction(()=>window.__referenceWriteStarted);
+   assert.match(await page.textContent('#employee-report-status'),/Guardando/);
+   for(const id of ['share','copy','refresh','full','changes'])assert.equal(await page.isDisabled('#employee-report-'+id),true);
+   assert.equal(await page.isVisible('#employee-report-confirm'),false);
+   await page.evaluate(()=>window.__releaseReferenceWrite());
+   await page.waitForFunction(()=>document.getElementById('employee-report-status').textContent.includes('Reporte registrado'));
    assert.deepEqual(await page.evaluate(()=>({users:employeeRepository.getAll(),attendance:attendanceRepository.getAll()})),original);
    await page.reload({waitUntil:'networkidle'});await page.waitForFunction(()=>localDbReady);await page.evaluate(()=>{switchView('employees');const e=employeeRepository.getById('a');employeeRepository.save({...e,number:'33',position:'Albañil',sueldo:'1000'});});
    await open(page);const text=await preview(page);assert.match(text,/Número: 22 → 33/);assert.match(text,/Puesto: Ayudante → Albañil/);assert.match(text,/Precio por día: 900 → 1000/);assert.doesNotMatch(text,/Beto/);
@@ -84,5 +99,19 @@ test('320–480 px y cinco temas: nombres accesibles, contraste, sin desbordes y
      });assert.deepEqual(layout,{overflow:false,small:[],outside:[]},{width,theme});
      if(process.env.AXE_PATH){const violations=await page.evaluate(async()=> (await axe.run(document.getElementById('modal-employee-report'),{runOnly:{type:'tag',values:['wcag2a','wcag2aa']}})).violations.map(v=>({id:v.id,targets:v.nodes.map(n=>n.target)})));assert.deepEqual(violations,[],{width,theme});}
    }assert.deepEqual(errors,[]);
+ }finally{await context.close();}
+});
+
+test('primer reporte: un fallo de IndexedDB confirma sólo tras activar el respaldo local',async()=>{
+ const {context,page,errors}=await device();try{
+   await open(page);await page.click('#employee-report-share');
+   await page.evaluate(()=>{localDb.writeState=async()=>{throw new Error('Forced snapshot failure');};});
+   await page.click('#employee-report-confirm');
+   await page.waitForFunction(()=>document.getElementById('employee-report-status').textContent.includes('Reporte registrado'));
+   assert.equal(await page.evaluate(()=>localStorage.getItem(MiniLocalDb.FEATURE_FLAG_KEY)),'false');
+   await page.reload({waitUntil:'networkidle'});
+   await page.waitForFunction(()=>document.getElementById('storage-mode-hint').textContent.includes('días guardados'));
+   await page.evaluate(()=>{switchView('employees');employeeRepository.save({...employeeRepository.getById('a'),number:'33'});});
+   await open(page);assert.match(await preview(page),/Número: 22 → 33/);assert.doesNotMatch(await preview(page),/Beto/);assert.deepEqual(errors,[]);
  }finally{await context.close();}
 });
