@@ -645,3 +645,45 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
 .connections-mini-peer-details small { color: var(--text-muted); font-size: 12px; }
 .connections-mini-peer-link { font-family: ui-monospace, monospace; }
 .connections-mini-peer-actions { grid-row: 5; }
+
+/* Sharing home: device-first actions and stable, alias-led cards. */
+.mini-p2p-shell .connections-home .connections-toolbar.connections-device-toolbar { order: -2; display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; padding: 0; }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-device] { grid-column: 1 / -1; min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--accent-color); color: var(--bg-color); font-size: 16px; font-weight: 700; }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-add] { min-height: 44px; font-size: 13px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color); }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-refresh] { width: 44px; overflow: hidden; font-size: 0; padding: 10px; }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-refresh] svg { width: 22px; height: 22px; }
+.connections-home .connections-mini-peers { order: -1; margin: 0; min-width: 0; }
+.connections-mini-peer { grid-template-columns: 48px minmax(0, 1fr); gap: 8px 12px; padding: 16px; border-inline-start-width: 1px; background: var(--card-bg); }
+.connections-mini-peer > strong { grid-column: 2; grid-row: 1; align-self: center; font-size: 16px; line-height: 1.4; min-width: 0; }
+.connections-peer-avatar { grid-column: 1; grid-row: 1 / 3; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: var(--input-bg); color: var(--accent-color); font-size: 17px; font-weight: 700; }
+.connections-peer-linked { grid-column: 2; grid-row: 2; color: var(--text-muted); font-size: 12px; }
+.connections-mini-peer-state { grid-row: 3; font-size: 12px; border-radius: 8px; }
+.connections-mini-peer .connections-hint { grid-row: 4; line-height: 1.5; }
+.connections-mini-peer-actions { grid-row: 5; }
+.connections-mini-peer-details { grid-row: 6; padding: 0 10px; }
+.connections-mini-peer-details summary { min-height: 44px; padding: 12px 0; box-sizing: border-box; cursor: pointer; font-weight: 600; }
+.connections-mini-peer-details summary:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
+.connections-mini-peer-details[open] { padding-bottom: 10px; }
+.connections-mini-peer:is([data-state="connected"], [data-state="connecting"], [data-state="error"]) { background: var(--card-bg); border-color: var(--border-color); }
+.connections-mini-peer:is([data-state="connected"], [data-state="connecting"], [data-state="error"]) .connections-mini-peer-state { background: var(--peer-status-tone); color: var(--bg-color); }
+[data-connection-screen=home] header .connections-account { max-width: 48%; }
+.mini-p2p-shell[data-connection-screen=home] header .connections-account button { flex: none; max-width: none; overflow: visible; text-overflow: clip; font-size: 12px; min-width: 44px; padding: 8px; color: var(--accent-color); font-weight: 600; }
+[data-connection-screen=home] header .connections-account [data-connection-account-open] { border: 1px solid var(--border-color); background: var(--input-bg); }
+.connections-home > h3 { color: var(--text-muted); }
+.connections-home .connections-empty { padding: 14px; }
+
+/* One fullscreen mobile shell for every sharing step, including safe areas. */
+@media (max-width: 600px) {
+  .mini-p2p-overlay { padding: 0; align-items: stretch; }
+  .mini-p2p-overlay > .mini-p2p-shell, .mini-p2p-overlay > .mini-p2p-shell[data-mini-connection-page] { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .mini-p2p-shell[data-mini-connection-page] > .mini-p2p-topbar { padding: 12px max(14px, env(safe-area-inset-right, 0px)) 12px max(14px, env(safe-area-inset-left, 0px)); gap: 8px; }
+  .mini-p2p-body, .connections-home, .connections-task { padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); overscroll-behavior: contain; overflow-x: hidden; }
+  .mini-p2p-body, .connections-home, .connections-task, .connections-list, .connections-source-list { min-width: 0; }
+  .mini-p2p-title { font-size: 20px; }
+  .mini-p2p-topbar-icon { display: none; }
+  [data-connection-screen=home] header .connections-account { max-width: 50%; }
+  [data-connection-screen=home] header .connections-account > strong { display: none; }
+  .connections-mini-peer { padding: 14px; }
+  .employee-send-overlay { padding: 0; }
+  .employee-send-dialog { height: 100dvh; max-height: 100dvh; max-width: none; border: 0; border-radius: 0; padding: max(18px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
+}

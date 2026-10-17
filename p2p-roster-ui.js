@@ -803,7 +803,7 @@
       <section class="mini-p2p-shell" role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title">
         <header class="mini-p2p-topbar">
           <span class="mini-p2p-topbar-icon">${vectorIcon('link', 20)}</span>
-          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Conexiones</strong><div class="mini-p2p-subtitle">SA y otros Minis</div></div>
+          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Compartir</strong><div class="mini-p2p-subtitle">Colabora con tu equipo</div></div>
           <button type="button" class="mini-p2p-icon-btn" data-p2p-close aria-label="Cerrar" title="Cerrar">${vectorIcon('close', 17)}</button>
         </header>
         <div class="mini-p2p-body" data-p2p-body></div>
@@ -1017,7 +1017,7 @@
             <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
           </div>
         </div>`;
-    }).join('') : '<div class="mini-p2p-empty">Aún no hay SA vinculados. Escanea el QR de SA para agregar el primero.</div>';
+    }).join('') : '<div class="mini-p2p-empty">Aún no hay dispositivos de la obra vinculados. Escanea su QR para agregar el primero.</div>';
 
     const stagedEntries = getAllStaged();
     const stagedBackups = root.SaMiniP2PBackup?.backupStagedStore?.listStaged() || [];
@@ -1063,7 +1063,7 @@
       </section>
       <section class="mini-p2p-devices" aria-labelledby="mini-p2p-devices-title">
         <div class="mini-p2p-devices-head">
-          <div><h3 id="mini-p2p-devices-title">SA vinculados</h3><div class="mini-p2p-subtitle">${peers.length} dispositivo${peers.length === 1 ? '' : 's'} guardado${peers.length === 1 ? '' : 's'} en este Mini</div></div>
+          <div><h3 id="mini-p2p-devices-title">Dispositivos de la obra</h3><div class="mini-p2p-subtitle">${peers.length} dispositivo${peers.length === 1 ? '' : 's'} guardado${peers.length === 1 ? '' : 's'} en este equipo</div></div>
           <div class="mini-p2p-self">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" class="mini-p2p-icon-btn" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini">${vectorIcon('edit', 15)}</button></div>
         </div>
         <div class="mini-p2p-peer-list">${peerRows}</div>

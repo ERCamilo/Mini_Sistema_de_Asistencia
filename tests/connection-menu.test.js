@@ -7,7 +7,12 @@ test('unknown modes are rejected and selected mode can reopen without interrupti
 test('Mini exposes separate visible work and independent device entry points',()=>{
  const fs=require('node:fs'),source=fs.readFileSync(require.resolve('../connection-menu.js'),'utf8');
  assert.ok(source.includes('Asociar a una obra'));
- assert.ok(source.includes('Asociar a otro dispositivo'));
+ assert.ok(source.includes('Vincular dispositivo'));
+ assert.ok(source.includes('Dispositivos vinculados'));
+ assert.ok(source.includes('Obra asociada'));
+ assert.ok(source.includes('Iniciar sesión'));
+ assert.ok(!source.includes('Otros Minis'));
+ assert.ok(!source.includes('Conecta Mini con tu obra'));
  assert.ok(source.includes('connectionsDevice'));
 });
 test('Mini account UI has one truthful card with original controls and an unavailable state',()=>{
@@ -26,4 +31,9 @@ test('peer reconnect has one owned action and stale completion cannot clear a ne
  finishFirst();await first;assert.equal(actions.pending('p'),true);
  finishSecond();await second;assert.equal(actions.pending('p'),false);
  actions.dispose();
+});
+
+test('the sharing keyboard trap includes native detail summaries',()=>{
+ const source=require('node:fs').readFileSync(require.resolve('../connection-menu.js'),'utf8');
+ assert.ok(source.includes('button,input,select,textarea,summary,a[href]'));
 });

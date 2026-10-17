@@ -4,19 +4,23 @@
     root.MiniConnectionPresentation = api; })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     function describePage(s) {
         if (s.home)
-            return { key: 'home', title: 'Conexiones', back: false };
+            return { key: 'home', title: 'Compartir', back: false };
         if ((s.task === 'invitation' || s.task === 'link') && s.linkPhase)
-            return { key: s.linkPhase === 'linked' ? 'linked' : s.linkPhase === 'preview' ? 'confirm' : 'invitation', title: s.linkPhase === 'linked' ? 'Mini vinculado' : s.linkPhase === 'preview' ? 'Confirmar vínculo' : 'Vincular con mi obra', back: true };
+            return { key: s.linkPhase === 'linked' ? 'linked' : s.linkPhase === 'preview' ? 'confirm' : 'invitation', title: s.linkPhase === 'linked' ? 'Dispositivo vinculado' : s.linkPhase === 'preview' ? 'Confirmar vínculo' : 'Vincular con mi obra', back: true };
         if (s.task)
-            return { key: s.task, title: s.taskTitle || 'Conexiones', back: true };
+            return { key: s.task, title: s.taskTitle || 'Compartir', back: true };
         const titles = { 'personal-review': 'Actualizar personal', 'personal-result': 'Personal actualizado', 'personal-received': 'Personal recibido' };
         return { key: s.native || 'direct', title: titles[s.native || ''] || s.nativeTitle || 'Conexión directa', back: true };
     }
     function describeFeedback(state, pageChanged, open) { return { banner: state === 'success' || state === 'error', open: !pageChanged && open, busy: state === 'busy' }; }
+    function peerInitials(name) {
+        const initials = name.trim().split(/\s+/).map(word => { var _a; return ((_a = word.match(/[\p{L}\p{N}]/u)) === null || _a === void 0 ? void 0 : _a[0]) || ''; }).filter(Boolean);
+        return initials.slice(0, 2).join('').toLocaleUpperCase() || 'D';
+    }
     function describePeer(peer) {
         const connected = peer.authenticated === true && peer.channelOpen === true && peer.leaseValid === true;
         const state = connected ? 'connected' : peer.state === 'connecting' ? 'connecting' : peer.state === 'error' ? 'error' : 'available';
-        return { state, label: state === 'connected' ? 'Conectado' : state === 'connecting' ? 'Conectando' : state === 'error' ? 'Error' : 'Disponible', connectLabel: state === 'connected' || state === 'error' ? 'Reconectar' : 'Conectar', canClose: state === 'connected' || state === 'connecting', busy: peer.busy === true };
+        return { state, label: state === 'connected' ? 'Conectado' : state === 'connecting' ? 'Conectando' : state === 'error' ? 'Error' : 'Sin conexión', connectLabel: state === 'connected' || state === 'error' ? 'Reconectar' : 'Conectar', canClose: state === 'connected' || state === 'connecting', busy: peer.busy === true };
     }
     async function createLinkFingerprint(core, token) {
         try {
@@ -42,7 +46,7 @@
         return facts.preparing || facts.transportPresent ? 'preparing' : 'standby';
     }
     function describePeerDetails(peer) {
-        const phases = { standby: 'Disponible, sin canal activo', preparing: 'Preparando conexión', 'waiting-answer': 'Esperando respuesta del otro Mini', negotiating: 'Negociando conexión', authenticating: 'Canal abierto, verificando vínculo', ready: 'Canal autenticado, listo para respaldos', error: 'No se pudo establecer la conexión' };
+        const phases = { standby: 'Sin canal activo', preparing: 'Preparando conexión', 'waiting-answer': 'Esperando respuesta del otro dispositivo', negotiating: 'Negociando conexión', authenticating: 'Canal abierto, verificando vínculo', ready: 'Canal autenticado, listo para respaldos', error: 'No se pudo establecer la conexión' };
         const reasons = { manual: 'Cerrado en este dispositivo', reconnect: 'Reemplazado al reconectar', 'preparation-timeout': 'Se agotó el tiempo del intento', 'signaling-error': 'Error de señalización', 'signaling-loss': 'Se perdió la señalización', 'transport-error': 'Error del transporte', 'transport-disconnected': 'Transporte desconectado', 'lease-expired': 'Venció el tiempo del canal', unknown: 'Motivo no identificado' };
         const phase = describePeer(peer).state === 'connected' ? 'ready' : peer.phase === 'ready' ? 'authenticating' : peer.phase || 'standby';
         const milliseconds = phase === 'ready' ? peer.channelRemainingMs : peer.preparationRemainingMs;
@@ -78,6 +82,9 @@
                     const row = d.createElement('article');
                     row.className = 'connections-mini-peer';
                     row.dataset.miniPeer = peer.peerId;
+                    const avatar = d.createElement('span');
+                    avatar.className = 'connections-peer-avatar';
+                    avatar.setAttribute('aria-hidden', 'true');
                     const name = d.createElement('strong'), status = d.createElement('span'), hint = d.createElement('p'), actions = d.createElement('div');
                     status.className = 'connections-mini-peer-state';
                     status.setAttribute('role', 'status');
@@ -97,23 +104,30 @@
                         pending.delete(peer.peerId); refresh(); }); };
                     close.onclick = () => { if (disposed)
                         return; pending.delete(peer.peerId); o.close(peer.peerId); refresh(); };
-                    const group = d.createElement('div');
+                    const group = d.createElement('details');
                     group.className = 'connections-mini-peer-details';
-                    group.setAttribute('role', 'group');
-                    group.setAttribute('aria-label', 'Detalles del vínculo');
+                    const summary = d.createElement('summary');
+                    summary.textContent = 'Detalles de conexión';
+                    group.append(summary);
                     const details = Array.from({ length: 4 }, () => d.createElement('p'));
                     details[0].className = 'connections-mini-peer-link';
                     group.append(...details);
                     const note = d.createElement('small');
                     note.textContent = 'El mismo vínculo no confirma una conexión activa.';
                     group.append(note);
+                    const linked = d.createElement('span');
+                    linked.className = 'connections-peer-linked';
+                    linked.textContent = 'Vinculado';
                     actions.append(connect, close);
-                    row.append(icon(d, 'phone'), name, status, hint, actions, group);
+                    row.append(avatar, name, status, hint, actions, group, linked);
                     o.container.append(row);
-                    view = { row, name, status, statusLabel, statusIcon, hint, connect, close, details };
+                    view = { row, avatar, name, status, statusLabel, statusIcon, hint, connect, close, details };
                     rows.set(peer.peerId, view);
                 }
-                const model = describePeer(peer);
+                const model = describePeer(pending.has(peer.peerId) && describePeer(peer).state !== 'connected' ? { ...peer, state: 'connecting' } : peer);
+                const initials = peerInitials(peer.name);
+                if (view.avatar.textContent !== initials)
+                    view.avatar.textContent = initials;
                 if (view.name.textContent !== peer.name)
                     view.name.textContent = peer.name;
                 if (view.statusLabel.textContent !== model.label) {
@@ -124,7 +138,7 @@
                     view.statusIcon.setAttribute('data-peer-state-icon', kind);
                 }
                 view.row.dataset.state = model.state;
-                view.hint.textContent = model.busy ? 'Cerrar interrumpe la transferencia; los datos guardados se conservan.' : model.state === 'available' ? 'Sin conexión activa. Disponible para recibir con Mini abierta.' : model.state === 'connecting' ? 'Esperando al otro Mini.' : model.state === 'error' ? 'Reintenta la conexión; tus datos se conservan.' : 'Listo para enviar y recibir respaldos.';
+                view.hint.textContent = model.busy ? 'Cerrar interrumpe la transferencia; los datos guardados se conservan.' : model.state === 'available' ? 'Sin conexión activa. Conecta ambos dispositivos para compartir.' : model.state === 'connecting' ? 'Esperando al otro dispositivo.' : model.state === 'error' ? 'Reintenta la conexión; tus datos se conservan.' : 'Listo para enviar y recibir respaldos.';
                 view.connect.textContent = model.connectLabel;
                 view.connect.disabled = pending.has(peer.peerId);
                 view.connect.setAttribute('aria-label', model.connectLabel + ' con ' + peer.name);
@@ -153,7 +167,7 @@
                 cancel(timer); timer = null; pending.clear(); rows.clear(); } };
     }
     function icon(d, kind) {
-        const paths = { send: 'M22 2L9 15M22 2l-7 20-4-9-9-4z', calendar: 'M8 2v4M16 2v4M3 10h18M3 4h18v18H3zM8 15h2M14 15h2', share: 'M6 12l12-7M6 12l12 7M18 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6', refresh: 'M3 12a9 9 0 0 1 15-7l3 3M21 3v5h-5M21 12a9 9 0 0 1-15 7l-3-3M3 21v-5h5', back: 'M15 18l-6-6 6-6', chevron: 'M9 6l6 6-6 6', building: 'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4', phone: 'M7 2h10v20H7zM10 18h4', people: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8', cloud: 'M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12z', qr: 'M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6z', document: 'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8', clock: 'M12 8v5l3 2M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20', unlink: 'M9 15l-2 2a4 4 0 0 1-6-6l3-3M15 9l2-2a4 4 0 0 1 6 6l-3 3M3 3l18 18', tag: 'M3 3h8l10 10-8 8L3 11zM7 7h.01', check: 'M5 12l4 4L19 6', warning: 'M12 3L2 21h20L12 3zM12 9v5M12 17h.01' };
+        const paths = { link: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', send: 'M22 2L9 15M22 2l-7 20-4-9-9-4z', calendar: 'M8 2v4M16 2v4M3 10h18M3 4h18v18H3zM8 15h2M14 15h2', share: 'M6 12l12-7M6 12l12 7M18 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6', refresh: 'M3 12a9 9 0 0 1 15-7l3 3M21 3v5h-5M21 12a9 9 0 0 1-15 7l-3-3M3 21v-5h5', back: 'M15 18l-6-6 6-6', chevron: 'M9 6l6 6-6 6', building: 'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4', phone: 'M7 2h10v20H7zM10 18h4', people: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8', cloud: 'M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12z', qr: 'M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6z', document: 'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8', clock: 'M12 8v5l3 2M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20', unlink: 'M9 15l-2 2a4 4 0 0 1-6-6l3-3M15 9l2-2a4 4 0 0 1 6 6l-3 3M3 3l18 18', tag: 'M3 3h8l10 10-8 8L3 11zM7 7h.01', check: 'M5 12l4 4L19 6', warning: 'M12 3L2 21h20L12 3zM12 9v5M12 17h.01' };
         const svg = d.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('aria-hidden', 'true');
@@ -324,5 +338,5 @@
                 details.before(feedback); details.remove(); back.remove(); account.remove(); heading.textContent = originalTitle; delete heading.dataset.miniPageTitle; delete o.shell.dataset.miniConnectionPage; if (subtitle)
                 subtitle.hidden = false; } };
     }
-    return { describePage, describeFeedback, describePeer, createLinkFingerprint, observePhase, describePeerDetails, mountPeers, icon, mount };
+    return { describePage, describeFeedback, peerInitials, describePeer, createLinkFingerprint, observePhase, describePeerDetails, mountPeers, icon, mount };
 });

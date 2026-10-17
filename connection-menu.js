@@ -78,11 +78,11 @@
         const directList = node('div', 'connections-source-list'), cloudList = node('div', 'connections-source-list');
         list.append(directList, cloudList);
         const heading = node('h3');
-        heading.textContent = app === 'sa' ? 'Vínculos' : 'Mi vínculo';
+        heading.textContent = app === 'sa' ? 'Vínculos' : 'Obra asociada';
         const empty = node('section', 'connections-empty');
         const emptyTitle = node('strong'), emptyHint = node('p');
-        emptyTitle.textContent = app === 'sa' ? 'Todavía no hay vínculos' : 'Conecta Mini con tu obra';
-        emptyHint.textContent = app === 'sa' ? 'Usa Vincular Mini para compartir personal y recibir asistencia.' : 'Escanea la invitación que te comparte SA para recibir personal y enviar asistencia.';
+        emptyTitle.textContent = app === 'sa' ? 'Todavía no hay vínculos' : 'Asocia tu obra cuando lo necesites';
+        emptyHint.textContent = app === 'sa' ? 'Usa Vincular Mini para compartir personal y recibir asistencia.' : 'Recibe personal y comparte asistencia con una obra.';
         empty.append(icon('building'), emptyTitle, emptyHint);
         const extras = node('div', 'connections-extras');
         const taskHost = node('div', directBody.className + ' connections-task');
@@ -90,7 +90,7 @@
         taskHost.hidden = true;
         const taskTitle = node('h3');
         taskTitle.className = 'connections-screen-title';
-        const taskBack = button('Volver a conexiones', () => { show(); });
+        const taskBack = button('Volver a compartir', () => { show(); });
         taskBack.dataset.connectionsBack = '';
         const taskContent = node('div', 'connections-task-content');
         taskHost.append(taskBack, taskTitle, taskContent);
@@ -100,12 +100,12 @@
         const add = button(app === 'mini' ? 'Asociar a una obra' : 'Vincular', () => { task('link'); });
         add.dataset.connectionsAdd = '';
         if (app === 'mini') {
-            const device = button('Asociar a otro dispositivo', () => {
+            const device = button('Vincular dispositivo', () => {
                 if (!guard())
                     return;
                 const backup = extras.querySelector('[data-open-backup-hub-btn]') || directBody.querySelector('[data-open-backup-hub-btn]');
                 if (!backup) {
-                    options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Conexiones.');
+                    options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Compartir.');
                     return;
                 }
                 showDirect();
@@ -113,12 +113,12 @@
             });
             device.dataset.connectionsDevice = '';
             device.prepend(icon('phone'));
-            toolbar.append(device);
+            toolbar.prepend(device);
+            toolbar.classList.add('connections-device-toolbar');
         }
         const refresh = button('Actualizar conexiones', () => { if (!guard())
             return; void refreshCloud(); });
-        toolbar.prepend(add);
-        toolbar.append(refresh);
+        toolbar.append(add, refresh);
         if (app === 'mini') {
             refresh.prepend(icon('refresh'));
             add.prepend(icon('link'));
@@ -134,9 +134,9 @@
             move(account, header);
         if (app === 'mini' && options.getMiniPeers && options.subscribeMiniPeers && options.connectMiniPeer && options.closeMiniPeer && typeof MiniConnectionPresentation !== 'undefined') {
             const peerSection = node('section', 'connections-mini-peers'), peerHeading = node('h3'), peerList = node('div');
-            peerHeading.textContent = 'Otros Minis';
+            peerHeading.textContent = 'Dispositivos vinculados';
             peerSection.append(peerHeading, peerList);
-            home.insertBefore(peerSection, toolbar);
+            home.insertBefore(peerSection, heading);
             const actions = createPeerActions({ connect: options.connectMiniPeer, close: options.closeMiniPeer });
             const peers = MiniConnectionPresentation.mountPeers({ container: peerList, getPeers: options.getMiniPeers, subscribe: options.subscribeMiniPeers, connect: id => actions.connect(id), close: id => actions.close(id), notify: options.notify });
             cleanupCallbacks.push(() => { peers.dispose(); actions.dispose(); });
@@ -292,7 +292,7 @@
                     const title = node('strong');
                     title.textContent = option.textContent;
                     const authorization = node('p');
-                    authorization.textContent = 'Obra y grupo autorizados para este Mini';
+                    authorization.textContent = 'Obra y grupo autorizados para este dispositivo';
                     const actions = node('div', 'connections-card-actions');
                     actions.append(bindCloudAction('Recibir personal', 'roster', index), bindCloudAction('Enviar asistencia', 'send', index), bindCloudAction('Miembros y asistencia', 'members', index), bindCloudAction('Desvincular', 'leave', index));
                     const detail = button('Administrar vínculo', () => { detailIndex = index; detailScope = { orgId: option.dataset.orgId || '', projectId: option.dataset.projectId || '', groupId: option.dataset.groupId || '' }; task('details'); });
@@ -314,7 +314,7 @@
         }
         function renderHeader() {
             const status = el(app === 'mini' ? 'firebase-link-status' : 'sa-field-status'), email = (status === null || status === void 0 ? void 0 : status.dataset.accountEmail) || '';
-            accountOpen.textContent = email || 'Mi cuenta';
+            accountOpen.textContent = email ? 'Mi cuenta' : 'Iniciar sesión';
             accountOpen.title = email ? 'Mi cuenta · ' + email : 'Mi cuenta';
             accountOpen.setAttribute('aria-label', 'Mi cuenta');
             accountTitle.textContent = email ? ((status === null || status === void 0 ? void 0 : status.dataset.accountName) || email).trim().slice(0, 1).toUpperCase() : 'G';
@@ -400,9 +400,9 @@
                     update.dataset.primaryAction = 'roster';
                     personnel.append(icon('people'), personnelTitle, personnelHint, update);
                     primaryActions.append(personnel);
-                    const peers = node('article', 'connections-action-card connections-members-action'), peerTitle = node('h3'), peerHint = node('p'), share = bindCloudAction('Compartir con otro Mini', 'members', index);
+                    const peers = node('article', 'connections-action-card connections-members-action'), peerTitle = node('h3'), peerHint = node('p'), share = bindCloudAction('Compartir con otro equipo', 'members', index);
                     share.dataset.primaryAction = 'members';
-                    peerTitle.textContent = 'Otros Minis de mi obra';
+                    peerTitle.textContent = 'Equipo de mi obra';
                     peerHint.textContent = 'Compartir o revisar asistencia de varios días';
                     peers.append(icon('share'), peerTitle, peerHint, share);
                     primaryActions.append(peers);
@@ -1116,7 +1116,7 @@
             }
             if (event.key !== 'Tab')
                 return;
-            const nodes = [...shell.querySelectorAll('button,input,select,textarea,a[href],[tabindex="0"]')].filter(n => !n.hasAttribute('disabled') && n.getClientRects().length > 0 && n.tabIndex >= 0);
+            const nodes = [...shell.querySelectorAll('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(n => !n.hasAttribute('disabled') && n.getClientRects().length > 0 && n.tabIndex >= 0);
             const first = nodes[0], last = nodes[nodes.length - 1];
             if (event.shiftKey && d.activeElement === first) {
                 event.preventDefault();

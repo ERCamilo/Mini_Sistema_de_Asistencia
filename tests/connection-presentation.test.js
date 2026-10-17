@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {describePage}=require('../connection-presentation.js');
 test('a single title describes each connection stage, including native personal and direct pairing',()=>{
- assert.deepEqual(describePage({home:true,taskTitle:'viejo'}),{key:'home',title:'Conexiones',back:false});
+ assert.deepEqual(describePage({home:true,taskTitle:'viejo'}),{key:'home',title:'Compartir',back:false});
  assert.equal(describePage({task:'send',taskTitle:'Enviar asistencia'}).title,'Enviar asistencia');
  assert.equal(describePage({native:'personal-review',nativeTitle:'Revisa qué cambiará'}).title,'Actualizar personal');
  assert.equal(describePage({native:'personal-result'}).title,'Personal actualizado');
@@ -12,7 +12,7 @@ test('a single title describes each connection stage, including native personal 
 test('invitation headings follow the real Google linking phase',()=>{
  assert.equal(describePage({task:'invitation',taskTitle:'viejo',linkPhase:'ready'}).title,'Vincular con mi obra');
  assert.equal(describePage({task:'link',linkPhase:'preview'}).title,'Confirmar vínculo');
- assert.equal(describePage({task:'invitation',linkPhase:'linked'}).title,'Mini vinculado');
+ assert.equal(describePage({task:'invitation',linkPhase:'linked'}).title,'Dispositivo vinculado');
  assert.equal(describePage({task:'account',taskTitle:'Mi cuenta',linkPhase:'linked'}).title,'Mi cuenta');
 });
 
@@ -26,11 +26,11 @@ test('background connection details stay collapsed; actions get a visible result
  assert.deepEqual(describeFeedback('busy',false,false),{banner:false,open:false,busy:true});
 });
 
-test('send, dates, sharing and refresh have distinct representative vector icons',()=>{const {icon}=require('../connection-presentation.js');const d={createElementNS:(ns,tag)=>({tag,attributes:{},children:[],classList:{add(){}},setAttribute(k,v){this.attributes[k]=v;},append(child){this.children.push(child);},namespaceURI:ns})};const drawing=kind=>icon(d,kind).children[0].attributes.d;const document=drawing('document');for(const kind of ['send','calendar','share','refresh'])assert.notEqual(drawing(kind),document,kind+' must not fall back to a document');assert.equal(new Set(['send','calendar','share','refresh'].map(drawing)).size,4);});
+test('send, dates, sharing and refresh have distinct representative vector icons',()=>{const {icon}=require('../connection-presentation.js');const d={createElementNS:(ns,tag)=>({tag,attributes:{},children:[],classList:{add(){}},setAttribute(k,v){this.attributes[k]=v;},append(child){this.children.push(child);},namespaceURI:ns})};const drawing=kind=>icon(d,kind).children[0].attributes.d;const document=drawing('document');for(const kind of ['send','calendar','share','refresh','link'])assert.notEqual(drawing(kind),document,kind+' must not fall back to a document');assert.equal(new Set(['send','calendar','share','refresh','link'].map(drawing)).size,5);});
 
 test('Mini peer state requires a valid authenticated open channel, not merely a link', () => {
  const api=require('../connection-presentation.js');assert.equal(typeof api.describePeer,'function');
- assert.equal(api.describePeer({peerId:'p',name:'Mini',state:'connected'}).label,'Disponible');
+ assert.equal(api.describePeer({peerId:'p',name:'Mini',state:'connected'}).label,'Sin conexión');
  assert.equal(api.describePeer({peerId:'p',name:'Mini',state:'connected',authenticated:true,channelOpen:true,leaseValid:true}).label,'Conectado');
  assert.equal(api.describePeer({peerId:'p',name:'Mini',state:'connecting'}).label,'Conectando');
  assert.equal(api.describePeer({peerId:'p',name:'Mini',state:'error'}).label,'Error');
@@ -65,7 +65,7 @@ test('peer cards show prominent semantic icon and text for all four current stat
  let peer={peerId:'p',name:'Synthetic Mini',state:'available'};
  const view=mountPeers({container,getPeers:()=>[peer],subscribe:fn=>{refresh=fn;return ()=>{};},connect:async()=>{},close(){},notify(){}});
  const row=container.children[0],button=row.children[4].children[0];button.focus();
- for(const [state,label,kind,hint] of [['available','Disponible','unlink','Sin conexión activa'],['connecting','Conectando','clock','Esperando'],['connected','Conectado','check','Listo para enviar y recibir'],['error','Error','warning','Reintenta']]){
+ for(const [state,label,kind,hint] of [['available','Sin conexión','unlink','Sin conexión activa'],['connecting','Conectando','clock','Esperando'],['connected','Conectado','check','Listo para enviar y recibir'],['error','Error','warning','Reintenta']]){
   peer={...peer,state,authenticated:state==='connected',channelOpen:state==='connected',leaseValid:state==='connected'};refresh();
   assert.equal(row.dataset.state,state);const badge=row.children[2];assert.equal(badge.attributes.role,'status');assert.equal(badge.attributes['aria-atomic'],'true');
   assert.equal(badge.children[0].attributes['data-peer-state-icon'],kind);assert.equal(badge.children[0].attributes['aria-hidden'],'true');assert.equal(badge.children[1].textContent,label);
@@ -81,7 +81,7 @@ test('connected badge resets for closed, expired or unauthenticated linked peers
  const row=container.children[0];
  for(const field of ['authenticated','channelOpen','leaseValid']){
   peer={...peer,authenticated:true,channelOpen:true,leaseValid:true,[field]:false};refresh();
-  assert.equal(row.dataset.state,'available');assert.equal(row.children[2].children[1].textContent,'Disponible');assert.match(row.children[3].textContent,/Sin conexión activa/);
+  assert.equal(row.dataset.state,'available');assert.equal(row.children[2].children[1].textContent,'Sin conexión');assert.match(row.children[3].textContent,/Sin conexión activa/);
  }
  view.dispose();
 });
@@ -90,7 +90,7 @@ test('unchanged peer refresh does not rewrite the live status or replace its dra
  const {mountPeers}=require('../connection-presentation.js'),{container}=peerDom();
  const view=mountPeers({container,getPeers:()=>[{peerId:'p',name:'Mini',state:'available'}],subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){}});
  const badge=container.children[0].children[2],label=badge.children[1],drawing=badge.children[0].children[0];let writes=0;
- Object.defineProperty(label,'textContent',{get:()=> 'Disponible',set(){writes++;}});
+ Object.defineProperty(label,'textContent',{get:()=> 'Sin conexión',set(){writes++;}});
  view.refresh();view.refresh();assert.equal(writes,0);assert.equal(badge.children[0].children[0],drawing);view.dispose();
 });
 
@@ -122,8 +122,36 @@ test('card detail strings allowlist phases, codes and reasons without leaking un
 test('display timer reads fixed remaining time, preserves keyed focus and stops on idle and dispose', () => {
  const {mountPeers}=require('../connection-presentation.js'),{d,container}=peerDom();let callback,timer=0,cancelled=0,reads=0,remaining=5000;
  const view=mountPeers({container,getPeers:()=>{reads++;return [{peerId:'p',name:'Mini',phase:'preparing',preparationRemainingMs:remaining}];},subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){},schedule:fn=>{callback=fn;return ++timer;},cancel:()=>cancelled++});
- const row=container.children[0],button=row.children[4].children[0];button.focus();const details=row.children[5];assert.ok(details,'detail group missing');assert.equal(timer,1);
- remaining=2900;callback();assert.equal(container.children[0],row);assert.equal(d.activeElement,button);assert.match(details.children[2].textContent,/00:03/);assert.equal(timer,2);
+ const row=container.children[0],button=row.children[4].children[0];button.focus();const details=row.children[5];assert.equal(details.tag,'details');assert.equal(details.children[0].tag,'summary');assert.equal(details.children[0].textContent,'Detalles de conexión');details.open=true;assert.equal(timer,1);
+ remaining=2900;callback();assert.equal(container.children[0],row);assert.equal(d.activeElement,button);assert.match(details.children[3].textContent,/00:03/);assert.equal(details.open,true,'refresh preserves disclosure state');assert.equal(timer,2);
  remaining=null;callback();assert.equal(timer,2,'idle cards must not schedule another tick');assert.equal(reads,3);view.dispose();assert.equal(cancelled,0);
  const active=mountPeers({container,getPeers:()=>[{peerId:'q',name:'Mini',channelRemainingMs:5000}],subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){},schedule:fn=>{callback=fn;return ++timer;},cancel:()=>cancelled++});active.dispose();assert.equal(cancelled,1);callback();assert.equal(timer,3);
+});
+
+
+test('paired device cards derive initials from the actual alias without inventing a profile', () => {
+ const {peerInitials,mountPeers}=require('../connection-presentation.js');
+ assert.equal(typeof peerInitials,'function');
+ for(const [alias,initials] of [['  Ana   Pérez  ','AP'],['Tablet','T'],['👷 Equipo Norte','EN'],['','D'],['<img onerror=bad>','IO']])assert.equal(peerInitials(alias),initials);
+ const {container}=peerDom();let peer={peerId:'p',name:'Ana Pérez'};
+ const view=mountPeers({container,getPeers:()=>[peer],subscribe:()=>()=>{},connect:async()=>{},close(){},notify(){}});
+ const row=container.children[0];assert.equal(row.children[0].textContent,'AP');assert.equal(row.children[0].attributes['aria-hidden'],'true');
+ assert.equal(row.children[1].textContent,'Ana Pérez');assert.equal(row.children[6].textContent,'Vinculado');
+ peer={...peer,name:'Equipo Norte'};view.refresh();assert.equal(row.children[0].textContent,'EN');view.dispose();
+});
+
+test('every incomplete channel predicate has an offline badge even if peer state says connected', () => {
+ const {describePeer}=require('../connection-presentation.js');
+ for(const authenticated of [false,true])for(const channelOpen of [false,true])for(const leaseValid of [false,true]){
+  const ready=authenticated&&channelOpen&&leaseValid;
+  assert.equal(describePeer({peerId:'p',name:'Equipo',state:'connected',authenticated,channelOpen,leaseValid}).label,ready?'Conectado':'Sin conexión');
+ }
+});
+
+test('an owned pending connect is connecting until closed even before snapshot updates', async () => {
+ const {mountPeers}=require('../connection-presentation.js'),{container}=peerDom();let finish;
+ const view=mountPeers({container,getPeers:()=>[{peerId:'p',name:'Equipo'}],subscribe:()=>()=>{},connect:()=>new Promise(resolve=>finish=resolve),close(){},notify(){}});
+ const row=container.children[0],[connect,close]=row.children[4].children;
+ connect.onclick();assert.equal(row.children[2].children[1].textContent,'Conectando');assert.equal(close.disabled,false);
+ close.onclick();assert.equal(row.children[2].children[1].textContent,'Sin conexión');finish();await new Promise(r=>setImmediate(r));view.dispose();
 });

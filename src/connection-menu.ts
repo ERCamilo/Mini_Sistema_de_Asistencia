@@ -56,30 +56,30 @@ interface ConnectionMenuOptions {
   const list=node('div','connections-list');list.dataset.connectionsList='';
   const directList=node('div','connections-source-list'),cloudList=node('div','connections-source-list');
   list.append(directList,cloudList);
-  const heading=node('h3');heading.textContent=app==='sa'?'Vínculos':'Mi vínculo';
-  const empty=node('section','connections-empty');const emptyTitle=node('strong'),emptyHint=node('p');emptyTitle.textContent=app==='sa'?'Todavía no hay vínculos':'Conecta Mini con tu obra';emptyHint.textContent=app==='sa'?'Usa Vincular Mini para compartir personal y recibir asistencia.':'Escanea la invitación que te comparte SA para recibir personal y enviar asistencia.';empty.append(icon('building'),emptyTitle,emptyHint);
+  const heading=node('h3');heading.textContent=app==='sa'?'Vínculos':'Obra asociada';
+  const empty=node('section','connections-empty');const emptyTitle=node('strong'),emptyHint=node('p');emptyTitle.textContent=app==='sa'?'Todavía no hay vínculos':'Asocia tu obra cuando lo necesites';emptyHint.textContent=app==='sa'?'Usa Vincular Mini para compartir personal y recibir asistencia.':'Recibe personal y comparte asistencia con una obra.';empty.append(icon('building'),emptyTitle,emptyHint);
   const extras=node('div','connections-extras');
   const taskHost=node('div',directBody.className+' connections-task');taskHost.dataset.connectionsTask='';taskHost.hidden=true;
-  const taskTitle=node('h3');taskTitle.className='connections-screen-title';const taskBack=button('Volver a conexiones',()=>{show();});
+  const taskTitle=node('h3');taskTitle.className='connections-screen-title';const taskBack=button('Volver a compartir',()=>{show();});
   taskBack.dataset.connectionsBack='';
   const taskContent=node('div','connections-task-content');taskHost.append(taskBack,taskTitle,taskContent);
   const store=node('div');store.hidden=true;store.dataset.connectionsStore='';
   const add=button(app==='mini'?'Asociar a una obra':'Vincular',()=>{task('link');});add.dataset.connectionsAdd='';
   if(app==='mini'){
-   const device=button('Asociar a otro dispositivo',()=>{
+   const device=button('Vincular dispositivo',()=>{
     if(!guard())return;
     const backup=extras.querySelector<HTMLButtonElement>('[data-open-backup-hub-btn]')||directBody.querySelector<HTMLButtonElement>('[data-open-backup-hub-btn]');
-    if(!backup){options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Conexiones.');return;}
+    if(!backup){options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Compartir.');return;}
     showDirect();backup.click();
    });
-   device.dataset.connectionsDevice='';device.prepend(icon('phone'));toolbar.append(device);
+   device.dataset.connectionsDevice='';device.prepend(icon('phone'));toolbar.prepend(device);toolbar.classList.add('connections-device-toolbar');
   }
   const refresh=button('Actualizar conexiones',()=>{if(!guard())return;void refreshCloud();});
-  toolbar.prepend(add);toolbar.append(refresh);if(app==='mini'){refresh.prepend(icon('refresh'));add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(priorities,toolbar,heading,list,empty,extras,account);
+  toolbar.append(add,refresh);if(app==='mini'){refresh.prepend(icon('refresh'));add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(priorities,toolbar,heading,list,empty,extras,account);
   shell.insertBefore(home,directBody);shell.insertBefore(feedback,directBody);shell.insertBefore(taskHost,directBody);shell.append(store);
   const header=shell.querySelector('header');if(header)move(account,header);
   if(app==='mini'&&options.getMiniPeers&&options.subscribeMiniPeers&&options.connectMiniPeer&&options.closeMiniPeer&&typeof MiniConnectionPresentation!=='undefined'){
-   const peerSection=node('section','connections-mini-peers'),peerHeading=node('h3'),peerList=node('div');peerHeading.textContent='Otros Minis';peerSection.append(peerHeading,peerList);home.insertBefore(peerSection,toolbar);
+   const peerSection=node('section','connections-mini-peers'),peerHeading=node('h3'),peerList=node('div');peerHeading.textContent='Dispositivos vinculados';peerSection.append(peerHeading,peerList);home.insertBefore(peerSection,heading);
    const actions=createPeerActions({connect:options.connectMiniPeer,close:options.closeMiniPeer});
    const peers=MiniConnectionPresentation.mountPeers({container:peerList,getPeers:options.getMiniPeers,subscribe:options.subscribeMiniPeers,connect:id=>actions.connect(id),close:id=>actions.close(id),notify:options.notify});
    cleanupCallbacks.push(()=>{peers.dispose();actions.dispose();});
@@ -148,7 +148,7 @@ interface ConnectionMenuOptions {
     [...(select?.options||[])].forEach((option,index)=>{
      const card=node('article','connections-card');decorate(card,'internet');
      const title=node('strong');title.textContent=option.textContent;
-     const authorization=node('p');authorization.textContent='Obra y grupo autorizados para este Mini';
+     const authorization=node('p');authorization.textContent='Obra y grupo autorizados para este dispositivo';
      const actions=node('div','connections-card-actions');
      actions.append(bindCloudAction('Recibir personal','roster',index),bindCloudAction('Enviar asistencia','send',index),bindCloudAction('Miembros y asistencia','members',index),bindCloudAction('Desvincular','leave',index));
      const detail=button('Administrar vínculo',()=>{detailIndex=index;detailScope={orgId:option.dataset.orgId||'',projectId:option.dataset.projectId||'',groupId:option.dataset.groupId||''};task('details');});detail.dataset.connectionDetail='';
@@ -160,7 +160,7 @@ interface ConnectionMenuOptions {
 
   function renderHeader(){
    const status=el(app==='mini'?'firebase-link-status':'sa-field-status'),email=status?.dataset.accountEmail||'';
-   accountOpen.textContent=email||'Mi cuenta';accountOpen.title=email?'Mi cuenta · '+email:'Mi cuenta';accountOpen.setAttribute('aria-label','Mi cuenta');
+   accountOpen.textContent=email?'Mi cuenta':'Iniciar sesión';accountOpen.title=email?'Mi cuenta · '+email:'Mi cuenta';accountOpen.setAttribute('aria-label','Mi cuenta');
    accountTitle.textContent=email?(status?.dataset.accountName||email).trim().slice(0,1).toUpperCase():'G';
   }
   function icon(kind:string){if(app==='mini'&&typeof MiniConnectionPresentation!=='undefined')return MiniConnectionPresentation.icon(d,kind);const svg=d.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('connections-line-icon');const path=d.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',kind==='phone'?'M7 2h10v20H7zM10 18h4':kind==='building'?'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4':kind==='link'?'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2':kind==='people'?'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8':'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8');svg.append(path);return svg;}
@@ -195,7 +195,7 @@ interface ConnectionMenuOptions {
      const description=node('p');description.textContent=select.options[index]?.textContent||'Selecciona una obra';
      const send=bindCloudAction('Preparar envío','send',index);send.dataset.primaryAction='send';
      send.textContent='Enviar asistencia';
-     card.append(icon('send'),title,description,send);primaryActions.append(card);const personnel=node('article','connections-action-card connections-personal-action'),personnelTitle=node('h3'),personnelHint=node('p');personnelTitle.textContent='Personal de mi obra';personnelHint.textContent=select.options[index]?.textContent||'';const update=bindCloudAction('Actualizar personal','roster',index);update.dataset.primaryAction='roster';personnel.append(icon('people'),personnelTitle,personnelHint,update);primaryActions.append(personnel);const peers=node('article','connections-action-card connections-members-action'),peerTitle=node('h3'),peerHint=node('p'),share=bindCloudAction('Compartir con otro Mini','members',index);share.dataset.primaryAction='members';peerTitle.textContent='Otros Minis de mi obra';peerHint.textContent='Compartir o revisar asistencia de varios días';peers.append(icon('share'),peerTitle,peerHint,share);primaryActions.append(peers);
+     card.append(icon('send'),title,description,send);primaryActions.append(card);const personnel=node('article','connections-action-card connections-personal-action'),personnelTitle=node('h3'),personnelHint=node('p');personnelTitle.textContent='Personal de mi obra';personnelHint.textContent=select.options[index]?.textContent||'';const update=bindCloudAction('Actualizar personal','roster',index);update.dataset.primaryAction='roster';personnel.append(icon('people'),personnelTitle,personnelHint,update);primaryActions.append(personnel);const peers=node('article','connections-action-card connections-members-action'),peerTitle=node('h3'),peerHint=node('p'),share=bindCloudAction('Compartir con otro equipo','members',index);share.dataset.primaryAction='members';peerTitle.textContent='Equipo de mi obra';peerHint.textContent='Compartir o revisar asistencia de varios días';peers.append(icon('share'),peerTitle,peerHint,share);primaryActions.append(peers);
     }
    }else{
     const card=node('article','connections-action-card');
@@ -458,7 +458,7 @@ interface ConnectionMenuOptions {
   function keydown(event:KeyboardEvent){
    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();options.close();return;}
    if(event.key!=='Tab')return;
-   const nodes=[...shell.querySelectorAll<HTMLElement>('button,input,select,textarea,a[href],[tabindex="0"]')].filter(n=>!n.hasAttribute('disabled')&&n.getClientRects().length>0&&n.tabIndex>=0);
+   const nodes=[...shell.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(n=>!n.hasAttribute('disabled')&&n.getClientRects().length>0&&n.tabIndex>=0);
    const first=nodes[0],last=nodes[nodes.length-1];
    if(event.shiftKey&&d.activeElement===first){event.preventDefault();last?.focus();}
    else if(!event.shiftKey&&d.activeElement===last){event.preventDefault();first?.focus();}

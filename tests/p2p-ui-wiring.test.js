@@ -685,7 +685,7 @@ test('cancel and back navigation cleans up session and resets view', async () =>
   clickHandlers['[data-back]']();
   assert.equal(sessionClosed, true, 'clicking back must cleanup active session');
   await new Promise(r => setTimeout(r, 10));
-  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'clicking back must render home');
+  assert.ok(mockBodyDiv.innerHTML.includes('Dispositivos de la obra'), 'clicking back must render home');
 
   // 2. Wait transfer and click cancel
   await ctx.waitTrustedTransfer('sa-1', 'attendance');
@@ -693,7 +693,7 @@ test('cancel and back navigation cleans up session and resets view', async () =>
   clickHandlers['[data-cancel]']();
   assert.equal(sessionClosed, true, 'clicking cancel must cleanup active session');
   await new Promise(r => setTimeout(r, 10));
-  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'clicking cancel must render home');
+  assert.ok(mockBodyDiv.innerHTML.includes('Dispositivos de la obra'), 'clicking cancel must render home');
 });
 
 test('retry wiring in waitTrustedTransfer handles connection errors and restarts transfer', async () => {
@@ -818,7 +818,7 @@ test('retry wiring in waitTrustedTransfer handles connection errors and restarts
   // 4. Click cancel-wait
   cancelWaitHandler();
   await new Promise(r => setTimeout(r, 10));
-  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'cancel wait must return to home');
+  assert.ok(mockBodyDiv.innerHTML.includes('Dispositivos de la obra'), 'cancel wait must return to home');
 });
 
 test('roster and attendance coexistence in UI actions, mode badges, and responder/receiver binding', async () => {
@@ -893,7 +893,7 @@ test('confirm dialogs stack above the P2P overlay, notices and welcome gate', ()
 test('independent Mini device association preserves backup adapter and touch target',()=>{
   const menu=read('src/connection-menu.ts'),css=read('connection-screens.css'),ui=read('p2p-roster-ui.js');
   assert.ok(menu.includes("app==='mini'?'Asociar a una obra':'Vincular'"));
-  const action=menu.slice(menu.indexOf("const device=button('Asociar a otro dispositivo'"),menu.indexOf("device.dataset.connectionsDevice"));
+  const action=menu.slice(menu.indexOf("const device=button('Vincular dispositivo'"),menu.indexOf("device.dataset.connectionsDevice"));
   assert.ok(action.includes('if(!guard())return;'));
   assert.ok(action.includes('[data-open-backup-hub-btn]'));
   assert.ok(action.includes('showDirect();backup.click();'));
@@ -901,4 +901,15 @@ test('independent Mini device association preserves backup adapter and touch tar
   assert.ok(/\[data-connections-device\][^{]*\{[^}]*min-height:48px/.test(css));
   assert.ok(ui.includes("renderQrScanner({ allowSameApp: true })"));
   assert.ok(ui.includes("renderManualPair({ allowSameApp: true })"));
+});
+
+
+test('sharing shell uses neutral home labels and fullscreen mobile safe-area geometry',()=>{
+ const ui=read('p2p-roster-ui.js'),css=read('p2p-transfer.css');
+ assert.match(ui,/class="mini-p2p-title">Compartir</);
+ assert.match(ui,/class="mini-p2p-subtitle">Colabora con tu equipo</);
+ assert.match(css,/@media \(max-width: 600px\)[\s\S]*height: 100dvh/);
+ assert.ok(css.includes('env(safe-area-inset-top'));
+ assert.ok(css.includes('env(safe-area-inset-bottom'));
+ assert.match(css,/\.connections-mini-peer-details summary[^}]*min-height: 44px/);
 });
