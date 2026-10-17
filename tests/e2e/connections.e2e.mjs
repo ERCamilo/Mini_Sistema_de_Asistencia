@@ -142,7 +142,7 @@ for (const width of [320, 390, 1024]) for (const theme of ['light', 'dark']) {
       await page.evaluate(() => sharingFixture.menu.show());
       await page.locator('[data-connections-add]').click();
       assert.equal(await page.locator('[data-connections-task]').isVisible(), true);
-      assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Vincular');
+      assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Vincular una obra');
       await page.locator('[data-mini-header-back]').click();
       assert.equal(await page.locator('[data-connections-home]').isVisible(), true);
       // Native personal review and employee-send overlays share mobile geometry.
@@ -183,5 +183,39 @@ for (const width of [320, 390, 1024]) for (const theme of ['light', 'dark']) {
       assert.deepEqual(errors, []);
       assert.equal(await page.evaluate(() => sharingFixture.menu.release()), true);
     } finally { await context.close(); }
+  });
+}
+
+const photoPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==', 'base64');
+for(const width of [320,390,1024])for(const theme of ['light','dark']){
+  test(`Google profile ${width}px ${theme}: successful image, failed image, changed account and logout update without manual refresh`, async()=>{
+    const {context,page,errors}=await openFixture(width,theme);
+    try{
+      await page.route('https://lh3.googleusercontent.com/a/**',route=>route.request().url().includes('/ok')?route.fulfill({status:200,contentType:'image/png',body:photoPng}):route.abort());
+      const label=page.locator('[data-connections-account] > strong');
+      const image=page.locator('[data-connections-account] > img.connections-account-photo');
+      await page.evaluate(()=>{const s=document.querySelector('#firebase-link-status');s.dataset.accountEmail='ana@example.test';s.dataset.accountName='Ana Gómez';s.dataset.accountPhoto='https://lh3.googleusercontent.com/a/ok';});
+      await page.waitForFunction(()=>{const n=document.querySelector('[data-connections-account] img');return !!n&&!n.hidden&&n.naturalWidth>0;});
+      assert.equal(await image.isVisible(),true);
+      assert.equal(await label.isVisible(),false);
+      await page.locator('[data-connection-account-open]').click();
+      const profile=page.locator('[data-account-summary]');
+      await page.waitForFunction(()=>{const n=document.querySelector('.connections-profile-photo');return !!n&&!n.hidden&&n.naturalWidth>0;});
+      assert.equal(await profile.locator('.connections-profile-photo').isVisible(),true);
+      await page.evaluate(()=>{const s=document.querySelector('#firebase-link-status');s.dataset.accountEmail='bea@example.test';s.dataset.accountName='Bea Ruiz';s.dataset.accountPhoto='https://lh3.googleusercontent.com/a/fail';});
+      await page.waitForFunction(()=>{const profile=document.querySelector('[data-account-summary]');return !!profile&&profile.querySelector('strong')?.textContent==='Bea Ruiz'&&!!profile.querySelector('.connections-profile-photo')?.hidden;});
+      assert.equal(await profile.locator('.connections-avatar').textContent(),'B');
+      assert.equal(await profile.locator('.connections-avatar').isVisible(),true);
+      await page.locator('[data-mini-header-back]').click();
+      await page.waitForFunction(()=>{const n=document.querySelector('[data-connections-account] > strong');return !!n&&n.textContent==='B'&&getComputedStyle(n).display!=='none';});
+      assert.equal(await image.isVisible(),false);
+      assert.equal(await label.isVisible(),true);
+      await page.evaluate(()=>{const s=document.querySelector('#firebase-link-status');s.dataset.accountEmail='';s.dataset.accountName='';s.dataset.accountPhoto='';});
+      await page.waitForFunction(()=>document.querySelector('[data-connection-account-open]')?.textContent==='Iniciar sesión');
+      assert.equal(await label.textContent(),'G');
+      assert.equal(await label.isVisible(),true);
+      assert.equal(await image.isVisible(),false);
+      assert.deepEqual(errors,[]);
+    }finally{await context.close();}
   });
 }

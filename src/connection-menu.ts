@@ -367,6 +367,17 @@ interface ConnectionMenuOptions {
     for(const id of ['login','logout'])move(el(prefix+id),account);
     const login=el(prefix+'login');if(login){login.classList.add('connection-google-button');const mark=d.createElement('img');mark.src=app==='mini'?'./vendor/google-g.png':'js/vendor/google-g.png';mark.width=20;mark.height=20;mark.alt='';mark.setAttribute('aria-hidden','true');const label=node('span');label.textContent='Iniciar sesión con Google';login.replaceChildren(mark,label);let lastHidden=login.hidden;const watcher=new MutationObserver(()=>{if(login.hidden===lastHidden)return;lastHidden=login.hidden;void refreshCloud();});watcher.observe(login,{attributes:true,attributeFilter:['hidden']});observers.push(watcher);}
     move(el(prefix+'status'),feedback);
+    const profileStatus=el(prefix+'status');
+    if(profileStatus){
+     const profileWatcher=new MutationObserver(()=>{
+      if(released)return;
+      presentation?.refresh();
+      renderHeader();
+      if(currentTask==='account')renderAccount();
+     });
+     profileWatcher.observe(profileStatus,{attributes:true,attributeFilter:['data-account-email','data-account-name','data-account-photo']});
+     observers.push(profileWatcher);
+    }
     if(app==='mini'){
      move(el('firebase-link-error'),feedback);move(el('cloud-field-status'),feedback);
      const linkPart=section('link',['firebase-link-code','firebase-link-review','firebase-link-details','firebase-link-confirm','firebase-link-add']);const intro=contextCard('Escanea la invitación de SA','Abre el QR en SA y apunta la cámara.');intro.dataset.invitationIntro='';intro.classList.add('mini-invitation-intro');if(typeof MiniConnectionPresentation!=='undefined')intro.prepend(MiniConnectionPresentation.icon(d,'qr'));const scan=button('Escanear QR de SA',()=>{if(!guard())return;showDirect();options.scanInvitation?.();});scan.dataset.invitationScan='';intro.append(scan);linkPart.prepend(intro);const input=el('firebase-link-code');if(input){const label=d.createElement('label');label.htmlFor='firebase-link-code';label.textContent='O pega el código de invitación';label.className='mini-invitation-code-label';input.before(label);input.setAttribute('placeholder','Pega aquí el código que te envió SA');}const review=el('firebase-link-review');if(review)review.textContent='Revisar código';const linkWatcher=new MutationObserver(()=>{renderInvitation();presentation?.refresh();});const status=el('firebase-link-status');if(status){linkWatcher.observe(status,{attributes:true,attributeFilter:['data-link-phase','data-link-busy']});observers.push(linkWatcher);}const error=el('firebase-link-error');if(error)move(error,linkPart);if(typeof MiniConnectionPresentation!=='undefined')el('firebase-link-details')?.querySelectorAll<HTMLElement>('.connections-capabilities>div').forEach((card,i)=>{if(!card.querySelector('svg'))card.prepend(MiniConnectionPresentation.icon(d,i?'document':'people'));});const confirmIdentity=identityCard();confirmIdentity.classList.add('mini-connection-confirm-account');el('firebase-link-confirm')?.before(confirmIdentity);const cancelInvitation=button('Cancelar',()=>{show();});cancelInvitation.dataset.invitationCancel='';linkPart.append(cancelInvitation);renderInvitation();
@@ -448,7 +459,7 @@ interface ConnectionMenuOptions {
    if(released||!guard())return false;
    initializeInternet();if(name==='link'||name==='invitation'||name==='account')taskHost.insertBefore(account,taskTitle);else store.append(account);taskHost.dataset.screen=name;shell.dataset.connectionScreen=name;currentTask=name;home.hidden=true;directBody.hidden=true;taskHost.hidden=false;feedback.hidden=false;
    openForm(name==='link'?'route':name==='invitation'?'link':name,name==='send'?'Enviar asistencia':name==='leave'?'Desvincular de la obra':name==='settings'?'Nombre de este Mini':name==='members'?'Miembros y asistencia':'Compartir personal');
-   if(name==='link'){taskTitle.textContent='Vincular dispositivo u obra';pairingChoices();}
+   if(name==='link'){taskTitle.textContent='Vincular una obra';pairingChoices();}
    if(name==='invite')taskTitle.textContent='Invitar un Mini';if(name==='invitation')taskTitle.textContent='Revisar invitación';
    if(name==='details')renderDetails();if(name==='account'){taskTitle.textContent='Mi cuenta';renderAccount();}
    if(name==='send'){renderSendPreview();void options.prepareSend?.();}if(name==='members'){renderSendPreview();void options.prepareMembers?.();}

@@ -531,7 +531,7 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
 [data-connection-screen=home] header .connections-account strong {flex:none;display:grid;place-items:center;min-width:26px;width:26px;height:26px;border-radius:50%;background:var(--connection-surface);color:var(--connection-accent);font-size:11px;}
 [data-connection-screen=home] header .connections-account button {min-height:44px;border:0;border-radius:8px;background:none;color:var(--connection-muted);font:inherit;font-size:10px;padding:4px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}
 [data-connection-screen=home] header .connections-account [id$=logout] {display:none!important;}
-[data-connection-screen=home] header .connections-account:has([id$=login]:not([hidden])) strong,[data-connection-screen=home] header .connections-account:has([id$=login]:not([hidden])) [data-connection-account-open] {display:none;}
+[data-connection-screen=home] header .connections-account:has([id$=login]:not([hidden])) [data-connection-account-open] {display:none;}
 .connections-home {gap:12px;}
 .connections-home h3 {font-size:14px;margin:4px 0 0;}
 .connections-pending-heading {display:none;}
@@ -648,7 +648,7 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
 
 .connections-account-photo,.connections-profile-photo {width:32px;height:32px;object-fit:cover;border-radius:50%;flex:none;}
 .connections-profile-photo {grid-column:1;grid-row:1 / 3;width:48px;height:48px;}
-.connections-account-photo[hidden],.connections-profile-photo[hidden] {display:none!important;}
+.connections-account-photo[hidden],.connections-profile-photo[hidden],.connections-account > strong[hidden],.connections-account-summary .connections-avatar[hidden] {display:none!important;}
 /* Sharing home: device-first actions and stable, alias-led cards. */
 .mini-p2p-shell .connections-home .connections-toolbar.connections-device-toolbar { order: -2; display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; padding: 0; }
 .mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-device] { grid-column: 1 / -1; min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--accent-color); color: var(--bg-color); font-size: 16px; font-weight: 700; }
@@ -685,7 +685,6 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
   .mini-p2p-title { font-size: 20px; }
   .mini-p2p-topbar-icon { display: none; }
   [data-connection-screen=home] header .connections-account { max-width: 50%; }
-  [data-connection-screen=home] header .connections-account > strong { display: none; }
   [data-connection-screen=home] header .connections-account > .connections-account-photo {width:28px;height:28px;}
   .connections-mini-peer { padding: 14px; }
   .employee-send-overlay { padding: 0; }

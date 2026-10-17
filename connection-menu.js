@@ -856,6 +856,19 @@
                     observers.push(watcher);
                 }
                 move(el(prefix + 'status'), feedback);
+                const profileStatus = el(prefix + 'status');
+                if (profileStatus) {
+                    const profileWatcher = new MutationObserver(() => {
+                        if (released)
+                            return;
+                        presentation === null || presentation === void 0 ? void 0 : presentation.refresh();
+                        renderHeader();
+                        if (currentTask === 'account')
+                            renderAccount();
+                    });
+                    profileWatcher.observe(profileStatus, { attributes: true, attributeFilter: ['data-account-email', 'data-account-name', 'data-account-photo'] });
+                    observers.push(profileWatcher);
+                }
                 if (app === 'mini') {
                     move(el('firebase-link-error'), feedback);
                     move(el('cloud-field-status'), feedback);
@@ -1114,7 +1127,7 @@
             feedback.hidden = false;
             openForm(name === 'link' ? 'route' : name === 'invitation' ? 'link' : name, name === 'send' ? 'Enviar asistencia' : name === 'leave' ? 'Desvincular de la obra' : name === 'settings' ? 'Nombre de este Mini' : name === 'members' ? 'Miembros y asistencia' : 'Compartir personal');
             if (name === 'link') {
-                taskTitle.textContent = 'Vincular dispositivo u obra';
+                taskTitle.textContent = 'Vincular una obra';
                 pairingChoices();
             }
             if (name === 'invite')
