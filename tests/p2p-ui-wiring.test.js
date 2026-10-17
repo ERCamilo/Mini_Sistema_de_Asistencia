@@ -83,7 +83,7 @@ test('Mini stages only validated sa-roster/v1 and never auto-imports from P2P',(
 
 test('SA roster review follows Mini design system with executive summary, expandable detail and vector-only actions',()=>{
   const ui=read('p2p-roster-ui.js'), css=read('p2p-transfer.css'), html=read('index.html');
-  for (const text of ['Revisa qué cambiará en Mini','Ver detalle de cambios','Resolver vínculos','Aplicar roster en Mini','se conservará en Mini']) assert.ok(ui.includes(text), text);
+  for (const text of ['Actualizar personal','Ver detalle de cambios','Resolver vínculos','Aplicar actualización','se conservará en Mini']) assert.ok(ui.includes(text), text);
   for (const cls of ['mini-roster-metrics','mini-roster-conflict-card','mini-roster-choice','mini-roster-footer']) assert.ok(css.includes('.'+cls), cls);
   assert.ok(html.includes('window.applyReviewedSaRoster'), 'app-owned apply seam is required');
   assert.ok(ui.includes("vectorIcon('check'"), 'review/result states use vector icons');
@@ -123,8 +123,8 @@ test('Mini Transferencias UI provides explicit wait attendance button for each l
   const ui=read('p2p-roster-ui.js');
   assert.ok(ui.includes('data-wait-attendance'), 'per-peer wait attendance button must exist');
   assert.ok(ui.includes('data-wait-peer'), 'per-peer wait roster button must be preserved');
-  assert.ok(ui.includes('aria-label=\"Esperar roster de'));
-  assert.ok(ui.includes('aria-label=\"Esperar asistencia de'));
+  assert.ok(ui.includes('aria-label=\"Recibir personal de'));
+  assert.ok(ui.includes('aria-label=\"Compartir asistencia con'));
   assert.ok(ui.includes("waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')"));
   assert.ok(ui.includes("waitTrustedTransfer(btn.dataset.waitPeer, 'roster')"));
 });
@@ -134,12 +134,12 @@ test('waitTrustedTransfer refactor supports attendance and roster modes with cle
   assert.ok(ui.includes('async function waitTrustedTransfer'));
   assert.ok(ui.includes('async function waitTrustedRoster'));
   assert.ok(ui.includes("waitTrustedTransfer(peerId, 'roster')"));
-  assert.ok(ui.includes('Esperar asistencia de'));
-  assert.ok(ui.includes('Esperar roster de'));
+  assert.ok(ui.includes('Compartir asistencia con'));
+  assert.ok(ui.includes('Recibir personal de'));
   assert.ok(ui.includes('Ahora en SA selecciona este Mini y solicita la asistencia.'));
-  assert.ok(ui.includes('Ahora en SA selecciona este Mini y pulsa “Enviar roster”.'));
+  assert.ok(ui.includes('En SA selecciona este Mini y envía la lista de personal.'));
   assert.ok(ui.includes('Listo para recibir la solicitud de asistencia…'));
-  assert.ok(ui.includes('Esperando roster…'));
+  assert.ok(ui.includes('Esperando la lista de personal…'));
 });
 
 test('trusted wait isolates attendance and roster handlers by selected mode',()=>{
@@ -296,7 +296,7 @@ test('trusted wait dynamic behavioral test: attendance sends ready only after re
   assert.equal(capturedResponderContext?.deviceId, 'mini-device-uuid-99', 'must pass self.deviceId');
   assert.equal(rosterReceiverAttached, false, 'attendance mode must not arm the roster receiver');
   assert.deepEqual(JSON.parse(mockChannel.sent.at(-1)), { schema: 'attendance-ready/v1' }, 'Mini must announce readiness after responder is armed');
-  assert.ok(mockBodyDiv.innerHTML.includes('Esperar asistencia de SA Oficina'), 'must show attendance header');
+  assert.ok(mockBodyDiv.innerHTML.includes('Compartir asistencia con SA Oficina'), 'must show attendance header');
   assert.ok((statusText + statusHtml).includes('Listo para recibir la solicitud de asistencia'), 'status must reflect attendance readiness');
 
   // 2. Simulate incoming attendance-request/v1
@@ -316,8 +316,8 @@ test('trusted wait dynamic behavioral test: attendance sends ready only after re
 
   // 3. Test backward-compatible waitTrustedRoster
   await ctx.waitTrustedRoster('sa-device-test');
-  assert.ok(mockBodyDiv.innerHTML.includes('Esperar roster de SA Oficina'), 'waitTrustedRoster must show roster header');
-  assert.ok((statusText + statusHtml).includes('Esperando roster'), 'status must reflect roster wait');
+  assert.ok(mockBodyDiv.innerHTML.includes('Recibir personal de SA Oficina'), 'waitTrustedRoster must show roster header');
+  assert.ok((statusText + statusHtml).includes('Esperando la lista de personal'), 'status must reflect roster wait');
   assert.equal(rosterReceiverAttached, true, 'roster mode must arm the roster receiver');
 });
 
@@ -685,7 +685,7 @@ test('cancel and back navigation cleans up session and resets view', async () =>
   clickHandlers['[data-back]']();
   assert.equal(sessionClosed, true, 'clicking back must cleanup active session');
   await new Promise(r => setTimeout(r, 10));
-  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'clicking back must render home');
+  assert.ok(mockBodyDiv.innerHTML.includes('Dispositivos de la obra'), 'clicking back must render home');
 
   // 2. Wait transfer and click cancel
   await ctx.waitTrustedTransfer('sa-1', 'attendance');
@@ -693,7 +693,7 @@ test('cancel and back navigation cleans up session and resets view', async () =>
   clickHandlers['[data-cancel]']();
   assert.equal(sessionClosed, true, 'clicking cancel must cleanup active session');
   await new Promise(r => setTimeout(r, 10));
-  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'clicking cancel must render home');
+  assert.ok(mockBodyDiv.innerHTML.includes('Dispositivos de la obra'), 'clicking cancel must render home');
 });
 
 test('retry wiring in waitTrustedTransfer handles connection errors and restarts transfer', async () => {
@@ -818,13 +818,13 @@ test('retry wiring in waitTrustedTransfer handles connection errors and restarts
   // 4. Click cancel-wait
   cancelWaitHandler();
   await new Promise(r => setTimeout(r, 10));
-  assert.ok(mockBodyDiv.innerHTML.includes('SA vinculados'), 'cancel wait must return to home');
+  assert.ok(mockBodyDiv.innerHTML.includes('Dispositivos de la obra'), 'cancel wait must return to home');
 });
 
 test('roster and attendance coexistence in UI actions, mode badges, and responder/receiver binding', async () => {
   const ui = read('p2p-roster-ui.js');
   // Check explicit mode representations
-  assert.ok(ui.includes("isAttendance ? 'Asistencia' : 'Personal / Roster'"));
+  assert.ok(ui.includes("isAttendance ? 'Asistencia' : 'Personal de la obra'"));
   assert.ok(ui.includes('mini-p2p-mode-chip'));
   assert.ok(ui.includes('data-wait-peer'));
   assert.ok(ui.includes('data-wait-attendance'));
@@ -888,4 +888,28 @@ test('confirm dialogs stack above the P2P overlay, notices and welcome gate', ()
   const confirmZ = Number(/#modal-confirm\s*\{\s*z-index:\s*(\d+)/.exec(html)[1]);
   const overlayZ = Number(/\.mini-p2p-overlay\s*\{[^}]*z-index:\s*(\d+)/.exec(css)[1]);
   assert.ok(confirmZ > overlayZ, `confirm ${confirmZ} must be above P2P overlay ${overlayZ}`);
+});
+
+test('independent Mini device association preserves backup adapter and touch target',()=>{
+  const menu=read('src/connection-menu.ts'),css=read('connection-screens.css'),ui=read('p2p-roster-ui.js');
+  assert.ok(menu.includes("app==='mini'?'Asociar a una obra':'Vincular'"));
+  const action=menu.slice(menu.indexOf("const device=button('Vincular dispositivo'"),menu.indexOf("device.dataset.connectionsDevice"));
+  assert.ok(action.includes('if(!guard())return;'));
+  assert.ok(action.includes('[data-open-backup-hub-btn]'));
+  assert.ok(action.includes('showDirect();backup.click();'));
+  assert.ok(!action.includes('cloud-field-binding'));
+  assert.ok(/\[data-connections-device\][^{]*\{[^}]*min-height:48px/.test(css));
+  assert.ok(ui.includes("renderQrScanner({ allowSameApp: true })"));
+  assert.ok(ui.includes("renderManualPair({ allowSameApp: true })"));
+});
+
+
+test('sharing shell uses neutral home labels and fullscreen mobile safe-area geometry',()=>{
+ const ui=read('p2p-roster-ui.js'),css=read('p2p-transfer.css');
+ assert.match(ui,/class="mini-p2p-title">Compartir</);
+ assert.match(ui,/class="mini-p2p-subtitle">Colabora con tu equipo</);
+ assert.match(css,/@media \(max-width: 600px\)[\s\S]*height: 100dvh/);
+ assert.ok(css.includes('env(safe-area-inset-top'));
+ assert.ok(css.includes('env(safe-area-inset-bottom'));
+ assert.match(css,/\.connections-mini-peer-details summary[^}]*min-height: 44px/);
 });

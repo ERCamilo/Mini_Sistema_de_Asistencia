@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.17.2-20261015-124809-000';
+const CACHE_VERSION = 'asistencia-v2.17.3-20261017-233001-924';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -19,6 +19,19 @@ const PRECACHE_ASSETS = [
   './attendance-export.js',
   './import-history-repository.js',
   './work-context.js',
+  './firebase-link.js',
+  './cloud-field.js',
+  './attendance-days.js',
+  './connection-notifications.js',
+  './connection-presentation.js',
+  './connection-screens.css',
+  './organization-share.js',
+  './firebase-field-config.js',
+  './firebase-link.css',
+  './google-sign-in.css',
+  './vendor/google-g.png',
+  './vendor/firebase-app-compat.js',
+  './vendor/firebase-auth-compat.js',
   './bulk-actions.js',
   './local-date.js',
   './report-send-guard.js',
@@ -50,6 +63,9 @@ const PRECACHE_ASSETS = [
   './sa-roster-version-guard.js',
   './mini-notice.js',
   './mini-notice.css',
+  './mini-peer-session-manager.js',
+  './p2p-demand-negotiation.js',
+  './mini-peer-availability.js',
   './p2p-backup-consent.js',
   './mini-backup-summary.js',
   './mini-backup-review.js',
@@ -58,6 +74,7 @@ const PRECACHE_ASSETS = [
   './back-navigation.js',
   './mini-welcome.js',
   './p2p-roster-ui.js',
+  './connection-menu.js',
   './p2p-transfer.css',
   './field-requests.js',
   './field-requests-coordinator.js',

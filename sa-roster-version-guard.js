@@ -226,7 +226,7 @@
                 reason: 'equal-timestamp-conflicting-version'
             });
         }
-        function classifyIncoming(roster) {
+        function classifyIncoming(roster, localEmployeeCount) {
             const saProjectId = extractProjectId(roster);
             const record = roster;
             const version = extractVersionField(record);
@@ -288,7 +288,13 @@
                     reason: 'missing-or-malformed-stored-markers'
                 });
             }
-            return decide(saProjectId, version.value, timestamp.value, previousForTimestamp.entry);
+            const decision = decide(saProjectId, version.value, timestamp.value, previousForTimestamp.entry);
+            // Repair receipts left by older reset flows. Unknown counts fail closed;
+            // only the identical accepted version may be restored into an empty Mini.
+            if (decision.outcome === 'equal' && localEmployeeCount === 0) {
+                return Object.freeze({ ...decision, outcome: 'first', reason: 'local-personnel-missing' });
+            }
+            return decision;
         }
         function markApplied(roster) {
             const saProjectId = extractProjectId(roster);

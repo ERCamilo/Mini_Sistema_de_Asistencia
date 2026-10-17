@@ -1,0 +1,233 @@
+/* Mini connection mockups: one frame, one title and consistent interior cards. */
+.mini-p2p-shell[data-mini-connection-page] {width:min(560px,100%);}
+.mini-p2p-shell[data-mini-connection-page]>.mini-p2p-topbar {gap:10px;min-height:64px;padding:10px 16px;box-sizing:border-box;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-topbar-icon {display:none;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-title-wrap {flex:1;min-width:0;}
+.mini-p2p-shell [data-mini-page-title] {font-size:18px;line-height:1.25;font-weight:700;}
+.mini-connection-header-back,.mini-connection-header-account {display:grid;place-items:center;width:44px;height:44px;min-width:44px;flex:none;padding:8px;border:0;border-radius:12px;background:var(--input-bg);color:var(--text-color);cursor:pointer;}
+.mini-connection-header-account {order:2;margin-left:auto;border-radius:50%;width:36px;height:36px;min-width:44px;min-height:44px;font-weight:700;background:var(--accent-color);color:var(--bg-color);}
+.mini-p2p-shell [data-p2p-close] {order:3;flex:none;}
+.mini-connection-header-back:focus-visible,.mini-connection-header-account:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+.mini-connection-icon {width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;}
+.mini-p2p-shell[data-mini-connection-page=home] .mini-connection-header-back,.mini-p2p-shell[data-mini-connection-page=home] .mini-connection-header-account {display:none;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .connections-screen-title,.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) [data-connections-back],.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-step>.mini-p2p-back {display:none;}
+.mini-p2p-shell[data-mini-connection-page] .connections-task {padding:16px;gap:14px;min-height:0;overflow-y:auto;}
+.mini-p2p-shell[data-mini-connection-page] .connections-task-content {gap:14px;}
+.mini-p2p-shell .connections-feedback {padding:10px 0;font-size:12px;line-height:1.4;color:var(--text-muted);}
+.mini-p2p-shell .connections-task>.connections-account {padding:0;background:none;margin:0;}
+.mini-p2p-shell .connections-task>.connections-account>strong,.mini-p2p-shell .connections-task>.connections-account [data-connection-account-open] {display:none;}
+.mini-p2p-shell .connections-task:not([data-screen=account]) .connections-account [id$=logout] {display:none;}
+.mini-connection-identity {display:grid!important;grid-template-columns:48px minmax(0,1fr);gap:4px 14px;padding:18px!important;border:1px solid var(--border-color);background:var(--input-bg);border-radius:14px;}
+.mini-connection-identity>.connections-avatar {grid-column:1;grid-row:1/3;margin:0;}
+.mini-connection-identity>strong,.mini-connection-identity>p {grid-column:2;margin:0;}
+.mini-connection-identity>strong {font-size:16px;align-self:end;}
+.mini-connection-identity>p {font-size:12px;}
+.mini-connection-identity>.connections-context {grid-column:1/-1;margin-top:14px;border-top:1px solid var(--border-color);border-radius:0;padding:14px 0 0;}
+.mini-connection-provider {display:grid;grid-template-columns:30px minmax(0,1fr);gap:4px 12px;align-items:center;}
+.mini-connection-provider>img {grid-column:1;grid-row:1/3;object-fit:contain;}
+.mini-connection-provider>strong,.mini-connection-provider>p {grid-column:2;}
+.mini-connection-scope {display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:4px 10px;align-items:center;}
+.mini-connection-scope>.mini-connection-icon {grid-column:1;grid-row:1/3;color:var(--text-muted);}
+.mini-connection-scope>strong,.mini-connection-scope>p {grid-column:2;}
+.mini-connection-status {grid-column:3;grid-row:1/3;padding:8px;border-radius:10px;background:var(--success-color);color:var(--bg-color);font-size:11px;font-weight:700;}
+.mini-p2p-shell .connections-task .connections-route-card {display:grid;grid-template-columns:32px minmax(0,1fr) 24px;gap:14px;padding:20px 16px;min-height:110px;border:1px solid var(--border-color);background:var(--input-bg);}
+.mini-p2p-shell .connections-route-card>.mini-connection-icon {grid-column:1;grid-row:1;color:var(--text-muted);width:30px;height:30px;}
+.mini-p2p-shell .connections-route-card>span {grid-column:2;grid-row:1;}
+.mini-p2p-shell .connections-route-card>input {grid-column:3;grid-row:1;}
+.mini-p2p-shell .connections-task .connections-route-card:has(:checked) {background:var(--accent-color);color:var(--bg-color);border:1px solid var(--accent-color);}
+.mini-p2p-shell .connections-route-card:has(:checked)>.mini-connection-icon,.mini-p2p-shell .connections-route-card:has(:checked) small {color:inherit;}
+.mini-p2p-shell .connections-route-choices legend {font-size:12px;margin:0 0 8px;}
+.mini-p2p-shell .connections-task #firebase-link-details {border:1px solid var(--border-color);padding:18px;}
+.mini-p2p-shell .connections-capabilities {gap:10px;}
+.mini-p2p-shell .connections-capabilities>div {padding:12px;background:var(--card-bg);border-radius:12px;}
+.mini-p2p-shell .mini-connection-action-row {display:grid;grid-template-columns:28px minmax(0,1fr) 20px;align-items:center;gap:12px;padding:16px!important;text-align:left;min-height:72px;border:1px solid var(--border-color);border-radius:14px;background:var(--input-bg);color:var(--text-color);}
+.mini-connection-action-row>span {display:grid;gap:6px;min-width:0;}
+.mini-connection-action-row strong {font-size:14px;}
+.mini-connection-action-row small {font-size:12px;color:var(--text-muted);overflow-wrap:anywhere;}
+.mini-connection-action-row>.mini-connection-icon {color:var(--text-muted);}
+.mini-connection-action-row>.mini-connection-icon:last-child {width:18px;height:18px;}
+.mini-p2p-shell .connections-detail-actions {padding:0;background:none;gap:10px;}
+.mini-p2p-shell .connections-detail-actions [data-cloud-action=send] {background:var(--accent-color);color:var(--bg-color);font-weight:700;}
+.mini-p2p-shell .connections-detail-actions [data-cloud-action=leave] {background:var(--danger-color);color:var(--bg-color);margin-top:6px;}
+.mini-p2p-shell .connections-account-summary {gap:12px;}
+.mini-p2p-shell .connections-account-summary #firebase-link-logout {width:100%;background:var(--accent-color);color:var(--bg-color);font-weight:700;}
+.mini-p2p-shell .connections-form[data-connection-step=send] {display:flex;flex-direction:column;gap:12px;}
+.mini-p2p-shell .connections-send-preview {display:contents;}
+.mini-p2p-shell .connections-send-preview>.connections-context:first-child {order:-3;border:1px solid var(--border-color);}
+.mini-p2p-shell .connections-form[data-connection-step=send]>label {order:-2;font-size:12px;color:var(--text-muted);}
+.mini-p2p-shell .connections-form[data-connection-step=send]>input[type=date] {order:-1;min-height:48px;}
+.mini-p2p-shell .connections-metrics .connections-context {border:1px solid var(--border-color);background:var(--input-bg);}
+.mini-p2p-shell .connections-metrics strong {font-size:26px;}
+.mini-connection-preview-heading {display:flex;justify-content:space-between;gap:12px;align-items:center;font-size:13px;}
+.mini-connection-preview-heading small {color:var(--text-muted);}
+.mini-p2p-shell .connections-preview-rows {gap:0;border-radius:14px;overflow:hidden;border:1px solid var(--border-color);}
+.mini-p2p-shell .connections-preview-rows>.connections-context {display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:10px;align-items:center;border-radius:0;padding:14px;border-bottom:1px solid var(--border-color);}
+.mini-p2p-shell .connections-preview-rows>.connections-context:last-child {border-bottom:0;}
+.mini-connection-row-number {grid-column:1;grid-row:1/3;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--card-bg);font-size:13px;font-weight:700;}
+.mini-p2p-shell .connections-preview-rows strong,.mini-p2p-shell .connections-preview-rows p {grid-column:2;margin:0;}
+.mini-p2p-shell .connections-preview-rows p {margin-top:5px;}
+.mini-connection-footer {display:grid;gap:10px;order:10;padding-top:8px;}
+.mini-connection-footer button {min-height:48px;}
+.mini-p2p-shell #cloud-field-retry,.mini-p2p-shell [data-preview-refresh] {font-size:12px;color:var(--accent-color);background:none;border:0;min-height:44px;}
+.mini-p2p-shell[data-mini-connection-page=leave] .connections-form {min-height:260px;display:grid;align-items:center;}
+.mini-p2p-shell[data-mini-connection-page=leave] #cloud-field-leave {display:none;}
+.mini-p2p-shell #cloud-field-leave-review {display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:24px 18px;border:1px solid var(--border-color);border-radius:16px;}
+.mini-p2p-shell #cloud-field-leave-review>.mini-connection-icon {grid-column:1/-1;justify-self:center;width:46px;height:46px;padding:12px;border-radius:50%;background:var(--danger-color);color:var(--bg-color);margin-bottom:6px;}
+.mini-p2p-shell #cloud-field-leave-review>h4,.mini-p2p-shell #cloud-field-leave-review>p {grid-column:1/-1;margin:0;}
+.mini-p2p-shell #cloud-field-leave-title {font-size:18px;}
+.mini-p2p-shell #cloud-field-leave-review>p {color:var(--text-muted);font-size:13px;line-height:1.5;}
+.mini-p2p-shell #cloud-field-leave-confirm {grid-column:2;grid-row:4;font-size:13px;}
+.mini-p2p-shell #cloud-field-leave-cancel {grid-column:1;grid-row:4;font-size:13px;}
+.mini-p2p-shell[data-mini-connection-page^=personal] .mini-p2p-step>.mini-roster-flow-head {display:none;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-review>div:has(>h3)>h3 {display:none;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-review>div:has(>h3)>p {padding:14px;background:var(--input-bg);border:1px solid var(--border-color);border-radius:12px;color:var(--text-color);font-size:13px;margin:0;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-metrics {grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 10px;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>.mini-roster-state {grid-column:2;grid-row:1/3;align-self:center;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>strong,.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>span:not(.mini-roster-state) {grid-column:1;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-version {padding:10px 12px;font-size:12px;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details summary {font-size:13px;}
+.mini-p2p-shell[data-mini-connection-page=personal-result] .mini-p2p-result-copy h3 {display:none;}
+.mini-p2p-shell .mini-roster-footer {background:var(--card-bg);}
+@media(max-width:520px){.mini-p2p-shell[data-mini-connection-page] {width:100%;max-height:94dvh;}.mini-p2p-shell[data-mini-connection-page]>.mini-p2p-topbar {padding:10px 12px;}.mini-p2p-shell[data-mini-connection-page] .connections-task {padding:14px;}.mini-p2p-shell .mini-p2p-step {padding:14px;}.mini-connection-status {grid-column:2;grid-row:auto;justify-self:start;}.mini-connection-identity {padding:14px!important;}}
+
+.mini-p2p-shell[data-mini-connection-page=direct] .mini-p2p-step>h3,.mini-p2p-shell[data-mini-connection-page=direct] .mini-p2p-step>div>h3 {display:none;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] {height:min(94dvh,820px);}
+
+.mini-p2p-shell [data-p2p-close] {width:44px;height:44px;min-width:44px;min-height:44px;}
+.mini-p2p-shell .mini-connection-confirm-account {display:none!important;}
+.mini-p2p-shell .connections-form:has(#firebase-link-confirm:not([hidden])) .mini-connection-confirm-account {display:grid!important;}
+.mini-p2p-shell .connections-capabilities>div {display:grid;grid-template-columns:28px minmax(0,1fr);gap:5px 10px;}
+.mini-p2p-shell .connections-capabilities>div>.mini-connection-icon {grid-column:1;grid-row:1/3;color:var(--success-color);}
+.mini-p2p-shell .connections-capabilities>div>strong,.mini-p2p-shell .connections-capabilities>div>p {grid-column:2;margin:0;}
+
+.mini-p2p-shell [data-mini-page-title] {font-size:16px;letter-spacing:0;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-metric {grid-template-columns:22px minmax(0,1fr);column-gap:8px;row-gap:6px;padding:10px 8px;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-metric-icon {grid-column:1;grid-row:1;width:22px;height:24px;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-metric strong {grid-column:2;grid-row:1;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-metric>span:last-child {grid-column:1/-1;grid-row:2;font-size:11px;letter-spacing:0;text-transform:none;overflow:visible;white-space:normal;text-overflow:clip;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>.mini-roster-state {font-size:11px;font-weight:700;padding:7px 9px;border-radius:8px;}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>.mini-roster-state.is-info {background:var(--accent-color);color:var(--bg-color);}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>.mini-roster-state.is-warning {background:var(--warning-color);color:var(--bg-color);}
+.mini-p2p-shell .mini-connection-footer {position:sticky;bottom:-14px;z-index:1;background:var(--card-bg);padding:12px 0 8px;}
+.mini-connection-feedback {font-size:12px;color:var(--text-muted);}
+.mini-connection-feedback>summary {min-height:44px;display:flex;align-items:center;padding:0 4px;cursor:pointer;}
+.mini-connection-feedback .connections-feedback {padding:8px 12px;border-radius:12px;background:var(--input-bg);}
+
+.mini-p2p-shell[data-mini-connection-page=shared-review] #cloud-field-members>[data-organization-directory],.mini-p2p-shell[data-mini-connection-page=shared-review] #cloud-field-members>p,.mini-p2p-shell[data-mini-connection-page=shared-review] #cloud-field-members>button,.mini-p2p-shell[data-mini-connection-page=shared-review] #cloud-field-date,.mini-p2p-shell[data-mini-connection-page=shared-review] label[for=cloud-field-date] {display:none;}
+.mini-p2p-shell[data-mini-connection-page=shared-review] [data-organization-review] {border:0;background:none;padding:0;}
+.mini-p2p-shell[data-mini-connection-page=shared-review] [data-organization-review]>h4 {padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);font-size:14px;margin:0 0 14px;}
+.mini-p2p-shell[data-mini-connection-page=shared-review] .org-share-row {border-radius:14px;background:var(--input-bg);}
+.mini-p2p-shell[data-mini-connection-page=members] #cloud-members-send {background:var(--accent-color);color:var(--bg-color);font-weight:700;}
+
+.mini-connection-header-account:disabled {opacity:.65;cursor:default;}
+
+/* Simple field operations and theme-safe foregrounds. */
+.mini-p2p-shell {--connection-on-accent:var(--bg-color);--connection-on-danger:var(--bg-color);}
+.mini-p2p-shell .connections-home [data-connections-add] {display:flex;align-items:center;justify-content:center;gap:10px;flex:1 0 100%;width:100%;min-height:48px;background:var(--accent-color);color:var(--connection-on-accent);font-size:15px;font-weight:700;border:0;text-align:center;}
+.mini-p2p-shell .connections-home [data-connections-add] svg {stroke:currentColor;width:22px;height:22px;}
+.mini-p2p-shell .connections-home .connections-toolbar {display:grid;grid-template-columns:1fr;order:8;gap:10px;}
+.mini-p2p-shell .connections-home [data-connections-refresh] {font-size:13px;color:var(--text-color);}
+.mini-p2p-shell .connections-empty {display:grid;justify-items:center;gap:12px;padding:24px 18px;text-align:center;border-radius:16px;background:var(--input-bg);}
+.mini-p2p-shell .connections-empty>.connections-line-icon {width:42px;height:42px;}
+.mini-p2p-shell .connections-empty>strong {font-size:18px;}
+.mini-p2p-shell .connections-empty>p {margin:0;font-size:14px;line-height:1.5;color:var(--text-muted);}
+.mini-p2p-shell .connections-home:not(:has([data-connection-card]))>h3,.mini-p2p-shell .connections-home:not(:has([data-connection-card])) .connections-clear {display:none;}
+.mini-p2p-shell .connections-home .connections-extras {display:none;}
+.mini-p2p-shell .connections-home .connections-action-card h3 {font-size:16px;}
+.mini-p2p-shell .connections-home .connections-action-card p {font-size:13px;}
+.mini-p2p-shell .connections-personal-action [data-primary-action=roster] {border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-color);font-weight:700;}
+.mini-p2p-shell .connections-form[data-connection-step=link] {gap:14px;}
+.mini-p2p-shell .mini-invitation-intro {display:grid;grid-template-columns:38px minmax(0,1fr);gap:7px 12px;padding:20px;border:1px solid var(--border-color);}
+.mini-invitation-intro>.mini-connection-icon {grid-column:1;grid-row:1/3;width:36px;height:36px;align-self:center;color:var(--accent-color);}
+.mini-invitation-intro>strong,.mini-invitation-intro>p {grid-column:2;margin:0;}
+.mini-invitation-intro>[data-invitation-scan] {grid-column:1/-1;margin-top:12px;min-height:48px;background:var(--accent-color);color:var(--connection-on-accent);font-weight:700;}
+.mini-p2p-shell .mini-invitation-code-label {font-size:13px;color:var(--text-muted);}
+.mini-p2p-shell .connections-form[data-link-phase=preview] .mini-invitation-code-label,.mini-p2p-shell .connections-form[data-link-phase=linked] .mini-invitation-code-label,.mini-p2p-shell .connections-form[data-link-phase=signedOut] .mini-invitation-code-label {display:none;}
+.mini-p2p-shell .connections-form[data-connection-step=link] input {min-height:48px;font-size:14px;border:1px solid var(--border-color);}
+.mini-p2p-shell .connections-form[data-link-phase=ready] #firebase-link-review {border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-color);font-weight:700;}
+.mini-p2p-shell .connections-form[data-link-phase=preview] #firebase-link-confirm {min-height:48px;}
+.mini-p2p-shell #firebase-link-error:not(:empty) {padding:14px;border-radius:12px;background:var(--danger-color);color:var(--connection-on-danger);font-size:14px;line-height:1.45;}
+.mini-p2p-shell #firebase-link-error:empty {display:none;}
+.mini-p2p-shell .mini-connection-linked {display:grid;justify-items:center;gap:14px;padding:24px 18px;border-radius:16px;background:var(--input-bg);text-align:center;}
+.mini-connection-linked>.mini-connection-icon {width:48px;height:48px;padding:12px;border-radius:50%;background:var(--accent-color);color:var(--connection-on-accent);}
+.mini-connection-linked>strong {font-size:18px;}
+.mini-connection-linked>p {margin:0;line-height:1.5;color:var(--text-muted);font-size:14px;}
+.mini-p2p-shell .mini-connection-linked button {width:100%;min-height:48px;}
+.mini-p2p-shell [data-linked-roster] {background:var(--accent-color);color:var(--connection-on-accent);font-weight:700;}
+.mini-p2p-shell .connections-task .mini-connection-identity,.mini-p2p-shell .connections-home .connections-avatar {--connection-on-accent:var(--bg-color);}
+.mini-p2p-shell .connections-task .connections-route-card:has(:checked) small {opacity:1;}
+.mini-p2p-shell .connections-capabilities ul {list-style:none;padding:0;margin:0;}
+.mini-p2p-shell #firebase-link-groups {list-style:none;padding:0;margin:0;}
+[data-theme=light] .mini-p2p-shell .mini-connection-status {background:color-mix(in srgb,var(--success-color) 75%,var(--text-color));}
+.mini-p2p-shell .mini-p2p-step button[class*=primary],.mini-p2p-shell .mini-roster-footer button[class*=primary] {color:var(--connection-on-accent);}
+.mini-p2p-shell .connections-form:has(#firebase-link-code:focus) .mini-invitation-code-label {color:var(--text-color);}
+
+.mini-p2p-shell {--connection-on-warning:var(--bg-color);}
+[data-theme=light] .mini-p2p-shell,[data-theme=sol] .mini-p2p-shell {--connection-on-danger:var(--card-bg);--connection-on-warning:var(--text-color);}
+.mini-p2p-shell #cloud-field-leave-confirm,.mini-p2p-shell .connections-detail-actions [data-cloud-action=leave],.mini-p2p-shell #cloud-field-leave-review>.mini-connection-icon {color:var(--connection-on-danger);}
+.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>.mini-roster-state.is-warning {color:var(--connection-on-warning);}
+
+.mini-p2p-shell .mini-connection-operation {padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);color:var(--text-color);font-size:14px;line-height:1.5;margin:0;}
+.mini-p2p-shell .mini-connection-operation[data-state=error] {background:var(--danger-color);color:var(--connection-on-danger);border:0;}
+.mini-p2p-shell .mini-connection-operation[data-state=success] {border-left:4px solid var(--success-color);}
+.mini-p2p-shell .mini-connection-operation[hidden] {display:none!important;}
+
+.mini-connection-operation #cloud-field-status {margin:0;color:inherit;font-size:inherit;line-height:inherit;}
+
+.mini-connection-progress {margin:0;padding:8px 16px;font-size:13px;color:var(--text-color);background:var(--input-bg);}
+.mini-connection-progress[hidden] {display:none!important;}
+
+[data-theme=light] .mini-p2p-shell,[data-theme=sol] .mini-p2p-shell {--border-color:color-mix(in srgb,var(--text-muted) 80%,var(--card-bg));}
+.mini-p2p-shell input::placeholder,.mini-p2p-shell textarea::placeholder {color:var(--text-muted);opacity:1;}
+
+/* Shared day chooser for both attendance destinations. */
+.mini-p2p-shell .attendance-days {display:grid;gap:12px;min-width:0;padding:14px;background:var(--input-bg);border-radius:14px;}
+.mini-p2p-shell .attendance-days-modes,.mini-p2p-shell .attendance-days-range {display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.mini-p2p-shell .attendance-days button,.mini-p2p-shell .attendance-day-choice,.mini-p2p-shell .org-incoming-day label,.mini-p2p-shell .org-share-day summary,.mini-p2p-shell .connections-preview-day summary {min-height:44px;box-sizing:border-box;}
+.mini-p2p-shell .attendance-days button {padding:10px 12px;border:1px solid var(--border-color);border-radius:12px;background:var(--card-bg);color:var(--text-color);font:inherit;font-weight:600;}
+.mini-p2p-shell .attendance-days [aria-pressed=true] {background:var(--text-color);color:var(--bg-color);}
+.mini-p2p-shell .attendance-days-range label,.mini-p2p-shell .attendance-days-single {display:grid;gap:6px;min-width:0;}
+.mini-p2p-shell .attendance-days input[type=date] {width:100%;min-width:0;box-sizing:border-box;min-height:44px;color:var(--text-color);}
+.mini-p2p-shell .attendance-days-list {display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:240px;overflow:auto;}
+.mini-p2p-shell .attendance-day-choice {display:flex;align-items:center;gap:10px;padding:10px;background:var(--card-bg);border-radius:10px;cursor:pointer;font-size:13px;}
+.mini-p2p-shell input[data-attendance-day],.mini-p2p-shell input[data-received-day] {width:20px;height:20px;accent-color:var(--text-color);flex-shrink:0;}
+.mini-p2p-shell .attendance-day-choice:has(input:checked) {background:var(--text-color);color:var(--bg-color);}
+.mini-p2p-shell .attendance-days-hint {margin:0;color:var(--text-muted);font-size:13px;}
+.mini-p2p-shell .attendance-days-hint[data-error] {color:var(--danger-color);}
+.mini-p2p-shell .org-incoming-day {display:grid;gap:6px;background:var(--input-bg);border-radius:12px;padding:12px;}
+.mini-p2p-shell .org-incoming-day label {display:flex;align-items:center;gap:10px;cursor:pointer;}
+.mini-p2p-shell .org-incoming-day button {margin:0;}
+.mini-p2p-shell .org-share-day,.mini-p2p-shell .connections-preview-day {background:var(--input-bg);border-radius:14px;padding:10px;min-width:0;}
+.mini-p2p-shell .org-share-day summary,.mini-p2p-shell .connections-preview-day summary {padding:10px;cursor:pointer;font-weight:600;}
+.mini-p2p-shell .connections-preview-day summary {display:flex;align-items:center;gap:10px;}
+.mini-p2p-shell[data-mini-connection-page=shared-review] #cloud-field-dates,.mini-p2p-shell[data-mini-connection-page=shared-review] [data-send-preview] {display:none;}
+.mini-p2p-shell .attendance-days [hidden] {display:none!important;}
+.mini-p2p-shell .org-share-row[data-selected=true] {box-shadow:inset 4px 0 var(--success-color);}
+.mini-p2p-shell button .mini-connection-icon {width:20px;height:20px;flex-shrink:0;vertical-align:middle;}
+.mini-p2p-shell button:has(.mini-connection-icon) {display:flex;align-items:center;justify-content:center;gap:8px;}
+.mini-p2p-shell .org-member-card {justify-content:flex-start;}
+
+.mini-p2p-shell .attendance-days-hint[data-error] {color:color-mix(in srgb,var(--danger-color) 65%,var(--text-color) 35%);}
+
+.connections-preview-day summary .mini-connection-icon:last-child{margin-left:auto;flex-shrink:0}.connections-preview-day[open] summary .mini-connection-icon:last-child{transform:rotate(90deg)}
+
+.mini-p2p-shell #cloud-members-apply{background:var(--accent-color);color:var(--connection-on-accent);font-weight:700}
+
+/* Independent Mini backup association stays visible outside hidden extras. */
+.mini-p2p-shell .connections-home [data-connections-device] {display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius-md,12px);background:var(--card-bg);color:var(--text-color);font-size:15px;font-weight:700;}
+.mini-p2p-shell .connections-home [data-connections-device] svg {width:22px;height:22px;stroke:currentColor;}
+.mini-p2p-shell .connections-home [data-connections-device]:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+
+/* One truthful Mini account card; existing Auth controls retain their handlers. */
+.mini-p2p-shell .mini-account-card {background:var(--card-bg);color:var(--text-color);min-width:0;}
+.mini-p2p-shell .mini-account-card>strong {font-size:16px;line-height:1.4;overflow-wrap:anywhere;}
+.mini-p2p-shell .mini-account-card>p {font-size:14px;line-height:1.5;color:var(--text-color);overflow-wrap:anywhere;}
+.mini-p2p-shell .mini-account-status {grid-column:2;font-size:13px;font-weight:600;color:var(--text-color);}
+.mini-p2p-shell .mini-account-card>.connections-account {grid-column:1/-1;display:flex;flex-direction:column;padding:0;margin:12px 0 0;background:none;min-width:0;}
+.mini-p2p-shell .mini-account-card>.connections-account>strong,.mini-p2p-shell .mini-account-card [data-connection-account-open] {display:none;}
+.mini-p2p-shell .mini-account-card .mini-account-action {grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px;border:1px solid var(--text-color);border-radius:12px;background:var(--card-bg);color:var(--text-color);font:600 15px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;white-space:normal;opacity:1;}
+.mini-p2p-shell .mini-account-card .mini-account-action[hidden] {display:none!important;}
+.mini-p2p-shell .mini-account-card .mini-account-action:disabled {cursor:not-allowed;background:var(--input-bg);color:var(--text-color);opacity:1;}
+.mini-p2p-shell .mini-account-card .mini-account-action:focus-visible {outline:2px solid var(--accent-color);outline-offset:3px;}
+.mini-p2p-shell .mini-account-card .mini-account-action img {width:20px;height:20px;flex:none;}

@@ -7,6 +7,8 @@
   if (!core || !pairing || !aliases) throw new Error('P2P core/pairing/alias store must load before P2P roster UI.');
 
   const MODAL_ID = 'mini-p2p-transfer-modal';
+  let connectionsMenu = null;
+  let homeRenderEpoch = 0;
   const identityStore = core.makeIdentityStore('mini', 'Mini - Dispositivo');
   const aliasStore = aliases.createPeerAliasStore({ storageKey: 'mini_p2p_peer_aliases_v1' });
   let activityStore = null;
@@ -37,7 +39,7 @@
   function versionDetail(outcome) {
     if (outcome === 'first') return 'Primera vez que Mini recibe este proyecto. Revisa los detalles y aplica.';
     if (outcome === 'newer') return 'Hay cambios más recientes desde SA. Revisa los detalles y aplica.';
-    if (outcome === 'equal') return 'Este roster ya fue aplicado en Mini. No se puede aplicar de nuevo.';
+    if (outcome === 'equal') return 'Esta lista de personal ya está guardada en Mini.';
     if (outcome === 'older') return 'Es una versión anterior a la ya aplicada. Se bloqueó para proteger tus datos.';
     return 'No se pudo verificar que sea la versión vigente. Se bloqueó por seguridad.';
   }
@@ -50,7 +52,7 @@
     try {
       const guard = getVersionGuard();
       if (!guard) return { outcome: 'ambiguous', reason: 'version-guard-unavailable' };
-      return guard.classifyIncoming(rosterLike);
+      return guard.classifyIncoming(rosterLike, typeof root.getLocalRosterEmployeeCount === 'function' ? root.getLocalRosterEmployeeCount() : undefined);
     } catch (_) {
       return { outcome: 'ambiguous', reason: 'version-guard-unavailable' };
     }
@@ -347,12 +349,8 @@
   }
 
   function handleNetworkOffline() {
-    for (const [, entry] of passivePeerListeners.entries()) {
-      if (entry.retryTimer) {
-        try { root.clearTimeout?.(entry.retryTimer); } catch (_) {}
-        entry.retryTimer = null;
-      }
-    }
+    // Drop closed sessions as well as timers so online can open a fresh listener.
+    for (const [peerId] of passivePeerListeners.entries()) stopPeerListener(peerId);
     for (const [, record] of peerPresenceTracker.entries()) {
       record.isOnline = false;
       if (record.heartbeatTimer) {
@@ -468,9 +466,9 @@
       }
 
       if (!peers.length) {
-        if (labelEl) labelEl.textContent = 'SA no vinculado';
-        try { btn.setAttribute('aria-label', 'SA no vinculado. Abrir Transferencias para vincular SA u otro Mini'); } catch (_) {}
-        try { btn.setAttribute('title', 'SA no vinculado'); } catch (_) {}
+        if (labelEl) labelEl.textContent = 'Conexión directa sin vincular';
+        try { btn.setAttribute('aria-label', 'Conexión directa sin vincular. Abrir Conexiones para vincular SA u otro Mini'); } catch (_) {}
+        try { btn.setAttribute('title', 'Conexión directa sin vincular'); } catch (_) {}
         // Open Transferencias (SA or another Mini), never straight to the camera.
         try { btn.onclick = openP2PTransferModal; } catch (_) {}
         try { btn.setAttribute('data-p2p-header-state', 'unlinked'); } catch (_) {}
@@ -494,8 +492,8 @@
         ? 'en transferencia'
         : (isLive ? 'conectado' : 'vinculado, sin conexión activa');
       const audit = (alias && alias !== original)
-        ? ('SA ' + stateText + onlineSuffix + ': ' + alias + ', proyecto ' + original + pendingSuffix + '. Abrir Transferencias')
-        : ('SA ' + stateText + onlineSuffix + ': ' + primary + pendingSuffix + '. Abrir Transferencias');
+        ? ('SA ' + stateText + onlineSuffix + ': ' + alias + ', proyecto ' + original + pendingSuffix + '. Abrir Conexiones')
+        : ('SA ' + stateText + onlineSuffix + ': ' + primary + pendingSuffix + '. Abrir Conexiones');
       try { btn.setAttribute('aria-label', audit); } catch (_) {}
       try { btn.setAttribute('title', audit); } catch (_) {}
       try { btn.onclick = openP2PTransferModal; } catch (_) {}
@@ -761,7 +759,10 @@
   }
 
   let inFlightSendNotice = null;
+  let activeSendAttempt = null;
   function cleanupSession() {
+    try { activeSendAttempt?.consentController?.abort(); } catch (_) {}
+    activeSendAttempt = null;
     // An aborted send must not leave its "Conectando / Esperando" notice behind.
     try { inFlightSendNotice?.dismiss(); } catch (_) {}
     inFlightSendNotice = null;
@@ -782,11 +783,15 @@
   }
 
   function closeTransferModal(options = {}) {
+    if (connectionsMenu && !connectionsMenu.release()) return;
+    connectionsMenu = null;
+    root.miniConnectionsMenu = null;
+    homeRenderEpoch++;
     if (activeMorphCleanup) activeMorphCleanup();
     if (!options.keepSession) cleanupSession();
     modal()?.remove();
-    // A send/wait pauses this device's listener; closing must never leave it deaf.
-    if (!options.keepSession) startMiniBackupInbox().catch(() => {});
+    // Closing a manual transfer resumes both SA and Mini backup listeners.
+    if (!options.keepSession) startPassiveInbox().catch(() => {});
   }
 
   function shell() {
@@ -798,7 +803,7 @@
       <section class="mini-p2p-shell" role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title">
         <header class="mini-p2p-topbar">
           <span class="mini-p2p-topbar-icon">${vectorIcon('link', 20)}</span>
-          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Transferencias directas</strong><div class="mini-p2p-subtitle">Mini ↔ SA · conexión directa</div></div>
+          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Compartir</strong><div class="mini-p2p-subtitle">Colabora con tu equipo</div></div>
           <button type="button" class="mini-p2p-icon-btn" data-p2p-close aria-label="Cerrar" title="Cerrar">${vectorIcon('close', 17)}</button>
         </header>
         <div class="mini-p2p-body" data-p2p-body></div>
@@ -806,6 +811,22 @@
     el.querySelector('[data-p2p-close]').addEventListener('click', () => closeTransferModal());
     el.addEventListener('click', e => { if (e.target === el) closeTransferModal(); });
     document.body.appendChild(el);
+    if (root.ConnectionMenu) connectionsMenu = root.ConnectionMenu.mount({
+      app: 'mini', shell: el.querySelector('.mini-p2p-shell'), directBody: body(),
+      internetAvailable: !!root.MiniFirebaseFieldConfig?.endpoint,
+      getInternet: () => { const panel=document.querySelector('#firebase-link-modal .firebase-link-panel'); panel.querySelector('h2').hidden=true; return panel; },
+      beforeLeaveInternet: () => !root.miniCloudFieldView?.isBusy() && root.miniFirebaseLinkView?.close?.() !== false,
+      refreshInternet: () => root.miniCloudFieldView?.refresh(),
+      prepareSend: () => root.miniCloudFieldView?.previewSend(),
+      prepareMembers: () => root.miniCloudFieldView?.openMembers(),
+      scanInvitation: () => { renderQrScanner({ invitation: true }).catch(error => toast(error?.message || 'No se pudo abrir la cámara.')); },
+      canChange: () => !root.miniCloudFieldView?.isBusy() && !activeSession && !activeChannel && !body()?.querySelector('[data-review-roster],[data-apply-roster]'),
+      getMiniPeers: miniBackupConnectionSnapshot, subscribeMiniPeers: subscribeMiniBackupConnections,
+      closeMiniPeer: closeMiniBackupConnection,
+      connectMiniPeer: reconnectMiniBackupPeer,
+      notify: toast, close: () => closeTransferModal()
+    });
+    root.miniConnectionsMenu=connectionsMenu;
   }
 
   let activeMorphCleanup = null;
@@ -952,10 +973,12 @@
   }
 
   async function renderHome() {
+    const renderEpoch = ++homeRenderEpoch;
     shell();
     cleanupSession();
     const self = await identityStore.getSelf();
     const peers = sortPeersByRecentActivity((await identityStore.listPeers()).filter(p => p.peerApp === 'sa'));
+    if (renderEpoch !== homeRenderEpoch || !modal()) return;
     const sortedPeers = sortPeersForDisplay(peers);
     const peerRows = sortedPeers.length ? sortedPeers.map(peer => {
       const alias = aliasStore.getAlias(peer.peerId);
@@ -988,13 +1011,13 @@
           </div>
           <div class="mini-p2p-device-actions">
             <button type="button" class="mini-p2p-icon-btn" data-rename-peer="${esc(peer.peerId)}" aria-label="Cambiar nombre de ${esc(peerName(peer))}" title="Cambiar nombre">${vectorIcon('edit', 16)}</button>
-            ${uiButton('Roster', `data-wait-peer="${esc(peer.peerId)}" aria-label="Esperar roster de ${esc(peerName(peer))}"`, 'primary', 'users')}
+            ${uiButton('Recibir personal', `data-wait-peer="${esc(peer.peerId)}" aria-label="Recibir personal de ${esc(peerName(peer))}"`, 'primary', 'users')}
             ${uiButton('Enviar personal', `data-send-employees="${esc(peer.peerId)}"`, 'secondary', 'users')}
-            ${uiButton('Asistencia', `data-wait-attendance="${esc(peer.peerId)}" aria-label="Esperar asistencia de ${esc(peerName(peer))}"`, 'secondary', 'attendance')}
+            ${uiButton('Asistencia', `data-wait-attendance="${esc(peer.peerId)}" aria-label="Compartir asistencia con ${esc(peerName(peer))}"`, 'secondary', 'attendance')}
             <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
           </div>
         </div>`;
-    }).join('') : '<div class="mini-p2p-empty">Aún no hay SA vinculados. Escanea el QR de SA para agregar el primero.</div>';
+    }).join('') : '<div class="mini-p2p-empty">Aún no hay dispositivos de la obra vinculados. Escanea su QR para agregar el primero.</div>';
 
     const stagedEntries = getAllStaged();
     const stagedBackups = root.SaMiniP2PBackup?.backupStagedStore?.listStaged() || [];
@@ -1040,7 +1063,7 @@
       </section>
       <section class="mini-p2p-devices" aria-labelledby="mini-p2p-devices-title">
         <div class="mini-p2p-devices-head">
-          <div><h3 id="mini-p2p-devices-title">SA vinculados</h3><div class="mini-p2p-subtitle">${peers.length} dispositivo${peers.length === 1 ? '' : 's'} guardado${peers.length === 1 ? '' : 's'} en este Mini</div></div>
+          <div><h3 id="mini-p2p-devices-title">Dispositivos de la obra</h3><div class="mini-p2p-subtitle">${peers.length} dispositivo${peers.length === 1 ? '' : 's'} guardado${peers.length === 1 ? '' : 's'} en este equipo</div></div>
           <div class="mini-p2p-self">Este Mini: <strong>${esc(self.displayName)}</strong><button type="button" class="mini-p2p-icon-btn" data-rename-self aria-label="Cambiar nombre de este Mini" title="Cambiar nombre de este Mini">${vectorIcon('edit', 15)}</button></div>
         </div>
         <div class="mini-p2p-peer-list">${peerRows}</div>
@@ -1115,7 +1138,9 @@
       renderHome();
     }));
     try { await refreshMiniP2PHeader(); } catch (_) {}
+    if (renderEpoch !== homeRenderEpoch || !modal()) return;
     try { startPassiveInbox().catch(() => {}); } catch (_) {}
+    connectionsMenu?.show();
   }
 
   async function renderSelfNameEditor() {
@@ -1220,13 +1245,14 @@
 
   async function renderQrScanner(options = {}) {
     const allowSameApp = options.allowSameApp === true;
+    const invitationOnly = options.invitation === true && !allowSameApp;
     if (allowSameApp ? !(await ensureMiniAliasChosen({ type: 'scan', options })) : !(await ensureMiniAliasChosen('scan'))) return;
     cleanupSession();
     shell();
     const title = allowSameApp ? 'Escanear QR de respaldo' : 'Escanear QR de SA';
     const desc = allowSameApp
       ? 'Apunta la cámara al QR que muestra el otro dispositivo. Mini leerá el código y la clave automáticamente.'
-      : 'Apunta la cámara al QR que aparece en SA. Mini leerá el código y la clave automáticamente.';
+      : 'Apunta la cámara al QR que aparece en SA.';
     const searchStatus = allowSameApp ? 'Cámara activa. Buscando QR de respaldo…' : 'Cámara activa. Buscando QR de SA…';
     morphShell(() => { body().innerHTML = `
       <div class="mini-p2p-step">
@@ -1234,18 +1260,18 @@
         <div><h3>${title}</h3><p>${desc}</p></div>
         <div class="mini-p2p-scanner"><video data-qr-video playsinline muted></video><div class="mini-p2p-scanner-frame" aria-hidden="true"></div></div>
         <div class="mini-p2p-status" data-qr-status role="status" aria-live="polite">Preparando cámara…</div>
-        <div class="mini-p2p-actions">${secondary('Usar código + clave','data-manual-fallback','hash')}</div>
+        <div class="mini-p2p-actions">${secondary(invitationOnly ? 'Pegar código de invitación' : 'Usar código + clave','data-manual-fallback','hash')}</div>
       </div>`; });
 
-    const back = () => { cleanupQrScanner(); if (allowSameApp) renderBackupHub(); else renderHome(); };
+    const back = () => { cleanupQrScanner(); if (invitationOnly) connectionsMenu?.task('invitation'); else if (allowSameApp) renderBackupHub(); else renderHome(); };
     body().querySelector('[data-back]')?.addEventListener('click', back);
-    body().querySelector('[data-manual-fallback]')?.addEventListener('click', () => { cleanupQrScanner(); renderManualPair({ allowSameApp }); });
+    body().querySelector('[data-manual-fallback]')?.addEventListener('click', () => { cleanupQrScanner(); if(invitationOnly) connectionsMenu?.task('invitation'); else renderManualPair({ allowSameApp }); });
     const status = body().querySelector('[data-qr-status]');
     const video = body().querySelector('[data-qr-video]');
     const mediaDevices = root.navigator?.mediaDevices;
     const Detector = root.BarcodeDetector;
     if (!mediaDevices?.getUserMedia || typeof Detector !== 'function') {
-      if (status) status.textContent = 'Este navegador no permite escanear QR directamente. Puedes usar código + clave.';
+      if (status) status.textContent = invitationOnly ? 'La cámara no está disponible aquí. Puedes pegar el código de invitación.' : 'Este navegador no permite escanear QR directamente. Puedes usar código + clave.';
       return;
     }
 
@@ -1278,6 +1304,13 @@
           const rawValue = results?.find(item => typeof item?.rawValue === 'string' && item.rawValue.trim())?.rawValue;
           if (rawValue) {
             if (status) status.textContent = 'QR detectado. Verificando vínculo…';
+            const invitation = !allowSameApp && root.MiniFirebaseLink?.parseInvitationQr(rawValue);
+            if (invitation) {
+              cleanupQrScanner();
+              await root.miniCloudFieldView?.whenIdle();
+              if (!connectionsMenu?.task('invitation') || !root.miniFirebaseLinkView?.useInvitation(invitation)) throw new Error('No se pudo abrir esta invitación. Vuelve a escanear el QR.');
+              return;
+            }
             const descriptor = await descriptorFromScannedQr(rawValue, { allowSameApp });
             cleanupQrScanner();
             await startPairing(descriptor, { allowSameApp });
@@ -1297,7 +1330,7 @@
     } catch (error) {
       cleanupQrScanner();
       if (status) status.textContent = error?.name === 'NotAllowedError'
-        ? 'No se concedió acceso a la cámara. Puedes permitirlo e intentar de nuevo o usar código + clave.'
+        ? (invitationOnly ? 'No se concedió acceso a la cámara. Puedes habilitarla o pegar el código de invitación.' : 'No se concedió acceso a la cámara. Puedes permitirlo e intentar de nuevo o usar código + clave.')
         : (error?.message || 'No se pudo iniciar la cámara. Usa código + clave.');
     }
   }
@@ -1520,14 +1553,14 @@
     const isAttendance = mode === 'attendance';
     let attendanceResponseSent = false;
     const title = isAttendance
-      ? `Esperar asistencia de ${esc(peerName(peer))}`
-      : `Esperar roster de ${esc(peerName(peer))}`;
+      ? `Compartir asistencia con ${esc(peerName(peer))}`
+      : `Recibir personal de ${esc(peerName(peer))}`;
     const subtitle = isAttendance
       ? 'Ahora en SA selecciona este Mini y solicita la asistencia.'
-      : 'Ahora en SA selecciona este Mini y pulsa “Enviar roster”.';
-    const modeBadge = `<div class="mini-p2p-mode-chip">${vectorIcon(isAttendance ? 'attendance' : 'users', 15)}<span>${isAttendance ? 'Asistencia' : 'Personal / Roster'}</span></div>`;
+      : 'En SA selecciona este Mini y envía la lista de personal.';
+    const modeBadge = `<div class="mini-p2p-mode-chip">${vectorIcon(isAttendance ? 'attendance' : 'users', 15)}<span>${isAttendance ? 'Asistencia' : 'Personal de la obra'}</span></div>`;
     const modeHelp = isAttendance
-      ? '<p class="mini-p2p-footnote">Este Mini responderá automáticamente a las solicitudes de asistencia enviadas por este SA.</p>'
+      ? '<p class="mini-p2p-footnote">En SA puedes elegir un día o un intervalo de fechas. Mini enviará la asistencia registrada para revisarla allí.</p>'
       : '<p class="mini-p2p-footnote">Recibirás la lista de personal para revisarla antes de guardar.</p>';
 
     morphShell(() => { body().innerHTML = `<div class="mini-p2p-step">${backButton()}${modeBadge}<div><h3>${title}</h3><p>${subtitle}</p></div>${modeHelp}<div class="mini-p2p-status" data-wait-status>Esperando conexión autenticada…</div><div class="mini-p2p-actions">${secondary('Cancelar espera','data-cancel')}</div></div>`; });
@@ -1581,7 +1614,7 @@
                 if(box) { box.classList?.remove?.('is-error'); box.innerHTML=statusMessage('check','SA autenticado','Listo para recibir la solicitud de asistencia…'); }
               } else {
                 armRosterReceiver(channel,peer);
-                if(box) { box.classList?.remove?.('is-error'); box.innerHTML=statusMessage('check','SA autenticado','Esperando roster…'); }
+                if(box) { box.classList?.remove?.('is-error'); box.innerHTML=statusMessage('check','SA autenticado','Esperando la lista de personal…'); }
               }
             } catch (error) {
               renderWaitError(error, peerId, mode);
@@ -1689,9 +1722,11 @@
 
     const background = options.background === true;
     const expectedOffer = options.expectedOffer || null;
+    let detached = false, started = false;
     const receiver = core.createTransferReceiver({
       channel,
       onProgress: progress => {
+        if (detached) return;
         activeTransferPeerId = peer?.peerId || null;
         refreshMiniP2PHeader().catch(() => {});
         try { options.onProgress?.(progress); } catch (_) {}
@@ -1700,12 +1735,14 @@
         if (box) box.textContent = 'Recibiendo respaldo… ' + Math.round(progress * 100) + '%';
       },
       onError: error => {
+        if (detached) return;
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
         try { options.onFailed?.(boundedUserSafeError(error)); } catch (_) {}
         if (!background) renderError(error);
       },
       onComplete: result => {
+        if (detached) return;
         activeTransferPeerId = null;
         refreshMiniP2PHeader().catch(() => {});
         // A consented receiver admits exactly one transfer; the next needs a new offer.
@@ -1715,6 +1752,7 @@
     });
 
     function handleBackupMessage(event) {
+      if (detached) return;
       const control = core.parseControl(event.data);
       if (control) return;
       if (typeof event.data === 'string') {
@@ -1726,11 +1764,13 @@
           if (parsed && parsed.protocol === core.TRANSFER_PROTOCOL && parsed.type === 'start') {
             if (expectedOffer && !root.P2PBackupConsent.matchesOffer(expectedOffer, parsed)) {
               const mismatch = new Error('La transferencia no coincide con el respaldo aceptado.');
-              detach();
               try { options.onFailed?.(mismatch.message); } catch (_) {}
+              detach();
               core.revokeChannel(channel, mismatch);
               return;
             }
+            core.validateTransferStart(parsed);
+            if (!started) { started = true; options.onStarted?.(); }
             activeTransferPeerId = peer?.peerId || null;
             refreshMiniP2PHeader().catch(() => {});
           }
@@ -1742,6 +1782,9 @@
     channel.addEventListener('message', handleBackupMessage);
 
     const detach = () => {
+      if (detached) return;
+      detached = true;
+      try { options.onDetached?.(); } catch (_) {}
       try { channel.removeEventListener('message', handleBackupMessage); } catch (_) {}
       if (backupReceiverCleanups.get(channel) === detach) {
         backupReceiverCleanups.delete(channel);
@@ -1904,6 +1947,11 @@
   const MINI_BACKUP_BACKOFF_MS = [1500, 5000, 15000, 30000, 60000];
   const OFFER_DECISION_MS = 85000;
   const miniBackupListeners = new Map();
+  let miniPeerSessions = null;
+  function peerSessionManager() {
+    if (!miniPeerSessions) miniPeerSessions = root.MiniPeerSessionManager.create();
+    return miniPeerSessions;
+  }
 
   function isMiniBackupPeer(peer) {
     return !!peer && peer.peerApp === 'mini' && peer.purpose === 'backup' && !!peer.linkToken;
@@ -1942,21 +1990,48 @@
   }
 
   function promptIncomingBackup(peer, offer, respond, channel, entry) {
+    if (entry.busy || entry.lease?.busy()) { respond(false); return; }
+    entry.busy = true;
+    const transport = entry.transport;
     const center = notices();
     const senderLabel = offer.senderName || peerName(peer);
-    if (!center) { respond(false); return; }
+    if (!center) { entry.busy = false; respond(false); return; }
     let decided = false;
     const decide = accepted => {
       if (decided) return;
       decided = true;
       clearTimeout(expiry);
+      if (entry.stopped || entry.transport !== transport || miniBackupListeners.get(String(peer.peerId).trim()) !== entry || entry.retryTimer) {
+        notice.dismiss();
+        return;
+      }
       if (!accepted) {
+        entry.busy = false;
         respond(false);
         notice.update({ state: 'info', title: 'Respaldo rechazado', description: 'No se recibió nada de ' + senderLabel + '.', actions: [], duration: 2500 });
         return;
       }
-      try { entry.detachReceiver?.(); } catch (_) {}
-      entry.detachReceiver = armBackupReceiver(channel, peer, { background: true, expectedOffer: offer, ...receiveNoticeHooks(notice, senderLabel) });
+      const previousReceiver = entry.detachReceiver; entry.detachReceiver = null;
+      try { previousReceiver?.(); } catch (_) {}
+      const hooks = receiveNoticeHooks(notice, senderLabel);
+      let receiver = null;
+      const ownsReceiver = () => !entry.stopped && entry.transport === transport && miniBackupListeners.get(String(peer.peerId).trim()) === entry && entry.detachReceiver === receiver;
+      const fail = reason => {
+        if (!ownsReceiver()) return;
+        entry.detachReceiver = null;
+        try { receiver?.(); } catch (_) {}
+        entry.busy = false; hooks.onFailed(reason);
+      };
+      const guard = root.P2PBackupConsent.guardAcceptedStart(channel, () => fail('No llegaron datos. Pide al otro Mini que reintente el envío.'));
+      receiver = armBackupReceiver(channel, peer, { background: true, expectedOffer: offer, ...hooks,
+        onStarted: () => guard.started(),
+        onDetached: () => {
+          const waiting = guard.waiting(); guard.dispose();
+          if (waiting && ownsReceiver()) { entry.detachReceiver = null; entry.busy = false; notice.dismiss(); }
+        },
+        onStaged: record => { if (!ownsReceiver()) return; entry.detachReceiver = null; entry.busy = false; hooks.onStaged(record); },
+        onFailed: fail });
+      entry.detachReceiver = receiver;
       notice.update({ state: 'loading', title: 'Preparando recepción', description: 'Esperando datos de ' + senderLabel + '…', actions: [] });
       respond(true);
     };
@@ -1973,111 +2048,272 @@
     const expiry = setTimeout(() => {
       if (decided) return;
       decided = true;
+      if (entry.stopped || entry.transport !== transport || miniBackupListeners.get(String(peer.peerId).trim()) !== entry || entry.retryTimer) {
+        notice.dismiss();
+        return;
+      }
+      entry.busy = false;
       respond(false);
       notice.update({ state: 'info', title: 'Oferta vencida', description: 'No respondiste a tiempo; no se recibió nada.', actions: [], duration: 3000 });
     }, OFFER_DECISION_MS);
   }
 
-  function stopMiniBackupListener(peerId) {
+  let miniBackupAccountWatch = null;
+  let miniBackupIntents = null;
+  function miniBackupIntentRegistry() {
+    if (!miniBackupIntents) miniBackupIntents = root.MiniPeerSessionManager.createIntents();
+    return miniBackupIntents;
+  }
+  const miniBackupKnownPeers = new Map(), miniBackupConnectionObservers = new Set();
+  function publishMiniBackupConnections() {
+    for (const callback of miniBackupConnectionObservers) { try { callback(); } catch (_) {} }
+  }
+  function subscribeMiniBackupConnections(callback) {
+    miniBackupConnectionObservers.add(callback); return () => miniBackupConnectionObservers.delete(callback);
+  }
+  function miniBackupConnectionSnapshot() {
+    return [...miniBackupKnownPeers.values()].map(peer => {
+      const entry = miniBackupListeners.get(String(peer.peerId));
+      // Read validity first: existing expiry cleanup may clear this owner's refs.
+      const leaseValid = entry?.lease?.valid() === true, info = entry?.availability?.getInfo?.();
+      const state = !isNetworkOnline() ? 'error' : entry?.state || 'available';
+      const authenticated = entry?.authenticated === true, channelOpen = entry?.channel?.readyState === 'open';
+      return { peerId: String(peer.peerId), name: peerName(peer), state, authenticated, channelOpen, leaseValid,
+        busy: !!entry?.busy || entry?.lease?.busy() === true, linkFingerprint: entry?.linkFingerprintCurrent?.() ? entry.linkFingerprint || null : null,
+        phase: root.MiniConnectionPresentation?.observePhase({ state, authenticated, channelOpen, leaseValid,
+          preparing: info?.preparing, transportPresent: !!entry?.transport,
+          localDescription: !!entry?.session?.pc?.localDescription, remoteDescription: !!entry?.session?.pc?.remoteDescription }) || 'standby',
+        preparationRemainingMs: info?.preparationRemainingMs ?? null,
+        channelRemainingMs: entry?.lease ? Math.max(0, entry.lease.deadline - peerSessionManager().now()) : null,
+        lastCloseReason: entry?.lastCloseReason || null };
+    });
+  }
+  function closeMiniBackupConnection(peerId) {
     const key = String(peerId || '').trim();
+    miniBackupIntents?.invalidate(key);
     const entry = miniBackupListeners.get(key);
-    if (!entry) return false;
-    entry.stopped = true;
-    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
-    try { entry.detachOffers?.(); } catch (_) {}
-    try { entry.detachReceiver?.(); } catch (_) {}
-    try { entry.session?.close?.(); } catch (_) {}
-    miniBackupListeners.delete(key);
+    return entry ? retireMiniBackupTransport(entry, null, true, 'manual') : false;
+  }
+  function reconnectMiniBackupPeer(peerId) {
+    const key = String(peerId || '').trim();
+    const initialEntry = miniBackupListeners.get(key), initialTransport = initialEntry?.transport, pendingRetry = initialEntry?.retryTimer;
+    return miniBackupIntentRegistry().run(key, async intent => {
+      let entry, ownedTransport;
+      try {
+        if (initialEntry?.busy || initialEntry?.lease?.busy()) throw new Error('El dispositivo está ocupado. Reintenta.');
+        // A manual owner supersedes the armed backoff before any acquisition await.
+        if (initialEntry?.retryTimer) { clearTimeout(initialEntry.retryTimer); initialEntry.retryTimer = null; }
+        watchMiniBackupAccount();
+        const peer = await identityStore.getPeer(key);
+        intent.check();
+        if (!isMiniBackupPeer(peer)) throw new Error('Dispositivo vinculado no encontrado.');
+        entry = await ensureMiniBackupListener(peer);
+        intent.check();
+        if (!entry || entry.stopped || miniBackupListeners.get(key) !== entry) throw new Error('No se pudo abrir la disponibilidad.');
+        // Acquired transport/transfer ownership must not be stolen by a suspended menu action.
+        if (entry.busy || entry.lease?.busy() || (initialEntry && entry !== initialEntry) || entry.transport !== (initialTransport || null)) {
+          throw new Error('La conexión cambió o está ocupada. Reintenta.');
+        }
+        // A closed socket can rearm during listener setup; revoke that timer too.
+        if (entry.retryTimer) { clearTimeout(entry.retryTimer); entry.retryTimer = null; }
+        retireMiniBackupTransport(entry, null, true, 'reconnect');
+        intent.check();
+        entry.reconnectIntent = intent;
+        try { await entry.availability.demand(); }
+        finally { if (entry.reconnectIntent === intent) entry.reconnectIntent = null; }
+        intent.check();
+        if (entry.stopped || miniBackupListeners.get(key) !== entry || !entry.lease) throw new Error('Conexión Mini retirada.');
+        ownedTransport = entry.transport;
+        const lease = entry.lease;
+        await lease.run(async () => {});
+        intent.check();
+        if (entry.lease !== lease) throw new Error('Conexión Mini retirada.');
+      } catch (error) {
+        if (intent.current() && entry && !entry.stopped && miniBackupListeners.get(key) === entry && (entry.reconnectIntent === intent || (ownedTransport && entry.transport === ownedTransport))) {
+          entry.state = 'error'; publishMiniBackupConnections();
+        }
+        const recoveryEntry = entry || initialEntry;
+        if (intent.current() && recoveryEntry && (pendingRetry || recoveryEntry.signaling?.closed === true)) {
+          scheduleMiniBackupRetry(recoveryEntry.peer, 0, recoveryEntry);
+        }
+        throw error;
+      } finally { if (entry?.reconnectIntent === intent) entry.reconnectIntent = null; }
+    });
+  }
+
+  function stopAllMiniBackupListeners() {
+    miniBackupAccountWatch?.(); miniBackupAccountWatch = null;
+    miniBackupIntents?.invalidateAll();
+    for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key);
+  }
+  function watchMiniBackupAccount() {
+    if (miniBackupAccountWatch) return;
+    let auth = null;
+    try { auth = root.firebase?.app('mini-field').auth() || null; }
+    catch (_) { /* An unavailable Google SDK must not prevent guest P2P. */ }
+    miniBackupAccountWatch = root.MiniPeerAvailability.watchAccount(auth, epoch => {
+      miniBackupIntents?.invalidateAll();
+      for (const key of [...miniBackupListeners.keys()]) stopMiniBackupListener(key, null, true);
+      startMiniBackupInbox(epoch).catch(() => {});
+    });
+  }
+
+  function retireMiniBackupTransport(entry, transport = null, retireAvailability = true, reason = 'unknown') {
+    if (transport && entry.transport !== transport) return false;
+    const lease = entry.lease, session = entry.session;
+    if (entry.transport || lease || session || entry.availability?.getInfo?.()?.preparing || (reason !== 'unknown' && reason !== 'reconnect')) entry.lastCloseReason = reason;
+    const detachOffers = entry.detachOffers, detachReceiver = entry.detachReceiver;
+    entry.transport = null; entry.lease = null; entry.session = null;
+    entry.channel = null; entry.authenticated = false; entry.busy = false; entry.state = 'available';
+    entry.detachOffers = null; entry.detachReceiver = null;
+    try { detachOffers?.(); } catch (_) {}
+    try { detachReceiver?.(); } catch (_) {}
+    try { if (lease) lease.retire(); else session?.close?.(); } catch (_) {}
+    if (retireAvailability) entry.availability?.retire(reason);
+    publishMiniBackupConnections();
     return true;
   }
 
-  function scheduleMiniBackupRetry(peer, attempt) {
-    const peerId = String(peer?.peerId || '').trim();
-    const entry = miniBackupListeners.get(peerId);
-    if (!entry || entry.stopped || !isNetworkOnline()) return;
-    try { if (entry.retryTimer) clearTimeout(entry.retryTimer); } catch (_) {}
-    const index = Math.min(attempt, MINI_BACKUP_BACKOFF_MS.length - 1);
-    entry.retryTimer = setTimeout(() => {
-      const current = miniBackupListeners.get(peerId);
-      if (!current || current.stopped) return;
-      miniBackupListeners.delete(peerId);
-      ensureMiniBackupListener(peer, Math.min(attempt + 1, MINI_BACKUP_BACKOFF_MS.length - 1)).catch(() => {});
-    }, MINI_BACKUP_BACKOFF_MS[index]);
+  function stopMiniBackupListener(peerId, owner = null, accountTransition = false) {
+    const key = String(peerId || '').trim(), entry = miniBackupListeners.get(key);
+    if (owner && entry !== owner) return false;
+    miniBackupIntents?.invalidate(key);
+    if (!accountTransition) miniBackupAccountWatch?.invalidatePeer(key);
+    if (!entry) return false;
+    entry.stopped = true; miniBackupListeners.delete(key);
+    if (entry.retryTimer) clearTimeout(entry.retryTimer);
+    entry.retryTimer = null;
+    retireMiniBackupTransport(entry, null, false);
+    try { entry.availability?.stop(); } catch (_) {}
+    try { if (!entry.availability) entry.signaling?.close?.(); } catch (_) {}
+    return true;
   }
 
-  async function ensureMiniBackupListener(peer, attempt = 0) {
-    if (!isMiniBackupPeer(peer) || !isNetworkOnline()) return null;
-    const peerId = String(peer.peerId).trim();
-    if (activeManualPeerId && activeManualPeerId === peerId) return null;
-    const existing = miniBackupListeners.get(peerId);
-    if (existing && !existing.stopped) return existing;
-    const entry = { peer, session: null, signaling: null, startedAt: Date.now(), retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
+  function scheduleMiniBackupRetry(peer, attempt, entry) {
+    const peerId = String(peer?.peerId || '').trim();
+    if (!entry || entry.stopped || miniBackupListeners.get(peerId) !== entry || entry.retryTimer || !isNetworkOnline()) return;
+    const index = Math.min(attempt, MINI_BACKUP_BACKOFF_MS.length - 1);
+    const timer = setTimeout(async () => {
+      if (entry.stopped || miniBackupListeners.get(peerId) !== entry || entry.retryTimer !== timer) return;
+      entry.retryTimer = null;
+      // A dead socket gets a fresh owner; late events from that socket cannot
+      // contaminate a replacement. Startup still allocates no RTC or TURN.
+      stopMiniBackupListener(peerId, entry);
+      await ensureMiniBackupListener(peer, index + 1);
+    }, MINI_BACKUP_BACKOFF_MS[index]);
+    entry.retryTimer = timer;
+  }
+
+  async function ensureMiniBackupListener(peer, attempt = 0, epoch = null) {
+    if (!isMiniBackupPeer(peer)) return null;
+    miniBackupKnownPeers.set(String(peer.peerId), peer);
+    if (!isNetworkOnline()) { publishMiniBackupConnections(); return null; }
+    watchMiniBackupAccount();
+    const accountEpoch = epoch || miniBackupAccountWatch.capture();
+    if (!accountEpoch.current(String(peer.peerId).trim())) return null;
+    const peerId = String(peer.peerId).trim(), existing = miniBackupListeners.get(peerId);
+    if (existing && !existing.stopped) {
+      await existing.setup;
+      if (existing.signaling?.closed === true && !existing.retryTimer) scheduleMiniBackupRetry(peer, attempt, existing);
+      return existing;
+    }
+    let finishSetup;
+    const setup = new Promise(resolve => { finishSetup = resolve; });
+    const entry = { setup, peer, state: 'available', linkFingerprint: null, lastCloseReason: null, reconnectIntent: null, availability: null, transport: null, session: null, signaling: null, lease: null, channel: null, busy: false, retryTimer: null, stopped: false, detachOffers: null, detachReceiver: null };
     miniBackupListeners.set(peerId, entry);
-    const retry = () => {
-      if (entry.stopped) return;
-      try { entry.detachOffers?.(); } catch (_) {}
-      try { entry.session?.close?.(); } catch (_) {}
-      scheduleMiniBackupRetry(peer, attempt);
-    };
+    const isCurrent = () => !entry.stopped && miniBackupListeners.get(peerId) === entry && accountEpoch.current(peerId);
+    // Public display digest only; never delay standby on this optional observation.
+    const fingerprintToken = peer.linkToken;
+    entry.linkFingerprintCurrent = () => isCurrent() && miniBackupKnownPeers.get(peerId)?.linkToken === fingerprintToken;
+    root.MiniConnectionPresentation?.createLinkFingerprint?.(core, fingerprintToken)?.then(value => {
+      if (!entry.linkFingerprintCurrent()) return;
+      entry.linkFingerprint = value; publishMiniBackupConnections();
+    }).catch(() => {});
     try {
       const self = await identityStore.getSelf();
+      if (!isCurrent()) return entry;
       const route = await core.deriveTrustedRoute(peer.linkToken);
-      const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
-      entry.signaling = signaling;
-      entry.session = await core.createRtcSession({
-        signaling, initiator: false,
-        onState: (status, error) => {
-          if (error || status === 'disconnected' || status === 'failed' || status === 'closed') retry();
+      if (!isCurrent()) return entry;
+      entry.signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
+      entry.availability = root.MiniPeerAvailability.create({
+        signaling: entry.signaling, localPeerId: String(self.deviceId), remotePeerId: peerId, now: () => peerSessionManager().now(),
+        validateFrame: core.validateSignalFrameObject,
+        onState: status => {
+          if (!isCurrent()) return;
+          entry.state = ['error', 'signaling-error'].includes(status) ? 'error' : status;
+          if (status === 'available') retireMiniBackupTransport(entry, null, false, entry.availability?.getInfo?.()?.lastCloseReason || 'unknown');
+          if (status === 'signaling-error') scheduleMiniBackupRetry(peer, attempt++, entry);
+          publishMiniBackupConnections();
         },
-        onChannel: channel => {
-          if (entry.stopped) { try { channel?.close?.(); } catch (_) {} return; }
-          // Listen before the handshake ends: the sender may finish first and
-          // offer while this phone is still saving the peer to IndexedDB.
-          const offers = root.P2PBackupConsent.bufferOffers(channel, core);
-          entry.detachOffers = offers.detach;
-          pairing.attachTrusted(channel, {
-            self, peer, store: identityStore, allowSameApp: true,
-            onAuthenticated: () => {
-              attempt = 0;
-              offers.release((offer, respond) => {
-                promptIncomingBackup(peer, offer, respond, channel, entry);
-              });
+        createSession: async options => {
+          if (!isCurrent()) throw new Error('Conexión Mini retirada.');
+          if (!entry.reconnectIntent?.current()) miniBackupIntents?.invalidate(peerId);
+          const transport = {}, startedAt = peerSessionManager().now();
+          entry.transport = transport; entry.state = 'connecting'; publishMiniBackupConnections();
+          const ownsTransport = () => isCurrent() && entry.transport === transport;
+          const retire = (reason = 'unknown') => { if (ownsTransport()) retireMiniBackupTransport(entry, transport, true, reason); };
+          let finishAuthentication = null;
+          const session = await core.createRtcSession({ ...options,
+            onState: (status, error) => {
+              if (error || ['disconnected', 'failed', 'closed'].includes(status)) retire(error || status === 'failed' ? 'transport-error' : status === 'disconnected' ? 'transport-disconnected' : 'unknown');
+              if (ownsTransport()) publishMiniBackupConnections();
             },
-            onError: retry
+            onChannel: channel => {
+              if (!ownsTransport()) { try { channel?.close?.(); } catch (_) {} return; }
+              entry.channel = channel; publishMiniBackupConnections();
+              const offers = root.P2PBackupConsent.bufferOffers(channel, core);
+              entry.detachOffers = offers.detach;
+              pairing.attachTrusted(channel, {
+                self, peer, store: identityStore, allowSameApp: true,
+                onAuthenticated: () => {
+                  finishAuthentication = () => {
+                    if (!ownsTransport() || !entry.lease?.valid() || !options.onReady()) return;
+                    entry.authenticated = true; entry.state = 'connected'; entry.lease.ready(channel); publishMiniBackupConnections();
+                    offers.release((offer, respond) => {
+                      if (!ownsTransport()) return;
+                      promptIncomingBackup(peer, offer, respond, channel, entry);
+                    });
+                  };
+                  finishAuthentication();
+                },
+                onError: () => retire('transport-error')
+              });
+            }
           });
+          if (!ownsTransport()) { session.close(); throw new Error('Conexión Mini retirada.'); }
+          entry.session = session;
+          entry.lease = peerSessionManager().lease(session, startedAt, retire, { guest: !root.privateTurnTest?.active, transportOwnedExternally: true });
+          finishAuthentication?.();
+          return session;
         }
       });
-      if (entry.stopped) { try { entry.session?.close?.(); } catch (_) {} }
+      await entry.availability.start();
       return entry;
     } catch (_) {
-      retry();
+      if (isCurrent()) { entry.state = 'error'; publishMiniBackupConnections(); scheduleMiniBackupRetry(peer, attempt, entry); }
       return entry;
-    }
+    } finally { finishSetup(); }
   }
 
-  // Phones freeze sockets in the background and mobile NATs drop idle ones, so a
-  // listener can look alive while nothing reaches it. Rebuild dead or old ones.
-  const MINI_BACKUP_MAX_AGE_MS = 180000;
+  // A live lease survives view refresh and foreground events. Its own fixed
+  // deadline/credential invalidation retires it; refresh never slides that bound.
   function refreshMiniBackupInbox(force = false) {
-    if (activeTransferPeerId || !isNetworkOnline()) return;
-    for (const [peerId, entry] of [...miniBackupListeners.entries()]) {
-      if (entry.retryTimer) continue;
-      const socketOpen = entry.signaling?.ws?.readyState === 1;
-      const tooOld = Date.now() - (entry.startedAt || 0) > MINI_BACKUP_MAX_AGE_MS;
-      if (force || !socketOpen || tooOld) {
-        const peer = entry.peer;
-        stopMiniBackupListener(peerId);
-        ensureMiniBackupListener(peer, 0).catch(() => {});
-      }
-    }
-    startMiniBackupInbox().catch(() => {});
+    if (!isNetworkOnline()) return;
+    for (const entry of miniBackupListeners.values()) entry.lease?.valid();
+    // Do not silently allocate a replacement after ordinary lease expiry.
   }
 
-  async function startMiniBackupInbox() {
-    if (!isNetworkOnline()) return 0;
+  async function startMiniBackupInbox(epoch = null) {
+    if (!epoch) watchMiniBackupAccount();
+    const accountEpoch = epoch || miniBackupAccountWatch.capture();
     let peers = [];
     try { peers = (await identityStore.listPeers()).filter(isMiniBackupPeer); } catch (_) { return 0; }
-    for (const peer of peers) ensureMiniBackupListener(peer, 0).catch(() => {});
+    if (!accountEpoch.current()) return 0;
+    peers = peers.filter(peer => accountEpoch.current(String(peer.peerId).trim()));
+    const ids = new Set(peers.map(peer => String(peer.peerId)));
+    for (const key of miniBackupKnownPeers.keys()) if (!ids.has(key)) miniBackupKnownPeers.delete(key);
+    for (const peer of peers) { miniBackupKnownPeers.set(String(peer.peerId), peer); ensureMiniBackupListener(peer, 0, accountEpoch).catch(() => {}); }
+    publishMiniBackupConnections();
     return peers.length;
   }
 
@@ -2168,6 +2404,7 @@
         } catch (_) {}
       }
     }catch(error){
+      document.dispatchEvent(new CustomEvent('connection-data-applied'));
       pendingRoster=null;
       const reason=boundedUserSafeError(error);
       try {
@@ -2528,7 +2765,7 @@
       await identityStore.removePeer(peerId);
       aliasStore.removeAlias(peerId);
       try { stopPeerListener(peerId); } catch (_) {}
-      stopMiniBackupListener(peerId);
+      stopMiniBackupListener(peerId); miniBackupKnownPeers.delete(String(peerId)); publishMiniBackupConnections();
       try { await refreshMiniP2PHeader(); } catch (_) {}
       renderBackupHub();
     }));
@@ -2633,149 +2870,197 @@
 
   async function sendBackupToPeer(peerId, customPayload = null) {
     cleanupSession();
-    // Our own passive listener sits in the same trusted room; leave it so this
-    // active session is the only one here while we send.
-    activeManualPeerId = String(peerId || '').trim();
-    stopMiniBackupListener(peerId);
-    shell();
-    const self = await identityStore.getSelf();
-    const peer = await identityStore.getPeer(peerId);
-    if (!peer) throw new Error('Dispositivo vinculado no encontrado.');
-    const partnerName = peerName(peer);
-    const title = `Enviar respaldo a ${partnerName}`;
-
-    morphShell(() => {
-      body().innerHTML = `
-        <div class="mini-p2p-step">
-          ${backButton('Respaldos')}
-          <div class="mini-p2p-mode-chip">${vectorIcon('backup', 15)}<span>Respaldo P2P</span></div>
-          <div><h3>${esc(title)}</h3><p>Transfiriendo datos de este Mini de forma directa y cifrada.</p></div>
-          <div class="mini-p2p-status" data-backup-send-status>Conectando con ${esc(partnerName)}…</div>
-          <div class="mini-p2p-actions">${secondary('Cancelar', 'data-cancel-send')}</div>
-        </div>`;
-    });
-
-    const center = notices();
+    const attempt = { consentController: new AbortController() };
+    activeSendAttempt = attempt;
+    let setupSignaling = null;
     let sendNotice = null;
-    const handleCancel = () => { sendNotice?.dismiss(); cleanupSession(); renderBackupHub(); };
-    body().querySelector('[data-back]').addEventListener('click', handleCancel);
-    body().querySelector('[data-cancel-send]').addEventListener('click', handleCancel);
-
-    let payload;
     try {
-      payload = customPayload || await root.SaMiniP2PBackup.createMiniBackupPayload();
-    } catch (err) {
-      const box = body()?.querySelector('[data-backup-send-status]');
-      if (box) { box.classList.add('is-error'); box.textContent = err.message || String(err); }
-      activeManualPeerId = null;
-      startMiniBackupInbox().catch(() => {});
-      return;
-    }
-    sendNotice = center?.show({ id: 'backup-send-' + peer.peerId, state: 'loading', title: 'Conectando', description: 'Buscando a ' + partnerName + '…' }) || null;
-    inFlightSendNotice = sendNotice;
+      // Mini peers reuse the inbox transport; SA retains its existing one-shot flow.
+      activeManualPeerId = String(peerId || '').trim();
+      shell();
+      const self = await identityStore.getSelf();
+      const peer = await identityStore.getPeer(peerId);
+      if (activeSendAttempt !== attempt) return;
+      if (!peer) throw new Error('Dispositivo vinculado no encontrado.');
+      const partnerName = peerName(peer);
+      const title = `Enviar respaldo a ${partnerName}`;
 
-    const route = await core.deriveTrustedRoute(peer.linkToken);
-    const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
+      morphShell(() => {
+        body().innerHTML = `
+          <div class="mini-p2p-step">
+            ${backButton('Respaldos')}
+            <div class="mini-p2p-mode-chip">${vectorIcon('backup', 15)}<span>Respaldo P2P</span></div>
+            <div><h3>${esc(title)}</h3><p>Transfiriendo datos de este Mini de forma directa y cifrada.</p></div>
+            <div class="mini-p2p-status" data-backup-send-status>Conectando con ${esc(partnerName)}…</div>
+            <div class="mini-p2p-actions">${secondary('Cancelar', 'data-cancel-send')}</div>
+          </div>`;
+      });
 
-    activeSession = await core.createRtcSession({
-      signaling, initiator: true,
-      onState: (status, error) => {
+      const center = notices();
+      const handleCancel = () => { if (activeSendAttempt !== attempt) return; sendNotice?.dismiss(); cleanupSession(); renderBackupHub(); };
+      body().querySelector('[data-back]').addEventListener('click', handleCancel);
+      body().querySelector('[data-cancel-send]').addEventListener('click', handleCancel);
+
+      const payload = customPayload || await root.SaMiniP2PBackup.createMiniBackupPayload();
+      if (activeSendAttempt !== attempt) return;
+      sendNotice = center?.show({ id: 'backup-send-' + peer.peerId, state: 'loading', title: 'Conectando', description: 'Buscando a ' + partnerName + '…' }) || null;
+      inFlightSendNotice = sendNotice;
+
+      const performSend = async channel => {
+        if (activeSendAttempt !== attempt) return;
         const liveBox = body()?.querySelector('[data-backup-send-status]');
-        if (!liveBox) return;
-        if (error) {
-          liveBox.classList.add('is-error');
-          liveBox.textContent = 'Error de conexión: ' + (error.message || error);
-        } else if (status === 'connected') {
-          liveBox.textContent = 'Canal conectado. Verificando identidad…';
-        } else if (status === 'connecting') {
-          liveBox.textContent = 'Conectando con ' + partnerName + '…';
+        if (liveBox) liveBox.textContent = 'Esperando que ' + partnerName + ' acepte el respaldo…';
+        sendNotice?.update({ state: 'loading', title: 'Esperando aceptación', description: partnerName + ' debe aceptar el respaldo (' + backupSizeLabel(payload.size) + ').' });
+
+        try {
+          const bridge = root.SaMiniP2PBackup;
+          if (!bridge || typeof bridge.sendBackupOnChannel !== 'function') {
+            throw new Error('Módulo de respaldos P2P no disponible.');
+          }
+          // SA does not speak backup-offer yet: SA peers keep the direct transfer.
+          const decision = peer.peerApp !== 'mini' ? 'accepted' : await root.P2PBackupConsent.requestConsent(channel, core, {
+            offerId: root.P2PBackupConsent.createOfferId(),
+            schema: 'mini-backup/v1',
+            size: payload.size,
+            senderName: String(self.displayName || 'Mini').slice(0, 80)
+          }, { signal: attempt.consentController.signal });
+          if (activeSendAttempt !== attempt) return;
+          if (decision !== 'accepted') {
+            const why = decision === 'declined' ? partnerName + ' rechazó el respaldo.'
+              : decision === 'timeout' ? partnerName + ' no respondió a tiempo.'
+              : 'Se perdió la conexión con ' + partnerName + '.';
+            throw new Error(why);
+          }
+          if (activeSendAttempt !== attempt) return;
+          const { transfer, ack } = await bridge.sendBackupOnChannel(channel, {
+            bytes: payload.bytes,
+            schema: 'mini-backup/v1',
+            onProgress: progress => {
+              if (activeSendAttempt !== attempt) return;
+              const curBox = body()?.querySelector('[data-backup-send-status]');
+              if (curBox) curBox.textContent = 'Enviando respaldo… ' + Math.round(progress * 100) + '%';
+              sendNotice?.update({ state: 'progress', title: 'Enviando respaldo', progress, description: Math.round(progress * 100) + '% · a ' + partnerName });
+            }
+          });
+          if (activeSendAttempt !== attempt) return;
+          if (inFlightSendNotice === sendNotice) inFlightSendNotice = null;
+          sendNotice?.update({ state: 'success', title: 'Respaldo enviado', progress: 1, description: partnerName + ' lo recibió y verificó.' });
+
+          if (liveBox) {
+            liveBox.classList.remove('is-error');
+            liveBox.classList.add('is-success');
+            liveBox.innerHTML = statusMessage('check', 'Respaldo recibido por ' + partnerName, 'Transferencia completada y verificada.');
+          }
+          recordP2PActivity('backup-sent', peer, 'Respaldo enviado a ' + partnerName + '.', 'backup-sent:' + payload.sha256);
+          signalTerminalSuccess('backup-sent:' + payload.sha256, { title: 'Respaldo enviado', detail: 'Transferencia a ' + partnerName + ' confirmada.' });
+        } catch (err) {
+          if (activeSendAttempt !== attempt) return;
+          if (liveBox) {
+            liveBox.classList.add('is-error');
+            liveBox.textContent = 'Error al enviar respaldo: ' + (err.message || err);
+          }
+          if (inFlightSendNotice === sendNotice) inFlightSendNotice = null;
+          sendNotice?.update({ state: 'error', title: 'Respaldo no enviado', description: String(err.message || err), duration: 7000 });
+        } finally {
+          // A Mini lease owns the transport beyond this one transfer.
+          // Legacy SA sends still retire their separate transport below.
+          if (peer.peerApp === 'mini') {
+            if (activeSendAttempt === attempt) { attempt.consentController.abort(); activeSendAttempt = null; activeManualPeerId = null; }
+            return;
+          }
+          const finished = activeSession;
+          setTimeout(() => {
+            if (activeSession === finished && activeSendAttempt === attempt) {
+              try { finished?.close?.(); } catch (_) {}
+              attempt.consentController.abort();
+              activeSendAttempt = null;
+              activeSession = null;
+              activeChannel = null;
+              activeManualPeerId = null;
+              startMiniBackupInbox().catch(() => {});
+            }
+          }, 1500);
         }
-      },
-      onChannel: channel => {
-        activeChannel = channel;
-        pairing.attachTrusted(channel, {
-          self, peer, store: identityStore,
-          allowSameApp: peer.peerApp === self.appType,
-          onAuthenticated: async () => {
-            const liveBox = body()?.querySelector('[data-backup-send-status]');
-            if (liveBox) liveBox.textContent = 'Esperando que ' + partnerName + ' acepte el respaldo…';
-            sendNotice?.update({ state: 'loading', title: 'Esperando aceptación', description: partnerName + ' debe aceptar el respaldo (' + backupSizeLabel(payload.size) + ').' });
+      };
+      if (isMiniBackupPeer(peer)) {
+        miniBackupIntents?.invalidate(String(peer.peerId).trim());
+        const entry = await ensureMiniBackupListener(peer);
+        await entry?.availability?.demand();
+        if (!entry?.lease || entry.busy) throw new Error('El dispositivo está ocupado. Reintenta.');
+        await entry.lease.run(async channel => {
+          if (entry.busy) throw new Error('El dispositivo está recibiendo otro respaldo.');
+          await performSend(channel);
+        });
+        return;
+      }
 
-            try {
-              const bridge = root.SaMiniP2PBackup;
-              if (!bridge || typeof bridge.sendBackupOnChannel !== 'function') {
-                throw new Error('Módulo de respaldos P2P no disponible.');
-              }
-              // SA does not speak backup-offer yet: SA peers keep the direct transfer.
-              const decision = peer.peerApp !== 'mini' ? 'accepted' : await root.P2PBackupConsent.requestConsent(channel, core, {
-                offerId: root.P2PBackupConsent.createOfferId(),
-                schema: 'mini-backup/v1',
-                size: payload.size,
-                senderName: String(self.displayName || 'Mini').slice(0, 80)
-              });
-              if (decision !== 'accepted') {
-                const why = decision === 'declined' ? partnerName + ' rechazó el respaldo.'
-                  : decision === 'timeout' ? partnerName + ' no respondió a tiempo.'
-                  : 'Se perdió la conexión con ' + partnerName + '.';
-                throw new Error(why);
-              }
-              const { transfer, ack } = await bridge.sendBackupOnChannel(channel, {
-                bytes: payload.bytes,
-                schema: 'mini-backup/v1',
-                onProgress: progress => {
-                  const curBox = body()?.querySelector('[data-backup-send-status]');
-                  if (curBox) curBox.textContent = 'Enviando respaldo… ' + Math.round(progress * 100) + '%';
-                  sendNotice?.update({ state: 'progress', title: 'Enviando respaldo', progress, description: Math.round(progress * 100) + '% · a ' + partnerName });
-                }
-              });
-              if (inFlightSendNotice === sendNotice) inFlightSendNotice = null;
-              sendNotice?.update({ state: 'success', title: 'Respaldo enviado', progress: 1, description: partnerName + ' lo recibió y verificó.' });
+      const route = await core.deriveTrustedRoute(peer.linkToken);
+      if (activeSendAttempt !== attempt) return;
+      const signaling = setupSignaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
 
-              if (liveBox) {
-                liveBox.classList.remove('is-error');
-                liveBox.classList.add('is-success');
-                liveBox.innerHTML = statusMessage('check', 'Respaldo recibido por ' + partnerName, 'Transferencia completada y verificada.');
-              }
-              recordP2PActivity('backup-sent', peer, 'Respaldo enviado a ' + partnerName + '.', 'backup-sent:' + payload.sha256);
-              signalTerminalSuccess('backup-sent:' + payload.sha256, { title: 'Respaldo enviado', detail: 'Transferencia a ' + partnerName + ' confirmada.' });
-            } catch (err) {
+      const createdSession = await core.createRtcSession({
+        signaling, initiator: true,
+        onState: (status, error) => {
+          if (activeSendAttempt !== attempt) return;
+          const liveBox = body()?.querySelector('[data-backup-send-status]');
+          if (!liveBox) return;
+          if (error) {
+            liveBox.classList.add('is-error');
+            liveBox.textContent = 'Error de conexión: ' + (error.message || error);
+          } else if (status === 'connected') {
+            liveBox.textContent = 'Canal conectado. Verificando identidad…';
+          } else if (status === 'connecting') {
+            liveBox.textContent = 'Conectando con ' + partnerName + '…';
+          }
+        },
+        onChannel: channel => {
+          if (activeSendAttempt !== attempt) return;
+          activeChannel = channel;
+          pairing.attachTrusted(channel, {
+            self, peer, store: identityStore,
+            allowSameApp: peer.peerApp === self.appType,
+            onAuthenticated: () => performSend(channel),
+            onError: err => {
+              if (activeSendAttempt !== attempt) return;
+              const liveBox = body()?.querySelector('[data-backup-send-status]');
               if (liveBox) {
                 liveBox.classList.add('is-error');
-                liveBox.textContent = 'Error al enviar respaldo: ' + (err.message || err);
+                liveBox.textContent = 'Error de autenticación: ' + (err.message || err);
               }
-              if (inFlightSendNotice === sendNotice) inFlightSendNotice = null;
-              sendNotice?.update({ state: 'error', title: 'Respaldo no enviado', description: String(err.message || err), duration: 7000 });
-            } finally {
-              // Leave the trusted room before our passive listener rejoins it,
-              // so the room never holds more than the two linked devices.
-              const finished = activeSession;
-              setTimeout(() => {
-                if (activeSession === finished) {
-                  try { finished?.close?.(); } catch (_) {}
-                  activeSession = null;
-                  activeChannel = null;
-                }
-                activeManualPeerId = null;
-                startMiniBackupInbox().catch(() => {});
-              }, 1500);
             }
-          },
-          onError: err => {
-            const liveBox = body()?.querySelector('[data-backup-send-status]');
-            if (liveBox) {
-              liveBox.classList.add('is-error');
-              liveBox.textContent = 'Error de autenticación: ' + (err.message || err);
-            }
-          }
-        });
+          });
+        }
+      });
+      if (activeSendAttempt !== attempt) {
+        try { createdSession?.close?.(); } catch (_) {}
+        return;
       }
-    });
+      activeSession = createdSession;
+    } catch (_) {
+      // Only this setup owner may restore its passive receiver. Never print
+      // provider errors: those can contain authentication or server details.
+      try { setupSignaling?.close?.(); } catch (_) {}
+      if (activeSendAttempt !== attempt) return;
+      attempt.consentController.abort();
+      activeSendAttempt = null;
+      try { activeSession?.close?.(); } catch (_) {}
+      activeSession = null;
+      activeChannel = null;
+      activeManualPeerId = null;
+      if (inFlightSendNotice === sendNotice) inFlightSendNotice = null;
+      try { sendNotice?.dismiss?.(); } catch (_) {}
+      const box = body()?.querySelector('[data-backup-send-status]');
+      if (box) {
+        box.classList.add('is-error');
+        box.textContent = 'No se pudo iniciar el envío. Reintenta; tus datos se conservan.';
+      }
+      startMiniBackupInbox().catch(() => {});
+    }
   }
 
   async function waitBackupTransfer(peerId) {
     cleanupSession();
     activeManualPeerId = String(peerId || '').trim();
-    stopMiniBackupListener(peerId);
     shell();
     const self = await identityStore.getSelf();
     const peer = await identityStore.getPeer(peerId);
@@ -2797,6 +3082,12 @@
     const handleCancel = () => { cleanupSession(); renderBackupHub(); };
     body().querySelector('[data-back]').addEventListener('click', handleCancel);
     body().querySelector('[data-cancel]').addEventListener('click', handleCancel);
+
+    if (isMiniBackupPeer(peer)) {
+      const entry = await ensureMiniBackupListener(peer);
+      if (!entry) throw new Error('No se pudo preparar la conexión.');
+      return;
+    }
 
     const route = await core.deriveTrustedRoute(peer.linkToken);
     const signaling = new core.SignalingClient({ room: route.room, peerId: self.deviceId, proof: route.proof });
@@ -2895,8 +3186,8 @@
 
   function renderRosterReceived() {
     if(!pendingRoster)return renderHome();
-    const name=peerName(pendingRoster.peer);
-    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step">${backButton()}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>Personal / Roster</span></div><span class="mini-roster-step-count">1 / 3</span></div>${statusMessage('check','Roster recibido y verificado',`${pendingRoster.employeeCount} empleados de ${name}. Aún no se ha aplicado nada.`)}<div class="mini-p2p-actions">${primary('Revisar cambios','data-review-roster','chevronRight')}${secondary('Cancelar','data-cancel-review','close')}</div></div>`;});
+    const name=pendingRoster.transport==='firebase'?(pendingRoster.contextLabel||'SA'):peerName(pendingRoster.peer);
+    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step">${backButton()}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>Personal de la obra</span></div><span class="mini-roster-step-count">1 / 3</span></div>${statusMessage('check','Roster recibido y verificado',`${pendingRoster.employeeCount} empleados de ${name}. Aún no se ha aplicado nada.`)}<div class="mini-p2p-actions">${primary('Revisar cambios','data-review-roster','chevronRight')}${secondary('Cancelar','data-cancel-review','close')}</div></div>`;});
     body().querySelector('[data-back]')?.addEventListener('click',renderHome);
     body().querySelector('[data-cancel-review]')?.addEventListener('click',renderHome);
     body().querySelector('[data-review-roster]')?.addEventListener('click',reviewPendingRoster);
@@ -2912,8 +3203,8 @@
     const handled=model.plan.reconciliationCandidates.filter(c=>hasOwn(pendingRoster.resolutions,rosterTuple(c.saProjectId,c.saEmployeeId))).length;
     const allHandled=handled===conflictCount;
     const detailRows=[
-      ...model.updates.map(x=>`<li><strong>${esc(x.incoming.name)}</strong><span>${x.changes.map(esc).join(' · ')}</span></li>`),
-      ...model.creates.map(x=>`<li><strong>${esc(x.incoming.name)}</strong><span>Se agregará a Mini · ficha ${esc(x.incoming.number)}</span></li>`)
+      ...model.updates.map(x=>`<li><span class="mini-roster-state is-warning">Cambio</span><strong>${esc(x.incoming.name)}</strong><span>${x.changes.map(esc).join(' · ')}</span></li>`),
+      ...model.creates.map(x=>`<li><span class="mini-roster-state is-info">Nuevo</span><strong>${esc(x.incoming.name)}</strong><span>Se agregará a Mini · ficha ${esc(x.incoming.number)}</span></li>`)
     ].join('');
     const missingRows=model.missing.map(u=>`<li><strong>${esc(u.name||u.saEmployeeId)}</strong><span>Ya no aparece en este roster de SA · se conservará en Mini</span></li>`).join('');
     const conflicts=model.plan.reconciliationCandidates.map(c=>{
@@ -2932,11 +3223,13 @@
     }
     const versionOutcome = (versionDecision && versionDecision.outcome) || 'ambiguous';
     const versionCanApply = versionOutcome === 'first' || versionOutcome === 'newer';
-    const versionBanner = `<div class="mini-roster-version is-${esc(versionOutcome)}" role="status" aria-live="polite">${vectorIcon(versionIcon(versionOutcome),16)}<div><strong>${esc(versionLabel(versionOutcome))}</strong><span>${esc(versionDetail(versionOutcome))}</span></div></div>`;
+    const recovery = versionDecision?.reason === 'local-personnel-missing';
+    const versionBanner = `<div class="mini-roster-version is-${esc(versionOutcome)}" role="status" aria-live="polite">${vectorIcon(versionIcon(versionOutcome),16)}<div><strong>${esc(recovery ? 'Recuperar personal' : versionLabel(versionOutcome))}</strong><span>${esc(recovery ? 'El personal de este Mini está vacío. Revisa esta lista para recuperarlo.' : versionDetail(versionOutcome))}</span></div></div>`;
     const hint = !versionCanApply ? versionDetail(versionOutcome) : baseHint;
     const canApply = allHandled && versionCanApply;
-    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Roster recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Revisa qué cambiará en Mini</h3><p>Compara el roster validado con el personal actual antes de guardar.</p></div>${versionBanner}<div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${rosterMetric('conflict','Conflictos',conflictCount,conflictCount?'is-danger':'is-success')}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios</span>${countBadge(model.updates.length+model.creates.length+model.missing.length,'cambios')}${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4>${countBadge(conflictCount,'conflictos')}<span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar roster en Mini','data-apply-roster '+(canApply?'':'disabled'),'check')}</footer></div>`;});
+    morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-review">${backButton('Personal recibido')}<div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('users',15)}<span>REVISIÓN SA</span></div><span class="mini-roster-step-count">2 / 3</span></div><div><h3>Actualizar personal</h3><p>${esc(pendingRoster.contextLabel||peerName(pendingRoster.peer))} · Personal autorizado</p></div>${versionBanner}<div class="mini-roster-metrics">${rosterMetric('add','Nuevos',model.creates.length,'is-info')}${rosterMetric('edit','Modificados',model.updates.length,'is-warning')}${rosterMetric('check','Sin cambios',model.unchangedCount,'is-success')}${conflictCount?rosterMetric('conflict','Conflictos',conflictCount,'is-danger'):''}</div>${model.missing.length?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${model.missing.length} empleado${model.missing.length===1?'':'s'} ya no aparece${model.missing.length===1?'':'n'} en este roster</strong><span>Mini los conservará. La sincronización de roster no elimina historial ni personal automáticamente.</span></div></div>`:''}${(detailRows||missingRows)?`<details open class="mini-roster-details"><summary>${vectorIcon('inbox',16)}<span>Ver detalle de cambios</span>${countBadge(model.updates.length+model.creates.length+model.missing.length,'cambios')}${vectorIcon('chevronRight',15)}</summary><ul>${detailRows}${missingRows}</ul></details>`:''}${conflicts?`<div class="mini-roster-conflicts"><div class="mini-roster-section-head"><h4>Resolver vínculos</h4>${countBadge(conflictCount,'conflictos')}<span>${handled} / ${conflictCount}</span></div>${conflicts}</div>`:''}<footer class="mini-roster-footer"><span class="mini-roster-hint">${esc(hint)}</span>${primary('Aplicar actualización','data-apply-roster '+(canApply?'':'disabled'),'check')}${secondary('Revisar después','data-roster-later','chevronRight')}</footer></div>`;});
     body().querySelector('[data-back]')?.addEventListener('click',renderRosterReceived);
+    body().querySelector('[data-roster-later]')?.addEventListener('click',renderHome);
     body().querySelectorAll('[data-roster-choice]').forEach(btn=>btn.addEventListener('click',()=>{pendingRoster.resolutions[btn.dataset.rosterChoice]=btn.dataset.localId;reviewPendingRoster();}));
     body().querySelector('[data-apply-roster]')?.addEventListener('click',applyReviewedRoster);
   }
@@ -2953,13 +3246,13 @@
     } catch (_) {}
     const confirmedLinks=Object.entries(pendingRoster.resolutions||{}).filter(([,localId])=>localId!=='skip').map(([key,localId])=>{const [saProjectId,saEmployeeId]=JSON.parse(key);return{saProjectId,saEmployeeId,localId};});
     try{
-      const result=await root.applyReviewedSaRoster({text:pendingRoster.text,confirmedLinks});
+      const result=await root.applyReviewedSaRoster({text:pendingRoster.text,confirmedLinks,source:pendingRoster.transport==='firebase'?'sa-firebase':'sa-p2p'});
       const skipped=result.skippedCount||0;
       const model=pendingRoster.reviewModel;
       const linkedCount=confirmedLinks.length;
       const appliedDigest = String(pendingRoster.sha256 || '').toLowerCase().trim();
-      morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-result"><div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check',15)}<span>APLICADO</span></div><span class="mini-roster-step-count">3 / 3</span></div><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',20)}</span><div class="mini-p2p-result-copy"><h3>Roster aplicado</h3><p>Mini conserva los IDs locales y la asistencia histórica vinculada.</p></div></div><div class="mini-roster-metrics">${rosterMetric('add','Agregados',result.createdCount||0,'is-info')}${rosterMetric('edit','Con cambios',(model?.updates?.length||0)+linkedCount,'is-success')}${rosterMetric('check','Sin cambios',model?.unchangedCount||0,'is-success')}${rosterMetric('warning','Omitidos',skipped,skipped?'is-warning':'is-success')}</div>${skipped?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${skipped} registro${skipped===1?' quedó':'s quedaron'} sin vincular</strong><span>Puedes volver a recibir el roster y resolverlos más adelante.</span></div></div>`:''}<div class="mini-p2p-actions">${primary('Finalizar','data-finish-roster','check')}</div></div>`;});
-      try { signalTerminalSuccess(appliedDigest ? ('roster-applied:' + appliedDigest) : 'roster-applied', { title: 'Roster aplicado', detail: String(result.createdCount || 0) + ' agregados en Mini.' }); } catch (_) {}
+      morphShell(()=>{body().innerHTML=`<div class="mini-p2p-step mini-roster-result"><div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check',15)}<span>APLICADO</span></div><span class="mini-roster-step-count">3 / 3</span></div><div class="mini-p2p-result"><span class="mini-p2p-result-icon">${vectorIcon('check',20)}</span><div class="mini-p2p-result-copy"><h3>Personal actualizado</h3><p>El personal está actualizado. La asistencia anterior se conserva.</p></div></div><div class="mini-roster-metrics">${rosterMetric('add','Agregados',result.createdCount||0,'is-info')}${rosterMetric('edit','Con cambios',(model?.updates?.length||0)+linkedCount,'is-success')}${rosterMetric('check','Sin cambios',model?.unchangedCount||0,'is-success')}${rosterMetric('warning','Omitidos',skipped,skipped?'is-warning':'is-success')}</div>${skipped?`<div class="mini-roster-notice">${vectorIcon('warning',17)}<div><strong>${skipped} registro${skipped===1?' quedó':'s quedaron'} sin vincular</strong><span>Puedes volver a actualizar el personal y resolverlos más adelante.</span></div></div>`:''}<div class="mini-p2p-actions">${primary('Finalizar','data-finish-roster','check')}</div></div>`;});
+      try { signalTerminalSuccess(appliedDigest ? ('roster-applied:' + appliedDigest) : 'roster-applied', { title: 'Personal actualizado', detail: String(result.createdCount || 0) + ' agregados en Mini.' }); } catch (_) {}
       try {
         const appliedPeer = pendingRoster.peer || null;
         const appliedName = appliedPeer ? peerName(appliedPeer) : 'SA';
@@ -2967,9 +3260,10 @@
       } catch (_) {}
       try { stagedStore?.clear?.(pendingRoster.peer?.peerId); } catch (_) {}
       try { activityStore?.markStagedReviewed?.(pendingRoster.peer?.peerId); } catch (_) {}
+      document.dispatchEvent(new CustomEvent('connection-data-applied'));
       pendingRoster=null;
       try { await refreshMiniP2PHeader(); } catch (_) {}
-      body().querySelector('[data-finish-roster]')?.addEventListener('click',renderHome);
+      body().querySelector('[data-finish-roster]')?.addEventListener('click',()=>openP2PTransferModal());
     }catch(error){renderError(error);}
   }
 
@@ -2990,9 +3284,17 @@
     }
   }
 
-  async function openP2PTransferModal(){await renderHome();}
+  async function openP2PTransferModal(method){await renderHome();connectionsMenu?.show(method==='direct'||method==='internet'?method:undefined);}
   async function openP2PPairingScanner(){await renderQrScanner();}
   root.MiniEmployeeSender?.configure({getChannel: peerId => (activeManualPeerId===peerId ? activeChannel : passivePeerListeners.get(peerId)?.channel) || null, ensureChannel: peer => ensurePeerListener(peer)});
+  root.reviewFirebaseRoster=async payload=>{
+    if(!root.SaRosterImport)throw new Error('Validador de personal no disponible.');
+    root.SaRosterImport.normalizeSaRoster(payload);
+    const option=document.getElementById('cloud-field-binding')?.selectedOptions?.[0];
+    const contextLabel=option?.dataset.projectId===payload.saProjectId?option.textContent:'SA';
+    pendingRoster={text:JSON.stringify(payload),peer:null,transport:'firebase',contextLabel,employeeCount:payload.employees.length};
+    shell();connectionsMenu?.review('internet');renderRosterReceived();
+  };
   root.openP2PTransferModal=openP2PTransferModal;
   root.openP2PPairingScanner=openP2PPairingScanner;
   root.openP2PBackupHub=renderBackupHub;
@@ -3016,7 +3318,8 @@
   };
   root.MiniP2PRosterVersions={labels: ROSTER_VERSION_LABELS, labelFor: versionLabel, iconFor: versionIcon, detailFor: versionDetail, blockedMessageFor: versionBlockedMessage, classify: classifyReviewedRosterForUi, getGuard: getVersionGuard};
   root.MiniP2PSuccessFeedback={ signal: signalTerminalSuccess, reset: resetTerminalSuccessSignals, chime: playSuccessChime, badge: countBadge, has: (value) => { try { return firedTerminalSuccessKeys.has(String(value || '').trim()); } catch (_) { return false; } } };
-  root.MiniP2PBackupInbox={ start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, listeners: miniBackupListeners };
+  root.addEventListener?.('pagehide', stopAllMiniBackupListeners);
+  root.MiniP2PBackupInbox={ snapshot: miniBackupConnectionSnapshot, subscribe: subscribeMiniBackupConnections, reconnect: reconnectMiniBackupPeer, start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, retire: closeMiniBackupConnection, stopAll: stopAllMiniBackupListeners, listeners: miniBackupListeners };
   root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel, isPeerOnline, isNetworkOnline };
   root.MiniP2PPresence = { isPeerOnline, getPeerState: getPeerVisualState, getPresence: getPeerPresence, attach: attachPresence, detach: detachPresence, isNetworkOnline, expireStale: expireStalePresence, handleOffline: handleNetworkOffline, handleOnline: handleNetworkOnline, HEARTBEAT_MS: core.PRESENCE_HEARTBEAT_MS || 25000, TTL_MS: core.PRESENCE_TTL_MS || 60000, BACKOFF_SCHEDULE_MS: PASSIVE_BACKOFF_SCHEDULE_MS };
   root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };

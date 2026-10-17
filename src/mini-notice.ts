@@ -13,6 +13,7 @@ interface MiniNoticeAction {
 }
 
 interface MiniNoticeOptions {
+  className?: string;
   id?: string;
   state: MiniNoticeState;
   title: string;
@@ -126,6 +127,7 @@ interface MiniNoticeHandle {
 
       const el = doc.createElement('div');
       el.className = 'mini-notice';
+      if(options.className)el.classList.add(options.className);
       el.innerHTML = `
         <svg class="mini-notice-canvas" aria-hidden="true">
           <defs><filter id="${filterId}" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">

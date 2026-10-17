@@ -356,3 +356,68 @@ test('version banner has dedicated styles for every outcome', () => {
   }
   assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}/, 'banner must use tokens, not raw colors');
 });
+
+// Regression: a stale applied receipt must not prevent restoring an empty Mini.
+test('empty Mini can review the identical applied roster without forgetting freshness', () => {
+  const storage = createMemoryStorage();
+  const guard = Guard.createSaRosterVersionGuard({ storage });
+  const roster = rosterObj('proj-1', T2, 'v1');
+  guard.markApplied(roster);
+  const recovery = guard.classifyIncoming(roster, 0);
+  assert.equal(recovery.outcome, 'first');
+  assert.equal(recovery.reason, 'local-personnel-missing');
+  assert.equal(guard.getLastApplied('proj-1').generatedAt, T2);
+  for (const count of [undefined, 1, -1, NaN]) {
+    assert.equal(guard.classifyIncoming(roster, count).outcome, 'equal');
+  }
+  assert.equal(guard.classifyIncoming(rosterObj('proj-1', T1, 'old'), 0).outcome, 'older');
+  assert.equal(guard.classifyIncoming(rosterObj('proj-1', T2, 'conflict'), 0).outcome, 'ambiguous');
+  assert.equal(guard.classifyIncoming(rosterObj('proj-1', undefined, 'v1'), 0).outcome, 'ambiguous');
+});
+
+test('apply restores a previously accepted roster into an empty Mini then blocks duplicate', () => {
+  const h = makeApplyHarness({ initialGuardEntries: { 'proj-1': { generatedAt: T1, rosterVersion: 'v1' } } });
+  const text = rosterText('proj-1', T1, 'v1');
+  assert.equal(h.sandbox.applyReviewedSaRoster({ text }).createdCount, 1);
+  assert.equal(h.calls.imports, 1);
+  assert.throws(() => h.sandbox.applyReviewedSaRoster({ text }), /Ya aplicada/);
+  assert.equal(h.calls.imports, 1);
+});
+
+test('UI rechecks live personnel when cached guard reviews a stale receipt', () => {
+  const storage = createMemoryStorage();
+  const ctx = loadUiWithRealGuard(storage);
+  let count = 0;
+  ctx.getLocalRosterEmployeeCount = () => count;
+  const roster = rosterObj('proj-1', T1, 'v1');
+  ctx.MiniP2PRosterVersions.getGuard().markApplied(roster);
+  assert.equal(ctx.MiniP2PRosterVersions.classify(roster).reason, 'local-personnel-missing');
+  count = 1;
+  assert.equal(ctx.MiniP2PRosterVersions.classify(roster).outcome, 'equal');
+});
+
+test('canceling deletion retains markers; confirmed deletion clears a cached guard', async () => {
+  const h = makeApplyHarness();
+  const roster = rosterObj('proj-1', T1, 'v1');
+  const cached = Guard.createSaRosterVersionGuard({ storage: h.storage });
+  cached.markApplied(roster);
+  const html = read('index.html');
+  const start = html.indexOf('window.clearAllData =');
+  const end = html.indexOf('// --- COPIAR AL PORTAPAPELES', start);
+  let confirm = false;
+  Object.assign(h.sandbox, {
+    showConfirm: async () => confirm, attendanceRepository: { clearAll() {} },
+    attendanceCoordinator: null, fieldRequestsRepository: null,
+    workContextManager: null, bulkSelection: null, attendanceStorage: {...h.storage,current:()=>h.storage},
+    MiniLocalDb: require('../local-db.js'), MiniData: require('../mini-data.js'),
+    localDb:{prepareReset(){}}, captureDbSnapshot:()=>({}), localDbWriteQueue:Promise.resolve(),
+    renderRequestsDashboard() {}, renderWorkContextBar() {}, updateDashboard() {}, showToast() {},
+  });
+  h.sandbox.employeeRepository.clearAll = () => {};
+  h.sandbox.importHistoryRepository.clearHistory = () => {};
+  vm.runInContext(html.slice(start, end), h.sandbox);
+  h.sandbox.clearAllData(); await new Promise(r => setImmediate(r));
+  assert.equal(cached.classifyIncoming(roster).outcome, 'equal');
+  confirm = true; h.sandbox.clearAllData(); await new Promise(r => setImmediate(r));
+  assert.equal(cached.classifyIncoming(roster).outcome, 'first');
+});
