@@ -27,7 +27,7 @@ before(async () => {
 });
 after(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });
 
-async function openFixture(width, theme) {
+async function openFixture(width, theme, withSaPeer = false) {
   const context = await browser.newContext({ viewport: { width, height: 844 }, serviceWorkers: 'block', reducedMotion: 'reduce' });
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -37,7 +37,7 @@ async function openFixture(width, theme) {
     return url.pathname === '/sharing-fixture' ? route.fulfill({ contentType: 'text/html', body: fixture }) : route.continue();
   });
   await page.goto(base + '/sharing-fixture');
-  await page.evaluate(({ theme }) => {
+  await page.evaluate(({ theme, withSaPeer }) => {
     document.documentElement.dataset.theme = theme;
     const calls = [], resolvers = [], listeners = new Set();
     let peers = [
@@ -48,6 +48,13 @@ async function openFixture(width, theme) {
     const refresh = () => { for (const listener of listeners) listener(); };
     directBody.querySelector('[data-open-backup-hub-btn]').onclick = () => calls.push('device-link');
     document.getElementById('firebase-link-login').onclick = () => calls.push('account-login');
+    if (withSaPeer) {
+      const row = document.createElement('div');
+      row.className = 'mini-p2p-peer-row';
+      row.innerHTML = '<strong>SA de obra</strong><div class="mini-p2p-device-actions"><button type="button" data-wait-peer="sa-test">Recibir personal</button><button type="button" data-send-employees="sa-test">Enviar personal</button><button type="button" data-wait-attendance="sa-test">Asistencia</button><button type="button" data-rename-peer="sa-test">Cambiar nombre</button><button type="button" data-unlink="sa-test">Desvincular</button></div>';
+      for (const button of row.querySelectorAll('button')) button.addEventListener('click', () => calls.push('sa-action:' + (button.dataset.sendEmployees?'send-personal':button.dataset.waitPeer?'receive-personal':button.dataset.waitAttendance?'attendance':button.dataset.unlink?'unlink':'rename')));
+      directBody.querySelector('.mini-p2p-peer-list').append(row);
+    }
     document.getElementById('fixture-trigger').focus();
     const menu = ConnectionMenu.mount({
       app: 'mini', shell, directBody, internetAvailable: true,
@@ -62,7 +69,7 @@ async function openFixture(width, theme) {
     window.sharingFixture = { menu, calls, resolvers, refresh, setFirst: update => { peers[0] = { ...peers[0], ...update }; refresh(); } };
     document.querySelector('[data-p2p-close]').onclick = () => calls.push('close');
     menu.show();
-  }, { theme });
+  }, { theme, withSaPeer });
   return { context, page, errors };
 }
 
@@ -215,6 +222,39 @@ for(const width of [320,390,1024])for(const theme of ['light','dark']){
       assert.equal(await label.textContent(),'G');
       assert.equal(await label.isVisible(),true);
       assert.equal(await image.isVisible(),false);
+      assert.deepEqual(errors,[]);
+    }finally{await context.close();}
+  });
+}
+
+
+// Guard against hiding existing Mini <-> SA direct-transfer options while redesigning Compartir.
+// This is a local browser interaction check; no production account, TURN, or SA server is used.
+for(const width of [320,390,1024]) for(const theme of ['light','dark']){
+  test(`Mini → SA direct personnel and attendance actions remain accessible at ${width}px ${theme}`,async()=>{
+    const {context,page,errors}=await openFixture(width,theme,true);
+    try{
+      const sa=page.locator('[data-connections-home] [data-connection-transport="direct"].mini-p2p-peer-row');
+      assert.equal(await sa.count(),1,'SA peer row survives the new sharing-home mounting');
+      for(const [selector,name,callback] of [
+        ['[data-send-employees="sa-test"]','Enviar personal','send-personal'],
+        ['[data-wait-peer="sa-test"]','Recibir personal','receive-personal'],
+        ['[data-wait-attendance="sa-test"]','Asistencia','attendance'],
+        ['[data-rename-peer="sa-test"]','Cambiar nombre','rename'],
+        ['[data-unlink="sa-test"]','Desvincular','unlink']
+      ]){
+        const action=sa.locator(selector);
+        assert.equal(await action.isVisible(),true,name+' is visible');
+        assert.ok((await action.boundingBox()).height>=44,name+' is touch-sized');
+        await action.click();
+        assert.ok((await page.evaluate(()=>sharingFixture.calls)).includes('sa-action:'+callback),name+' preserves its native click handler');
+        await page.evaluate(()=>sharingFixture.menu.show());
+      }
+      await page.locator('[data-connection-account-open]').click();
+      await page.locator('[data-mini-header-back]').click();
+      assert.equal(await sa.locator('[data-send-employees="sa-test"]').isVisible(),true,'returning to Compartir retains Send Personal');
+      await sa.locator('[data-send-employees="sa-test"]').click();
+      assert.equal((await page.evaluate(()=>sharingFixture.calls)).filter(x=>x==='sa-action:send-personal').length,2);
       assert.deepEqual(errors,[]);
     }finally{await context.close();}
   });
