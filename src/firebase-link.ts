@@ -8,6 +8,7 @@ interface FirebaseLinkUser {
     uid: string;
     email: string | null;
     displayName?: string | null;
+    photoURL?: string | null;
     getIdToken(forceRefresh?: boolean): Promise<string>;
 }
 interface FirebaseLinkAuth {
@@ -314,6 +315,7 @@ interface FirebaseLinkSdk {
             const metadata=el('status');metadata.dataset.linkPhase=s.phase;metadata.dataset.linkBusy=String(s.busy);metadata.dataset.orgId=s.preview?.orgId||'';metadata.dataset.projectId=s.preview?.projectId||'';metadata.dataset.projectName=s.preview?.projectName||'';metadata.dataset.groupIds=JSON.stringify(s.preview?.groups.map(g=>g.id)||[]);
             el('status').dataset.accountEmail=s.phase==='signedOut'?'':s.email;
             el('status').dataset.accountName=adapter.getUser()?.displayName||'';
+            el('status').dataset.accountPhoto=s.phase==='signedOut'?'':adapter.getUser()?.photoURL||'';
             login.hidden = s.phase !== 'signedOut';
             logout.hidden = s.phase === 'signedOut';
             input.hidden = s.phase !== 'ready' || existing;

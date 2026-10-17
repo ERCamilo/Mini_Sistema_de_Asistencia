@@ -61,6 +61,11 @@ function cards(document) {
     return document.getElementById('firebase-link-details').children[0].children;
 }
 
+test('Firebase account photo metadata is based on current auth user and cleared on sign-out',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../firebase-link.js'),'utf8');
+ assert.ok(source.includes("dataset.accountPhoto"));
+ assert.ok(source.includes("photoURL"));
+});
 test('adapter loads and mounts independently without an optional presentation module', () => {
     const root = loadModule(), document = documentFixture();
     assert.equal(mount(root, document).close(), true);

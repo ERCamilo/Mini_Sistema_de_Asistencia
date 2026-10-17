@@ -264,7 +264,7 @@
             return { close: () => true, useInvitation: () => false, setBindings: () => { } };
         }
         function render(s) {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e, _f, _g;
             const uid = ((_a = adapter.getUser()) === null || _a === void 0 ? void 0 : _a.uid) || null;
             if (uid !== knownUid) {
                 if (knownUid)
@@ -285,6 +285,7 @@
             metadata.dataset.groupIds = JSON.stringify(((_e = s.preview) === null || _e === void 0 ? void 0 : _e.groups.map(g => g.id)) || []);
             el('status').dataset.accountEmail = s.phase === 'signedOut' ? '' : s.email;
             el('status').dataset.accountName = ((_f = adapter.getUser()) === null || _f === void 0 ? void 0 : _f.displayName) || '';
+            el('status').dataset.accountPhoto = s.phase === 'signedOut' ? '' : ((_g = adapter.getUser()) === null || _g === void 0 ? void 0 : _g.photoURL) || '';
             login.hidden = s.phase !== 'signedOut';
             logout.hidden = s.phase === 'signedOut';
             input.hidden = s.phase !== 'ready' || existing;

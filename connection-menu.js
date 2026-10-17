@@ -37,6 +37,17 @@
             pending: (peerId) => active.has(peerId), dispose() { disposed = true; active.clear(); }
         };
     }
+    function safeAccountPhoto(value) {
+        if (typeof value !== 'string' || !value || value.length > 2048)
+            return '';
+        try {
+            const u = new URL(value);
+            return u.protocol === 'https:' && (u.hostname === 'googleusercontent.com' || u.hostname.endsWith('.googleusercontent.com')) && !u.username && !u.password ? u.href : '';
+        }
+        catch {
+            return '';
+        }
+    }
     function mount(options) {
         const { shell, directBody } = options, d = shell.ownerDocument;
         d.body.classList.add('connections-open');
@@ -66,6 +77,13 @@
         const accountTitle = node('strong');
         accountTitle.textContent = 'Cuenta Google';
         account.append(accountTitle);
+        const accountPhoto = node('img', 'connections-account-photo');
+        accountPhoto.alt = '';
+        accountPhoto.setAttribute('aria-hidden', 'true');
+        accountPhoto.hidden = true;
+        accountPhoto.referrerPolicy = 'no-referrer';
+        accountPhoto.onerror = () => { accountPhoto.hidden = true; accountTitle.hidden = false; };
+        account.prepend(accountPhoto);
         const feedback = node('div', 'connections-feedback');
         feedback.setAttribute('aria-live', 'polite');
         const toolbar = node('div', 'connections-toolbar');
@@ -318,6 +336,23 @@
             accountOpen.title = email ? 'Mi cuenta · ' + email : 'Mi cuenta';
             accountOpen.setAttribute('aria-label', 'Mi cuenta');
             accountTitle.textContent = email ? ((status === null || status === void 0 ? void 0 : status.dataset.accountName) || email).trim().slice(0, 1).toUpperCase() : 'G';
+            const photo = email ? safeAccountPhoto(status === null || status === void 0 ? void 0 : status.dataset.accountPhoto) : '';
+            if (accountPhoto.getAttribute('src') !== photo) {
+                accountPhoto.hidden = true;
+                accountTitle.hidden = false;
+                if (photo)
+                    accountPhoto.src = photo;
+                else
+                    accountPhoto.removeAttribute('src');
+            }
+            if (photo && accountPhoto.complete && accountPhoto.naturalWidth > 0) {
+                accountPhoto.hidden = false;
+                accountTitle.hidden = true;
+            }
+            accountPhoto.onload = () => { if (!released && email && safeAccountPhoto(status === null || status === void 0 ? void 0 : status.dataset.accountPhoto) === accountPhoto.src) {
+                accountPhoto.hidden = false;
+                accountTitle.hidden = true;
+            } };
         }
         function icon(kind) { if (app === 'mini' && typeof MiniConnectionPresentation !== 'undefined')
             return MiniConnectionPresentation.icon(d, kind); const svg = d.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.classList.add('connections-line-icon'); const path = d.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('d', kind === 'phone' ? 'M7 2h10v20H7zM10 18h4' : kind === 'building' ? 'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4' : kind === 'link' ? 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2' : kind === 'people' ? 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8' : 'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8'); svg.append(path); return svg; }
@@ -554,8 +589,23 @@
             const avatar = node('span', 'connections-avatar');
             avatar.textContent = email ? (name.trim()[0] || 'G').toUpperCase() : 'G';
             avatar.setAttribute('aria-hidden', 'true');
+            const photo = email ? safeAccountPhoto(status === null || status === void 0 ? void 0 : status.dataset.accountPhoto) : '';
+            let photoNode = null;
+            if (photo) {
+                const img = d.createElement('img');
+                img.className = 'connections-profile-photo';
+                img.alt = '';
+                img.setAttribute('aria-hidden', 'true');
+                img.referrerPolicy = 'no-referrer';
+                img.onload = () => { avatar.hidden = true; };
+                img.onerror = () => { img.hidden = true; avatar.hidden = false; };
+                img.src = photo;
+                photoNode = img;
+            }
             const identity = contextCard(name, email || 'Inicia sesión para gestionar tus vínculos');
             identity.prepend(avatar);
+            if (photoNode)
+                avatar.after(photoNode);
             if (app === 'mini') {
                 const login = el('firebase-link-login'), logout = el('firebase-link-logout');
                 const available = options.internetAvailable && Boolean(login && !login.hidden || logout && !logout.hidden);
@@ -660,7 +710,7 @@
             }
             else
                 result.append(contextCard('Preparando tu obra', 'Espera un momento mientras se carga el personal disponible.'));
-            result.append(button('Ir a conexiones', () => { show(); }));
+            result.append(button('Volver a compartir', () => { show(); }));
             part.append(result);
         }
         function renderSendPreview() {
@@ -1064,7 +1114,7 @@
             feedback.hidden = false;
             openForm(name === 'link' ? 'route' : name === 'invitation' ? 'link' : name, name === 'send' ? 'Enviar asistencia' : name === 'leave' ? 'Desvincular de la obra' : name === 'settings' ? 'Nombre de este Mini' : name === 'members' ? 'Miembros y asistencia' : 'Compartir personal');
             if (name === 'link') {
-                taskTitle.textContent = 'Vincular';
+                taskTitle.textContent = 'Vincular dispositivo u obra';
                 pairingChoices();
             }
             if (name === 'invite')
@@ -1160,5 +1210,5 @@
             }
         };
     }
-    return { createModeState, createPeerActions, mount };
+    return { createModeState, createPeerActions, safeAccountPhoto, mount };
 });

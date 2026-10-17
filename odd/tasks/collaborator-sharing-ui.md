@@ -17,7 +17,7 @@ Forecast: approximately **500–900 authored changed lines** across the feature,
 ## Tasks
 
 - [ ] **T1 — Fullscreen sharing home and truthful device cards.** Route: delegated-direct, multi-file implementation. Preserve keyed rows, focus, pending-action ownership, consent, lease predicates, safe diagnostics, and explicit restore boundaries. Mobile shells occupy the viewport with safe-area gutters and internal scrolling; desktop stays constrained. Make device linking primary and work association secondary. Check deterministic RED → GREEN, focused P2P suite, full suite, and local synthetic-peer browser fixture. Implementation verified locally; task closure awaits the parent-owned commit and native assessment/review.
-- [ ] **T2 — Local Google photo and initials fallback.** Later bounded writer. Consume only available local account profile data; no new authentication/network behavior. Preserve initials on missing/failed photo and accessibility.
+- [x] **T2 — Local Google photo and initials fallback.** Later bounded writer. Consume only available local account profile data; no new authentication/network behavior. Preserve initials on missing/failed photo and accessibility.
 - [ ] **T3 — Remaining sharing-step copy/navigation and regression acceptance.** Later bounded writer. Keep one shell, neutral device wording, existing hooks and tutorial consistency; verify the end-to-end local flow without claiming live-device coverage.
 
 ## T1 acceptance and evidence
@@ -44,3 +44,9 @@ Forecast: approximately **500–900 authored changed lines** across the feature,
 ## Next step
 
 Parent spot check: `node --test tests/connection-menu.test.js tests/connection-presentation.test.js tests/p2p-ui-wiring.test.js`. Parent owns commit identity, assessment/review, and task closure; no stage, commit, push, or PR was performed. T2/T3 remain unimplemented. Memory mirror remains pending. Rollback boundary: T1 authored files and generated connection assets only, without reverting imported integration history.
+
+## T2 and initial T3 follow-up (2026-10-17)
+
+- Added optional authenticated Google account photo metadata; display accepts only HTTPS Googleusercontent hosts, with initials when absent or failing. No new login, account or backend calls.
+- Improved sharing return copy and linked-workflow labels. Other T3 navigation/acceptance remains open.
+- TypeScript check: PASS. Full configured Node suite: 1078/1078 PASS. Live TURN and compatible visual browser rerun remain outstanding; do not claim approval of imported integration.

@@ -1,5 +1,10 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {createModeState}=require('../connection-menu.js');
+test('only local Google profile-photo URLs are eligible for display',()=>{
+ const {safeAccountPhoto}=require('../connection-menu.js');
+ assert.equal(safeAccountPhoto('https://lh3.googleusercontent.com/a/avatar'),'https://lh3.googleusercontent.com/a/avatar');
+ for(const value of ['http://lh3.googleusercontent.com/a','https://googleusercontent.com.evil.test/a','https://user@lh3.googleusercontent.com/a','data:image/png;base64,aaa','',null])assert.equal(safeAccountPhoto(value),'');
+});
 test('one menu selects either transport without inventing device identities',()=>{const state=createModeState({internetAvailable:true,canChange:()=>true});assert.equal(state.current(),'direct');assert.equal(state.select('internet'),true);assert.equal(state.current(),'internet');assert.equal(state.select('direct'),true);});
 test('unavailable internet cannot hide the working direct connection',()=>{const state=createModeState({internetAvailable:false,canChange:()=>true});assert.equal(state.select('internet'),false);assert.equal(state.current(),'direct');});
 test('active transfer blocks switching methods',()=>{let busy=true;const state=createModeState({internetAvailable:true,canChange:()=>!busy});assert.equal(state.select('internet'),false);assert.equal(state.current(),'direct');busy=false;assert.equal(state.select('internet'),true);busy=true;assert.equal(state.select('direct'),false);assert.equal(state.current(),'internet');});
@@ -18,6 +23,7 @@ test('Mini exposes separate visible work and independent device entry points',()
 test('Mini account UI has one truthful card with original controls and an unavailable state',()=>{
  const source=require('node:fs').readFileSync(require.resolve('../connection-menu.js'),'utf8');
  assert.ok(source.includes('accountState'));
+ assert.ok(source.includes('connections-profile-photo'));
  assert.ok(source.includes('El acceso con Google no está habilitado en esta versión.'));
  assert.ok(source.includes('accountUnavailable'));
 });
