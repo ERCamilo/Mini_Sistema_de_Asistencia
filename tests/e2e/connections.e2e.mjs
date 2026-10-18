@@ -577,3 +577,72 @@ test('full app restore confirmation: accessible name and description, Cancel pre
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });
+
+async function confirmationContrast(page) {
+  return page.locator('#confirm-ok').evaluate(button => {
+    const parse = value => value.match(/[\d.]+/g).map(Number);
+    let background = [0, 0, 0, 0];
+    for (let node = button; node && background[3] < 1; node = node.parentElement) {
+      const next = parse(getComputedStyle(node).backgroundColor), alpha = next[3] ?? 1;
+      const combined = background[3] + alpha * (1 - background[3]);
+      background = [0, 1, 2].map(i => combined ? (background[i] * background[3] + next[i] * alpha * (1 - background[3])) / combined : 0).concat(combined);
+    }
+    const luminance = rgb => rgb.slice(0, 3).map(value => {
+      const channel = value / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    }).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+    const style = getComputedStyle(button), foreground = parse(style.color);
+    const a = luminance(foreground), b = luminance(background);
+    return { ratio: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), color: style.color, background, focusVisible: button.matches(':focus-visible'), hover: button.matches(':hover'), outline: style.outlineStyle, outlineWidth: style.outlineWidth };
+  });
+}
+
+for (const theme of ['light', 'dark']) test(`full app restore contrast ${theme}: normal, keyboard focus and hover meet 4.5:1 without changing other danger controls`, async () => {
+  const { context, page, errors } = await openApplication(390, theme, [{ id: 'synthetic-existing', name: 'Synthetic Existing Employee', number: '1', position: 'Test' }]);
+  try {
+    const unrelatedBefore = await page.locator('#btn-delete-user').evaluate(node => {
+      const style = getComputedStyle(node), expected = document.createElement('span');
+      expected.style.color = style.getPropertyValue('--danger-color');
+      return { color: style.color, background: style.backgroundColor, expectedColor: expected.style.color };
+    });
+    assert.equal(unrelatedBefore.color, unrelatedBefore.expectedColor);
+    assert.equal(unrelatedBefore.background, 'rgba(239, 68, 68, 0.15)');
+    await page.evaluate(async () => {
+      const backup = { schemaVersion: 1, exportedAt: '2026-10-18T00:00:00Z', users: [{ id: 'synthetic-incoming', name: 'Synthetic Incoming Employee', number: '2', position: 'Test' }], attendance: {}, requests: [] };
+      const payload = await SaMiniP2PBackup.createMiniBackupPayload(backup);
+      SaMiniP2PBackup.backupStagedStore.stageBackup({ transferId: 'synthetic-contrast-only', sha256: payload.sha256, kind: 'backup', schema: 'mini-backup/v1', bytes: payload.bytes, sourceApp: 'mini', sourcePeerId: 'synthetic-fixture', sourcePeerName: 'Synthetic fixture', receivedAt: '2026-10-18T00:00:00Z' });
+      window.syntheticContrastUsers = localStorage.getItem('users');
+    });
+    await page.locator('#btn-attendance-link').click();
+    await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+    await page.locator('[data-connections-device]').click();
+    await page.locator('[data-review-backup]:visible').click();
+    await page.locator('[data-apply-backup]').click();
+    const dialog = page.getByRole('dialog', { name: '¿Restaurar respaldo?', exact: true });
+    await dialog.waitFor({ state: 'visible' });
+    await page.waitForTimeout(500);
+    const cancel = dialog.getByRole('button', { name: 'Cancelar', exact: true });
+    await cancel.focus(); await page.mouse.move(0, 0);
+    const normal = await confirmationContrast(page);
+    assert.ok(normal.ratio >= 4.5, `normal text contrast: ${JSON.stringify(normal)}`);
+    const cancelBefore = await cancel.evaluate(node => { const style = getComputedStyle(node); return [style.color, style.backgroundColor]; });
+    await page.keyboard.press('Shift+Tab');
+    await page.waitForFunction(() => {
+      const button = document.querySelector('#confirm-ok');
+      return button.matches(':focus-visible') && getComputedStyle(button).outlineWidth === '2px';
+    });
+    const focused = await confirmationContrast(page);
+    assert.equal(focused.focusVisible, true); assert.equal(focused.outline, 'solid'); assert.equal(focused.outlineWidth, '2px');
+    assert.ok(focused.ratio >= 4.5, `focused text contrast: ${JSON.stringify(focused)}`);
+    await dialog.getByRole('button', { name: 'Restaurar', exact: true }).hover();
+    const hovered = await confirmationContrast(page);
+    assert.equal(hovered.hover, true); assert.ok(hovered.ratio >= 4.5, `hover text contrast: ${JSON.stringify(hovered)}`);
+    assert.deepEqual(await page.locator('#btn-delete-user').evaluate(node => { const style = getComputedStyle(node); return [style.color, style.backgroundColor]; }), [unrelatedBefore.color, unrelatedBefore.background]);
+    assert.deepEqual(await cancel.evaluate(node => { const style = getComputedStyle(node); return [style.color, style.backgroundColor]; }), cancelBefore);
+    await cancel.click(); await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => localStorage.getItem('users') === window.syntheticContrastUsers), true);
+    assert.deepEqual(await page.evaluate(() => users.map(user => user.id)), ['synthetic-existing']);
+    assert.equal(await page.evaluate(() => SaMiniP2PBackup.backupStagedStore.listStaged().length), 1);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
