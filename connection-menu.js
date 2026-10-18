@@ -330,9 +330,13 @@
             if (currentTask === 'account')
                 renderAccount();
         }
+        function accountAvailable() {
+            const login = el('firebase-link-login'), logout = el('firebase-link-logout');
+            return options.internetAvailable && Boolean(login && !login.hidden || logout && !logout.hidden);
+        }
         function renderHeader() {
             const status = el(app === 'mini' ? 'firebase-link-status' : 'sa-field-status'), email = (status === null || status === void 0 ? void 0 : status.dataset.accountEmail) || '';
-            accountOpen.textContent = email ? 'Mi cuenta' : 'Iniciar sesión';
+            accountOpen.textContent = email || app === 'mini' && !accountAvailable() ? 'Mi cuenta' : 'Iniciar sesión';
             accountOpen.title = email ? 'Mi cuenta · ' + email : 'Mi cuenta';
             accountOpen.setAttribute('aria-label', 'Mi cuenta');
             accountTitle.textContent = email ? ((status === null || status === void 0 ? void 0 : status.dataset.accountName) || email).trim().slice(0, 1).toUpperCase() : 'G';
@@ -619,7 +623,7 @@
             description.textContent = email || 'Inicia sesión para gestionar tus vínculos';
             if (app === 'mini') {
                 const login = el('firebase-link-login'), logout = el('firebase-link-logout');
-                const available = options.internetAvailable && Boolean(login && !login.hidden || logout && !logout.hidden);
+                const available = accountAvailable();
                 const connected = available && !!email;
                 identity.classList.add('mini-connection-identity', 'mini-account-card');
                 identity.dataset.accountState = available ? (connected ? 'connected' : 'signed-out') : 'unavailable';
@@ -1064,6 +1068,16 @@
             renderOverview();
             if (returning)
                 void refreshCloud();
+            queueMicrotask(() => {
+                var _a, _b;
+                if (released || !shell.isConnected)
+                    return;
+                presentation === null || presentation === void 0 ? void 0 : presentation.refresh();
+                const active = d.activeElement;
+                if (active && shell.contains(active) && active.getClientRects().length && ((_a = d.defaultView) === null || _a === void 0 ? void 0 : _a.getComputedStyle(active).visibility) !== 'hidden')
+                    return;
+                (_b = focusableNodes()[0]) === null || _b === void 0 ? void 0 : _b.focus();
+            });
             return true;
         }
         function showDirect() {
@@ -1204,6 +1218,9 @@
         });
         bodyWatcher.observe(directBody, { childList: true });
         observers.push(bodyWatcher);
+        function focusableNodes() {
+            return [...shell.querySelectorAll('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(n => { var _a; return !n.hasAttribute('disabled') && n.getClientRects().length > 0 && n.tabIndex >= 0 && ((_a = d.defaultView) === null || _a === void 0 ? void 0 : _a.getComputedStyle(n).visibility) !== 'hidden'; });
+        }
         function keydown(event) {
             if (event.key === 'Escape') {
                 event.preventDefault();
@@ -1213,7 +1230,7 @@
             }
             if (event.key !== 'Tab')
                 return;
-            const nodes = [...shell.querySelectorAll('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(n => !n.hasAttribute('disabled') && n.getClientRects().length > 0 && n.tabIndex >= 0);
+            const nodes = focusableNodes();
             const first = nodes[0], last = nodes[nodes.length - 1];
             if (event.shiftKey && d.activeElement === first) {
                 event.preventDefault();

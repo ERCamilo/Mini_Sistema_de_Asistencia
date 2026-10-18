@@ -163,9 +163,13 @@ interface ConnectionMenuOptions {
    updateEmpty();renderHeader();renderPriorities();renderInvitation();if(currentTask==='details')renderDetails();if(currentTask==='account')renderAccount();
   }
 
+  function accountAvailable(){
+   const login=el('firebase-link-login'),logout=el('firebase-link-logout');
+   return options.internetAvailable&&Boolean(login&&!login.hidden||logout&&!logout.hidden);
+  }
   function renderHeader(){
    const status=el(app==='mini'?'firebase-link-status':'sa-field-status'),email=status?.dataset.accountEmail||'';
-   accountOpen.textContent=email?'Mi cuenta':'Iniciar sesión';accountOpen.title=email?'Mi cuenta · '+email:'Mi cuenta';accountOpen.setAttribute('aria-label','Mi cuenta');
+   accountOpen.textContent=email||app==='mini'&&!accountAvailable()?'Mi cuenta':'Iniciar sesión';accountOpen.title=email?'Mi cuenta · '+email:'Mi cuenta';accountOpen.setAttribute('aria-label','Mi cuenta');
    accountTitle.textContent=email?(status?.dataset.accountName||email).trim().slice(0,1).toUpperCase():'G';
    const photo=email?safeAccountPhoto(status?.dataset.accountPhoto):'';if(accountPhoto.getAttribute('src')!==photo){accountPhoto.hidden=true;accountTitle.hidden=false;if(photo)accountPhoto.src=photo;else accountPhoto.removeAttribute('src');}
    if(photo&&accountPhoto.complete&&accountPhoto.naturalWidth>0){accountPhoto.hidden=false;accountTitle.hidden=true;}
@@ -284,7 +288,7 @@ interface ConnectionMenuOptions {
    title.textContent=name;description.textContent=email||'Inicia sesión para gestionar tus vínculos';
    if(app==='mini'){
     const login=el('firebase-link-login') as HTMLButtonElement|null,logout=el('firebase-link-logout') as HTMLButtonElement|null;
-    const available=options.internetAvailable&&Boolean(login&&!login.hidden||logout&&!logout.hidden);
+    const available=accountAvailable();
     const connected=available&&!!email;
     identity.classList.add('mini-connection-identity','mini-account-card');
     identity.dataset.accountState=available?(connected?'connected':'signed-out'):'unavailable';
@@ -456,7 +460,14 @@ interface ConnectionMenuOptions {
   function show(_method?:ConnectionMenuMethod){
    if(released)return false;
    if(currentTask&&!guard())return false;
-   const returning=!!currentTask&&!['account','details','send'].includes(currentTask);paintHome();renderOverview();if(returning)void refreshCloud();return true;
+   const returning=!!currentTask&&!['account','details','send'].includes(currentTask);paintHome();renderOverview();if(returning)void refreshCloud();
+   queueMicrotask(()=>{
+    if(released||!shell.isConnected)return;
+    presentation?.refresh();
+    const active=d.activeElement as HTMLElement|null;
+    if(active&&shell.contains(active)&&active.getClientRects().length&&d.defaultView?.getComputedStyle(active).visibility!=='hidden')return;
+    focusableNodes()[0]?.focus();
+   });return true;
   }
   function showDirect(){
    home.hidden=true;taskHost.hidden=true;directBody.hidden=false;feedback.hidden=true;
@@ -503,10 +514,13 @@ interface ConnectionMenuOptions {
    if(!directBody.querySelector('.mini-p2p-peer-list,.sa-p2p-peer-list')&&directBody.childElementCount)showDirect();
   });
   bodyWatcher.observe(directBody,{childList:true});observers.push(bodyWatcher);
+  function focusableNodes(){
+   return [...shell.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(n=>!n.hasAttribute('disabled')&&n.getClientRects().length>0&&n.tabIndex>=0&&d.defaultView?.getComputedStyle(n).visibility!=='hidden');
+  }
   function keydown(event:KeyboardEvent){
    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();options.close();return;}
    if(event.key!=='Tab')return;
-   const nodes=[...shell.querySelectorAll<HTMLElement>('button,input,select,textarea,summary,a[href],[tabindex="0"]')].filter(n=>!n.hasAttribute('disabled')&&n.getClientRects().length>0&&n.tabIndex>=0);
+   const nodes=focusableNodes();
    const first=nodes[0],last=nodes[nodes.length-1];
    if(event.shiftKey&&d.activeElement===first){event.preventDefault();last?.focus();}
    else if(!event.shiftKey&&d.activeElement===last){event.preventDefault();first?.focus();}

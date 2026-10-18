@@ -317,3 +317,148 @@ for (const changeProfile of [false, true]) {
     } finally { await context.close(); }
   });
 }
+
+// Full application coverage intentionally does not reuse the component fixture.
+async function openApplication(width, theme) {
+  const mobile = width < 600;
+  const context = await browser.newContext({ viewport: { width, height: mobile ? 844 : 900 }, isMobile: mobile, hasTouch: mobile, serviceWorkers: 'block', reducedMotion: 'reduce' });
+  try {
+    await context.route('**/*', route => new URL(route.request().url()).origin === base ? route.continue() : route.abort());
+    await context.routeWebSocket('**/*', socket => socket.close({ code: 1008, reason: 'Local-only browser regression' }));
+    const page = await context.newPage(), errors = [];
+    page.setDefaultTimeout(5000);
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(base + '/');
+    await page.locator('#mini-welcome-name').fill('Synthetic usability test');
+    await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+    // First-run attendance guidance opens after onboarding; dismiss it natively.
+    await page.waitForTimeout(1300);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    return { context, page, errors };
+  } catch (error) { await context.close(); throw error; }
+}
+
+async function assertViewportFit(page, selector) {
+  const layout = await page.locator(selector).evaluate(node => {
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth, visual: visualViewport.width, offset: visualViewport.offsetLeft };
+  });
+  assert.ok(layout.scroll <= layout.client, `document does not expand: ${JSON.stringify(layout)}`);
+  assert.ok(layout.client <= layout.visual + 1, `layout fits the visual viewport: ${JSON.stringify(layout)}`);
+  assert.ok(layout.left >= layout.offset - 1 && layout.right <= layout.offset + layout.visual + 1, `control is inside the visual viewport: ${JSON.stringify(layout)}`);
+}
+
+async function assertDialogFocus(page) {
+  assert.equal(await page.locator('.mini-p2p-shell').evaluate(shell => {
+    const active = document.activeElement;
+    return shell.contains(active) && active.getClientRects().length > 0 && getComputedStyle(active).visibility !== 'hidden';
+  }), true, 'visible keyboard focus is inside the actual dialog');
+}
+
+for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
+  test(`full app ${width}px: attendance toolbar and sharing controls remain within the visual viewport (${theme})`, async () => {
+    const { context, page, errors } = await openApplication(width, theme);
+    try {
+      await assertViewportFit(page, '.tools-grid');
+      await assertViewportFit(page, '.config-bar');
+      await assertViewportFit(page, '.tools-grid .whatsapp-cta');
+      await page.locator('#btn-attendance-link').click();
+      await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+      for (const selector of ['.mini-p2p-shell', '[data-connections-refresh]', '[data-p2p-close]']) await assertViewportFit(page, selector);
+      await page.locator('[data-connections-refresh]').click();
+      await assertDialogFocus(page);
+      if (process.env.SHARING_SCREENSHOT_DIR && width === 320) {
+        await mkdir(process.env.SHARING_SCREENSHOT_DIR, { recursive: true });
+        await page.screenshot({ path: path.join(process.env.SHARING_SCREENSHOT_DIR, `full-app-${width}-${theme}.png`) });
+      }
+      await page.locator('[data-p2p-close]').click();
+      await page.locator('.mini-p2p-overlay').waitFor({ state: 'detached' });
+      assert.equal(await page.locator('#btn-attendance-link').evaluate(node => document.activeElement === node), true);
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+
+  test(`full app sharing: first open and reopen contain keyboard focus and Escape restores the opener (${width}px ${theme})`, async () => {
+    const { context, page, errors } = await openApplication(width, theme);
+    try {
+      for (let cycle = 0; cycle < 2; cycle++) {
+        await page.locator('#btn-attendance-link').click();
+        await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+        await assertDialogFocus(page);
+        for (const key of ['Tab', 'Shift+Tab', 'Shift+Tab', 'Tab']) {
+          await page.keyboard.press(key);
+          await assertDialogFocus(page);
+        }
+        await page.locator('[data-connections-refresh]').click();
+        const refresh = page.locator('[data-connections-refresh]');
+        await page.waitForTimeout(50);
+        assert.equal(await refresh.evaluate(node => document.activeElement === node), true, 'refresh preserves its visible focus');
+        await page.keyboard.press('Escape');
+        await page.locator('.mini-p2p-overlay').waitFor({ state: 'detached' });
+        assert.equal(await page.locator('#btn-attendance-link').evaluate(node => document.activeElement === node), true);
+      }
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+
+  test(`full app without Google configuration: account entry does not advertise unavailable sign-in (${width}px ${theme})`, async () => {
+    const { context, page, errors } = await openApplication(width, theme);
+    try {
+      await page.locator('#btn-attendance-link').click();
+      await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+      assert.equal(await page.locator('[data-connection-account-open]').textContent(), 'Mi cuenta');
+      await page.locator('[data-connection-account-open]').click();
+      assert.equal(await page.locator('[data-account-unavailable]').isDisabled(), true);
+      assert.match(await page.locator('[data-account-summary]').textContent(), /El acceso con Google no está habilitado/);
+      await page.locator('[data-mini-header-back]').click();
+      await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+      await assertDialogFocus(page);
+      await page.keyboard.press('Escape');
+      await page.locator('.mini-p2p-overlay').waitFor({ state: 'detached' });
+      assert.equal(await page.locator('#btn-attendance-link').evaluate(node => document.activeElement === node), true);
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+}
+
+test('deferred sharing focus cannot run after release', async () => {
+  const { context, page } = await openFixture(390, 'light');
+  try {
+    await page.evaluate(() => {
+      const shell = document.querySelector('.mini-p2p-shell');
+      let released = false;
+      window.focusAfterRelease = [];
+      shell.addEventListener('focusin', event => { if (released) window.focusAfterRelease.push(event.target.tagName); });
+      document.getElementById('fixture-trigger').focus();
+      sharingFixture.menu.show();
+      sharingFixture.menu.release();
+      released = true;
+    });
+    assert.deepEqual(await page.evaluate(() => window.focusAfterRelease), [], 'released menu never takes focus, even transiently');
+    assert.equal(await page.locator('#fixture-trigger').evaluate(node => document.activeElement === node), true);
+  } finally { await context.close(); }
+});
+
+
+test('full app sharing: device pairing cancel and native back return to sharing', async () => {
+  const { context, page, errors } = await openApplication(390, 'light');
+  try {
+    await page.locator('#btn-attendance-link').click();
+    await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+    await page.locator('[data-connections-device]').click();
+    await page.locator('[data-backup-pair-mini]').click();
+    await page.locator('[data-share-backup-pair]').click();
+    // Pairing remains offline; cancel without copying or recording the generated code.
+    await page.locator('[data-cancel-share]').click();
+    await page.locator('[data-mini-header-back]').click();
+    await page.locator('[data-mini-header-back]').click();
+    await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+    await assertDialogFocus(page);
+    await page.locator('[data-p2p-close]').click();
+    await page.locator('.mini-p2p-overlay').waitFor({ state: 'detached' });
+    assert.equal(await page.locator('#btn-attendance-link').evaluate(node => document.activeElement === node), true);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});

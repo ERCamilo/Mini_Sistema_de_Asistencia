@@ -27,3 +27,13 @@ Account metadata emits that do not change the effective identity must not rebuil
 The browser CI job must run `npm run test:e2e:connections` as an unconditional dedicated step with its globally installed Playwright environment. Preserve `test:e2e` and `test:e2e:ci` verbatim and retain tutorial opt-in behavior. Regression proof must reject a merely commented command.
 
 Current delivery authorization is a full draft PR to `main` with a size exception (`exception-ok`), parent-owned publication only; no merge or Pages/production deployment. Pending T3 and separate blind-judge findings are outside T4.
+
+## T5 full-app integration regressions
+
+Correct three independently reproduced bucket-C root clusters without extending account/network behavior:
+
+1. `narrow-toolbar-intrinsics`: stack the existing attendance toolbar when its combined intrinsic controls cannot fit. Preserve controls and text; do not hide overflow or constrain the sharing shell to mask document expansion.
+2. `modal-open-focus-lifecycle`: after home/presentation settles, place first-open and reopened dialog focus inside the mounted shell; preserve visible in-dialog focus on refresh and retain native Tab/Shift+Tab/Escape and opener restoration. Deferred focus must not run after release.
+3. `shared-auth-capability-presentation`: derive capability once from endpoint availability and existing native login/logout controls. Signed-out available builds offer sign-in; unavailable builds and signed-in accounts offer navigable `Mi cuenta`.
+
+Acceptance uses fresh full-application 320/390 mobile-touch and 1280 desktop contexts in light/dark, native onboarding/tutorial dismissal, exact-local-origin HTTP and WebSocket denial, no accounts or real storage. Named full-app regressions must fail before fixes and pass afterward; the existing 20 component tests remain unchanged. Full configured Node and relevant CI browser checks, generated parity/convergence, and actual 320px screenshot are required. No live TURN/pair/Google proof, hosted-CI provisioning fix, or T3 expansion is claimed. Parent retains commit, independent review, and publication ownership.
