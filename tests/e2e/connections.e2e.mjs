@@ -319,7 +319,7 @@ for (const changeProfile of [false, true]) {
 }
 
 // Full application coverage intentionally does not reuse the component fixture.
-async function openApplication(width, theme) {
+async function openApplication(width, theme, seedUsers) {
   const mobile = width < 600;
   const context = await browser.newContext({ viewport: { width, height: mobile ? 844 : 900 }, isMobile: mobile, hasTouch: mobile, serviceWorkers: 'block', reducedMotion: 'reduce' });
   try {
@@ -328,6 +328,7 @@ async function openApplication(width, theme) {
     const page = await context.newPage(), errors = [];
     page.setDefaultTimeout(5000);
     page.on('pageerror', error => errors.push(error.message));
+    if (seedUsers) await context.addInitScript(value => localStorage.setItem('users', JSON.stringify(value)), seedUsers);
     await page.goto(base + '/');
     await page.locator('#mini-welcome-name').fill('Synthetic usability test');
     await page.getByRole('button', { name: 'Continuar', exact: true }).click();
@@ -459,6 +460,120 @@ test('full app sharing: device pairing cancel and native back return to sharing'
     await page.locator('[data-p2p-close]').click();
     await page.locator('.mini-p2p-overlay').waitFor({ state: 'detached' });
     assert.equal(await page.locator('#btn-attendance-link').evaluate(node => document.activeElement === node), true);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+async function openManualPair(page) {
+  await page.locator('#btn-attendance-link').click();
+  await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+  await page.locator('[data-connections-device]').click();
+  await page.locator('[data-backup-pair-mini]').click();
+  await page.locator('[data-manual-backup-pair]').click();
+  await page.locator('[data-code]').waitFor({ state: 'visible' });
+}
+
+test('full app manual pairing: code focus, Tab and back preserve accessible navigation', async () => {
+  const { context, page, errors } = await openApplication(320, 'light');
+  try {
+    await openManualPair(page);
+    assert.equal(await page.locator('[data-code]').evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('[data-key]').evaluate(node => node === document.activeElement), true);
+    await page.locator('[data-mini-header-back]').click();
+    await page.locator('[data-backup-pair-mini]').waitFor({ state: 'visible' });
+    await assertDialogFocus(page);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+for (const invalid of ['both', 'code', 'key']) test(`full app manual pairing: ${invalid} errors are announced, associated and cleared on editing`, async () => {
+  const { context, page, errors } = await openApplication(390, 'dark');
+  try {
+    await openManualPair(page);
+    if (invalid === 'key') await page.locator('[data-code]').fill('583214');
+    if (invalid === 'code') await page.locator('[data-key]').fill('ABCDE-23456');
+    await page.locator('[data-connect]').click();
+    const status = page.locator('[data-pair-status]');
+    assert.equal(await status.getAttribute('role'), 'status');
+    assert.equal(await status.getAttribute('aria-live'), 'polite');
+    assert.equal(await status.getAttribute('aria-atomic'), 'true');
+    for (const name of ['code', 'key']) {
+      const field = page.locator(`[data-${name}]`), bad = invalid === 'both' || invalid === name;
+      assert.equal(await field.getAttribute('aria-invalid'), bad ? 'true' : null);
+      assert.equal(await field.getAttribute('aria-describedby'), bad ? await status.getAttribute('id') : null);
+      if (bad) assert.match(await status.textContent(), name === 'code' ? /código.*6 dígitos/ : /clave.*10 caracteres/);
+    }
+    const first = invalid === 'key' ? 'key' : 'code';
+    assert.equal(await page.locator(`[data-${first}]`).evaluate(node => node === document.activeElement), true);
+    assert.equal(await page.locator('[data-connect]').isDisabled(), false);
+    await page.locator(`[data-${first}]`).fill(first === 'code' ? '583214' : 'ABCDE-23456');
+    assert.equal(await status.isVisible(), false);
+    assert.equal(await page.locator('[aria-invalid=true]').count(), 0);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('full app manual pairing: local transport failure is general, retryable and single-flight', async () => {
+  const { context, page, errors } = await openApplication(390, 'light');
+  try {
+    await openManualPair(page);
+    await page.evaluate(() => {
+      window.syntheticRtcCalls = 0;
+      SaMiniP2P.createRtcSession = async () => {
+        window.syntheticRtcCalls++;
+        await new Promise(resolve => { window.rejectSyntheticTransport = resolve; });
+        throw Error('Fallo local de transporte sintético');
+      };
+    });
+    await page.locator('[data-code]').fill('583214');
+    await page.locator('[data-key]').fill('ABCDE-23456');
+    await page.locator('[data-connect]').click();
+    await page.waitForFunction(() => window.syntheticRtcCalls === 1);
+    assert.equal(await page.locator('[data-connect]').isDisabled(), true);
+    await page.locator('[data-connect]').evaluate(node => node.click());
+    assert.equal(await page.evaluate(() => window.syntheticRtcCalls), 1);
+    await page.evaluate(() => window.rejectSyntheticTransport());
+    await page.waitForFunction(() => !document.querySelector('[data-connect]').disabled);
+    assert.match(await page.locator('[data-pair-status]').textContent(), /Fallo local de transporte/);
+    assert.equal(await page.locator('[aria-invalid=true]').count(), 0);
+    assert.equal(await page.locator('[data-pair-status]').getAttribute('role'), 'status');
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('full app restore confirmation: accessible name and description, Cancel preserves employees and staged backup', async () => {
+  const { context, page, errors } = await openApplication(320, 'light', [{ id: 'synthetic-existing', name: 'Synthetic Existing Employee', number: '1', position: 'Test' }]);
+  try {
+    assert.deepEqual(await page.evaluate(() => users.map(user => user.id)), ['synthetic-existing']);
+    await page.evaluate(async () => {
+      const backup = { schemaVersion: 1, exportedAt: '2026-10-18T00:00:00Z', users: [{ id: 'synthetic-incoming', name: 'Synthetic Incoming Employee', number: '2', position: 'Test' }], attendance: {}, requests: [] };
+      const payload = await SaMiniP2PBackup.createMiniBackupPayload(backup);
+      SaMiniP2PBackup.backupStagedStore.stageBackup({ transferId: 'synthetic-a11y-only', sha256: payload.sha256, kind: 'backup', schema: 'mini-backup/v1', bytes: payload.bytes, sourceApp: 'mini', sourcePeerId: 'synthetic-fixture', sourcePeerName: 'Synthetic fixture', receivedAt: '2026-10-18T00:00:00Z' });
+      window.syntheticExistingUsers = localStorage.getItem('users');
+    });
+    await page.locator('#btn-attendance-link').click();
+    await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+    await page.locator('[data-connections-device]').click();
+    await page.locator('[data-review-backup]:visible').click();
+    await page.locator('[data-apply-backup]').click();
+    const dialog = page.getByRole('dialog', { name: '¿Restaurar respaldo?', exact: true });
+    await dialog.waitFor({ state: 'visible' });
+    const message = await page.locator('#confirm-message').textContent();
+    assert.ok(message.trim().length > 0);
+    const accessibility = await context.newCDPSession(page);
+    const { root } = await accessibility.send('DOM.getDocument');
+    const { nodeId } = await accessibility.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#modal-confirm' });
+    const { nodes } = await accessibility.send('Accessibility.getPartialAXTree', { nodeId });
+    assert.equal(nodes[0].description.value, message.trim().replace(/\s+/g, ' '));
+    await accessibility.detach();
+    assert.equal(await dialog.getAttribute('aria-describedby'), 'confirm-message');
+    await dialog.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await page.evaluate(() => localStorage.getItem('users') === window.syntheticExistingUsers), true);
+    assert.deepEqual(await page.evaluate(() => users.map(user => user.id)), ['synthetic-existing']);
+    assert.equal(await page.evaluate(() => SaMiniP2PBackup.backupStagedStore.listStaged().length), 1);
+    assert.equal(await page.locator('[data-apply-backup]').isVisible(), true);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
 });

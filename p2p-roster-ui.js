@@ -1351,12 +1351,22 @@
         <div class="mini-p2p-field"><label for="mini-p2p-manual-code">Código</label><input id="mini-p2p-manual-code" class="mini-p2p-code" data-code inputmode="numeric" maxlength="7" placeholder="583 214"></div>
         <div class="mini-p2p-field"><label for="mini-p2p-manual-key">Clave</label><input id="mini-p2p-manual-key" class="mini-p2p-code" data-key maxlength="11" placeholder="ABCDE-23456" autocapitalize="characters"></div>
         <div class="mini-p2p-actions">${primary(btnLabel,'data-connect','link')}</div>
-        <div class="mini-p2p-status" data-pair-status hidden></div>
+        <div id="mini-p2p-manual-status" class="mini-p2p-status" data-pair-status role="status" aria-live="polite" aria-atomic="true" hidden></div>
       </div>`; });
-    body().querySelector('[data-back]').addEventListener('click', () => { if (allowSameApp) renderBackupHub(); else renderHome(); });
+    body().querySelector('[data-back]').addEventListener('click', async () => {
+      try {
+        if (allowSameApp) await renderBackupHub(); else await renderHome();
+        (body()?.querySelector('[data-backup-pair-mini]') || modal()?.querySelector('[data-connections-device]'))?.focus();
+      } catch (error) { toast(error.message || 'No se pudo volver.'); }
+    });
+    const feedback = root.MiniConnectionPresentation?.mountManualPairFeedback?.({
+      code: body().querySelector('[data-code]'), key: body().querySelector('[data-key]'),
+      status: body().querySelector('[data-pair-status]'), normalizers: core
+    });
     const connectButton = body().querySelector('[data-connect]');
     connectButton.addEventListener('click', async () => {
       if (connectButton.disabled) return;
+      if (feedback && !feedback.validate()) return;
       connectButton.disabled = true;
       connectButton.setAttribute('aria-busy', 'true');
       connectButton.textContent = 'Conectando…';
@@ -1365,7 +1375,8 @@
         await startPairing(descriptor, { allowSameApp });
       } catch (error) {
         const box = body()?.querySelector('[data-pair-status]');
-        if (box) { box.hidden = false; box.classList?.add?.('is-error'); box.textContent = error.message; }
+        if (feedback && box) feedback.showError(error.message);
+        else if (box) { box.hidden = false; box.classList?.add?.('is-error'); box.textContent = error.message; }
         if (connectButton.isConnected) {
           connectButton.disabled = false;
           connectButton.removeAttribute('aria-busy');

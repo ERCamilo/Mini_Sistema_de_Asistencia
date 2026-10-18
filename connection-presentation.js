@@ -2,6 +2,55 @@
 (function exposeMiniPresentation(root, factory) { const api = factory(); if (typeof module === 'object' && module && module.exports)
     module.exports = api; if (root)
     root.MiniConnectionPresentation = api; })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+    function mountManualPairFeedback(options) {
+        const { code, key, status, normalizers } = options;
+        const fields = [code, key];
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        status.setAttribute('aria-atomic', 'true');
+        function clear() {
+            for (const field of fields) {
+                field.removeAttribute('aria-invalid');
+                field.removeAttribute('aria-describedby');
+            }
+            status.textContent = '';
+            status.hidden = true;
+            status.classList.remove('is-error');
+        }
+        function showError(message) {
+            clear();
+            status.textContent = message;
+            status.classList.add('is-error');
+            status.hidden = false;
+        }
+        function validate() {
+            clear();
+            const errors = [];
+            const invalid = [];
+            for (const [field, normalize] of [[code, normalizers.normalizeCode], [key, normalizers.normalizePairKey]]) {
+                try {
+                    normalize(field.value);
+                }
+                catch (error) {
+                    invalid.push(field);
+                    errors.push(error instanceof Error ? error.message : 'Revisa este campo.');
+                }
+            }
+            if (!invalid.length)
+                return true;
+            showError(errors.join(' '));
+            for (const field of invalid) {
+                field.setAttribute('aria-invalid', 'true');
+                field.setAttribute('aria-describedby', status.id);
+            }
+            invalid[0].focus();
+            return false;
+        }
+        for (const field of fields)
+            field.addEventListener('input', clear);
+        code.focus();
+        return { validate, showError };
+    }
     function describePage(s) {
         if (s.home)
             return { key: 'home', title: 'Compartir', back: false };
@@ -338,5 +387,5 @@
                 details.before(feedback); details.remove(); back.remove(); account.remove(); heading.textContent = originalTitle; delete heading.dataset.miniPageTitle; delete o.shell.dataset.miniConnectionPage; if (subtitle)
                 subtitle.hidden = false; } };
     }
-    return { describePage, describeFeedback, peerInitials, describePeer, createLinkFingerprint, observePhase, describePeerDetails, mountPeers, icon, mount };
+    return { mountManualPairFeedback, describePage, describeFeedback, peerInitials, describePeer, createLinkFingerprint, observePhase, describePeerDetails, mountPeers, icon, mount };
 });

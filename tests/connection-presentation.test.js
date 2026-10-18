@@ -155,3 +155,33 @@ test('an owned pending connect is connecting until closed even before snapshot u
  connect.onclick();assert.equal(row.children[2].children[1].textContent,'Conectando');assert.equal(close.disabled,false);
  close.onclick();assert.equal(row.children[2].children[1].textContent,'Sin conexión');finish();await new Promise(r=>setImmediate(r));view.dispose();
 });
+
+function manualPairFixture() {
+ const {d,container}=peerDom();
+ const code=d.createElement('input'),key=d.createElement('input'),status=d.createElement('div');
+ for(const input of [code,key]){input.value='';input.listeners={};input.addEventListener=(name,fn)=>{input.listeners[name]=fn;};input.removeAttribute=name=>{delete input.attributes[name];};}
+ status.id='manual-test-status';status.classList.remove=()=>{};
+ const view=require('../connection-presentation.js').mountManualPairFeedback({code,key,status,normalizers:require('../p2p-core.js')});
+ return {d,code,key,status,view};
+}
+test('manual pairing focuses code and associates both authoritative format errors',()=>{
+ const {d,code,key,status,view}=manualPairFixture();
+ assert.equal(d.activeElement,code);assert.equal(status.attributes.role,'status');assert.equal(status.attributes['aria-live'],'polite');assert.equal(status.attributes['aria-atomic'],'true');
+ assert.equal(view.validate(),false);assert.equal(status.hidden,false);
+ for(const field of [code,key]){assert.equal(field.attributes['aria-invalid'],'true');assert.equal(field.attributes['aria-describedby'],status.id);}
+ assert.match(status.textContent,/código.*6 dígitos/);assert.match(status.textContent,/clave.*10 caracteres/);assert.equal(d.activeElement,code);
+});
+for(const invalid of ['code','key'])test(`manual pairing flags only invalid ${invalid} and editing clears stale feedback`,()=>{
+ const fixture=manualPairFixture(),{d,code,key,status,view}=fixture;
+ code.value=invalid==='code'?'':'583 214';key.value=invalid==='key'?'':'ABCDE-23456';
+ assert.equal(view.validate(),false);assert.equal(fixture[invalid].attributes['aria-invalid'],'true');assert.equal(d.activeElement,fixture[invalid]);
+ const valid=invalid==='code'?key:code;assert.equal(valid.attributes['aria-invalid'],undefined);assert.equal(valid.attributes['aria-describedby'],undefined);
+ fixture[invalid].listeners.input();assert.equal(status.hidden,true);assert.equal(status.textContent,'');
+ for(const field of [code,key]){assert.equal(field.attributes['aria-invalid'],undefined);assert.equal(field.attributes['aria-describedby'],undefined);}
+});
+test('manual pairing accepts core-normalized formats and keeps transport errors general and literal',()=>{
+ const {code,key,status,view}=manualPairFixture();code.value='583 214';key.value='abcde-23456';
+ assert.equal(view.validate(),true);view.showError('<img onerror=bad>');assert.equal(status.hidden,false);assert.equal(status.textContent,'<img onerror=bad>');
+ for(const field of [code,key])assert.equal(field.attributes['aria-invalid'],undefined);
+ code.listeners.input();assert.equal(status.hidden,true);
+});
