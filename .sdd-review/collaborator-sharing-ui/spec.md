@@ -18,4 +18,12 @@ Deterministic test-first changes cover home copy, all connection predicate combi
 
 ## Boundaries
 
-T1 implements home/cards. T2 adds local Google photo fallback. T3 finishes remaining-step copy/navigation/regression acceptance. First new UX review boundary is `b86899a`; imported history remains unreviewed after its original context-budget refusal. Commits/review are parent-owned; delivery is local only.
+T1 implements home/cards. T2 adds local Google photo fallback. T3 finishes remaining-step copy/navigation/regression acceptance. First new UX review boundary is `b86899a`; imported history remains unreviewed after its original context-budget refusal. Commits/review are parent-owned; the historical T1 authorization was local only. Current draft-PR authorization is stated below.
+
+## T4 account stability and CI acceptance
+
+Account metadata emits that do not change the effective identity must not rebuild the account view. When identity or photo changes, update the existing summary/card in place so native login/logout and secondary controls retain their DOM nodes and focus. Keep safe photo fallback, availability, account-switch and sign-out presentation current; do not change authentication, network behavior or metadata contracts.
+
+The browser CI job must run `npm run test:e2e:connections` as an unconditional dedicated step with its globally installed Playwright environment. Preserve `test:e2e` and `test:e2e:ci` verbatim and retain tutorial opt-in behavior. Regression proof must reject a merely commented command.
+
+Current delivery authorization is a full draft PR to `main` with a size exception (`exception-ok`), parent-owned publication only; no merge or Pages/production deployment. Pending T3 and separate blind-judge findings are outside T4.

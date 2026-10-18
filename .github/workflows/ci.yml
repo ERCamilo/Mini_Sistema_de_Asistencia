@@ -54,3 +54,7 @@ jobs:
           else
             npm run test:e2e:ci
           fi
+      - name: Connections browser regressions
+        run: |
+          export PLAYWRIGHT_MODULE="$(npm root -g)/playwright/index.mjs"
+          npm run test:e2e:connections

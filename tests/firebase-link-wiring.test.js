@@ -5,11 +5,14 @@ test('production configuration remains disabled',()=>{delete global.MiniFirebase
 test('account presentation preserves original Auth controls and never enables disabled configuration',()=>{
  const fs=require('node:fs'),path=require('node:path');
  const source=fs.readFileSync(path.join(__dirname,'../src/connection-menu.ts'),'utf8');
- assert.ok(source.includes("if(app==='mini'&&previous?.contains(account))store.append(account)"));
+ // Browser focus regressions exercise these structural protections with real DOM controls.
+ assert.ok(source.includes("const summary=previous||node('section','connections-account-summary')"));
+ assert.ok(!source.includes('previous?.remove()'));
+ assert.ok(source.includes('if(account.parentElement!==identity)identity.append(account)'));
  assert.ok(source.includes('identity.append(account)'));
  assert.ok(source.includes("el('firebase-link-login')"));
  assert.ok(source.includes("el('firebase-link-logout')"));
- assert.ok(source.includes('unavailable.disabled=true'));
+ assert.ok(source.includes('disabled.disabled=true'));
  assert.ok(!source.includes('login.hidden=false'));
  assert.ok(!source.includes('initializeApp'));
 });

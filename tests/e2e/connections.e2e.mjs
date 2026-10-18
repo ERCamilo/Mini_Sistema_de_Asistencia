@@ -259,3 +259,61 @@ for(const width of [320,390,1024]) for(const theme of ['light','dark']){
     }finally{await context.close();}
   });
 }
+
+for (const changeProfile of [false, true]) {
+  test(`account ${changeProfile ? 'changed identity' : 'duplicate metadata'} preserves native and secondary focus`, async () => {
+    const { context, page, errors } = await openFixture(390, 'light');
+    try {
+      await page.locator('[data-connection-account-open]').click();
+      for (const selector of ['#firebase-link-login', '[data-account-summary] > button']) {
+        await page.locator(selector).first().focus();
+        await page.evaluate(({ changeProfile }) => {
+          window.accountNodes = {
+            summary: document.querySelector('[data-account-summary]'),
+            identity: document.querySelector('.mini-account-card'),
+            login: document.querySelector('#firebase-link-login'),
+            focused: document.activeElement
+          };
+          const status = document.querySelector('#firebase-link-status');
+          status.dataset.accountEmail = changeProfile ? 'ana@example.test' : '';
+          status.dataset.accountName = changeProfile ? (accountNodes.focused.id === 'firebase-link-login' ? 'Ana Gómez' : 'Ana López') : '';
+          status.dataset.accountPhoto = '';
+          status.dataset.linkBusy = 'false';
+          document.querySelector('#firebase-link-error').textContent = 'Error de acceso de prueba';
+        }, { changeProfile });
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.deepEqual(await page.evaluate(() => ({
+          summary: accountNodes.summary === document.querySelector('[data-account-summary]'),
+          identity: accountNodes.identity === document.querySelector('.mini-account-card'),
+          login: accountNodes.login === document.querySelector('#firebase-link-login'),
+          focus: accountNodes.focused === document.activeElement
+        })), { summary: true, identity: true, login: true, focus: true });
+      }
+      if (changeProfile) {
+        assert.equal(await page.locator('.mini-account-card > strong').textContent(), 'Ana López');
+        await page.evaluate(() => {
+          document.querySelector('#firebase-link-login').hidden = true;
+          document.querySelector('#firebase-link-logout').hidden = false;
+        });
+        await page.locator('#firebase-link-logout').focus();
+        await page.evaluate(() => {
+          window.accountFocus = document.activeElement;
+          const status = document.querySelector('#firebase-link-status');
+          status.dataset.accountEmail = 'bea@example.test';
+          status.dataset.accountName = 'Bea Ruiz';
+        });
+        await page.waitForFunction(() => document.querySelector('.mini-account-card > strong')?.textContent === 'Bea Ruiz');
+        assert.equal(await page.evaluate(() => accountFocus === document.activeElement), true);
+        await page.evaluate(() => {
+          const status = document.querySelector('#firebase-link-status');
+          status.dataset.accountEmail = ''; status.dataset.accountName = ''; status.dataset.accountPhoto = '';
+          document.querySelector('#firebase-link-login').hidden = false;
+          document.querySelector('#firebase-link-logout').hidden = true;
+        });
+        await page.waitForFunction(() => document.querySelector('.mini-account-card')?.dataset.accountState === 'signed-out');
+        assert.equal(await page.locator('.mini-account-card > strong').textContent(), 'Conecta tu cuenta Google');
+      }
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  });
+}

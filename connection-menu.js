@@ -578,49 +578,64 @@
             detailPart.append(hint);
         }
         function renderAccount() {
-            var _a, _b, _c;
+            var _a;
             const previous = taskContent.querySelector('[data-account-summary]');
-            if (app === 'mini' && (previous === null || previous === void 0 ? void 0 : previous.contains(account)))
-                store.append(account);
-            previous === null || previous === void 0 ? void 0 : previous.remove();
-            const summary = node('section', 'connections-account-summary');
+            const summary = previous || node('section', 'connections-account-summary');
             summary.dataset.accountSummary = '';
             const status = el(app === 'mini' ? 'firebase-link-status' : 'sa-field-status'), email = (status === null || status === void 0 ? void 0 : status.dataset.accountEmail) || '', name = (status === null || status === void 0 ? void 0 : status.dataset.accountName) || email || 'Cuenta Google';
-            const avatar = node('span', 'connections-avatar');
+            const identity = summary.querySelector('.connections-context') || contextCard(name, email || 'Inicia sesión para gestionar tus vínculos');
+            const avatar = identity.querySelector('.connections-avatar') || node('span', 'connections-avatar');
             avatar.textContent = email ? (name.trim()[0] || 'G').toUpperCase() : 'G';
             avatar.setAttribute('aria-hidden', 'true');
+            if (avatar.parentElement !== identity)
+                identity.prepend(avatar);
             const photo = email ? safeAccountPhoto(status === null || status === void 0 ? void 0 : status.dataset.accountPhoto) : '';
-            let photoNode = null;
-            if (photo) {
-                const img = d.createElement('img');
-                img.className = 'connections-profile-photo';
-                img.alt = '';
-                img.setAttribute('aria-hidden', 'true');
-                img.referrerPolicy = 'no-referrer';
-                img.onload = () => { avatar.hidden = true; };
-                img.onerror = () => { img.hidden = true; avatar.hidden = false; };
-                img.src = photo;
-                photoNode = img;
-            }
-            const identity = contextCard(name, email || 'Inicia sesión para gestionar tus vínculos');
-            identity.prepend(avatar);
-            if (photoNode)
+            const photoNode = identity.querySelector('.connections-profile-photo') || d.createElement('img');
+            photoNode.className = 'connections-profile-photo';
+            photoNode.alt = '';
+            photoNode.setAttribute('aria-hidden', 'true');
+            photoNode.referrerPolicy = 'no-referrer';
+            if (photoNode.parentElement !== identity)
                 avatar.after(photoNode);
+            photoNode.onload = () => { if (!released && photo && photoNode.getAttribute('src') === photo) {
+                photoNode.hidden = false;
+                avatar.hidden = true;
+            } };
+            photoNode.onerror = () => { photoNode.hidden = true; avatar.hidden = false; };
+            if (photoNode.getAttribute('src') !== photo) {
+                photoNode.hidden = true;
+                avatar.hidden = false;
+                if (photo)
+                    photoNode.src = photo;
+                else
+                    photoNode.removeAttribute('src');
+            }
+            if (!photo) {
+                photoNode.hidden = true;
+                avatar.hidden = false;
+            }
+            const title = identity.querySelector('strong'), description = identity.querySelector('p');
+            title.textContent = name;
+            description.textContent = email || 'Inicia sesión para gestionar tus vínculos';
             if (app === 'mini') {
                 const login = el('firebase-link-login'), logout = el('firebase-link-logout');
                 const available = options.internetAvailable && Boolean(login && !login.hidden || logout && !logout.hidden);
                 const connected = available && !!email;
                 identity.classList.add('mini-connection-identity', 'mini-account-card');
                 identity.dataset.accountState = available ? (connected ? 'connected' : 'signed-out') : 'unavailable';
-                const title = identity.querySelector('strong'), description = identity.querySelector('p');
                 title.textContent = connected ? name : 'Conecta tu cuenta Google';
                 description.textContent = connected ? email : available ? 'Inicia sesión para gestionar tus obras.' : 'El acceso con Google no está habilitado en esta versión.';
                 description.id = 'mini-account-description';
-                const state = node('span', 'mini-account-status');
+                const state = identity.querySelector('.mini-account-status') || node('span', 'mini-account-status');
                 state.textContent = connected ? 'Conectada' : available ? 'Sin iniciar sesión' : 'No disponible';
-                identity.append(state);
+                if (state.parentElement !== identity)
+                    identity.append(state);
+                const unavailable = identity.querySelector('[data-account-unavailable]');
+                if (unavailable)
+                    unavailable.hidden = available;
                 if (available) {
-                    identity.append(account);
+                    if (account.parentElement !== identity)
+                        identity.append(account);
                     for (const control of [login, logout])
                         if (control) {
                             control.classList.add('mini-account-action');
@@ -628,41 +643,57 @@
                         }
                 }
                 else {
-                    store.append(account);
-                    const unavailable = button('Iniciar sesión con Google', () => { });
-                    unavailable.disabled = true;
-                    unavailable.dataset.accountUnavailable = '';
-                    unavailable.classList.add('mini-account-action');
-                    unavailable.setAttribute('aria-describedby', description.id);
-                    const logo = d.createElement('img');
-                    logo.src = './vendor/google-g.png';
-                    logo.width = 20;
-                    logo.height = 20;
-                    logo.alt = '';
-                    unavailable.prepend(logo);
-                    identity.append(unavailable);
+                    if (account.parentElement !== store)
+                        store.append(account);
+                    if (!unavailable) {
+                        const disabled = button('Iniciar sesión con Google', () => { });
+                        disabled.disabled = true;
+                        disabled.dataset.accountUnavailable = '';
+                        disabled.classList.add('mini-account-action');
+                        disabled.setAttribute('aria-describedby', description.id);
+                        const logo = d.createElement('img');
+                        logo.src = './vendor/google-g.png';
+                        logo.width = 20;
+                        logo.height = 20;
+                        logo.alt = '';
+                        disabled.prepend(logo);
+                        identity.append(disabled);
+                    }
                 }
-                summary.append(identity);
             }
-            else
-                summary.append(identity, account);
-            if (app === 'mini') {
-                const select = el('cloud-field-binding'), works = new Set([...((select === null || select === void 0 ? void 0 : select.options) || [])].map(o => o.dataset.orgId + '|' + o.dataset.projectId));
-                const linked = button('Mis obras vinculadas · ' + works.size, () => { show(); });
-                const device = button('Este dispositivo · ' + (((_a = el('cloud-field-device-name')) === null || _a === void 0 ? void 0 : _a.dataset.resolvedName) || ((_b = el('cloud-field-device-name')) === null || _b === void 0 ? void 0 : _b.value) || 'Mini'), () => { task('settings'); });
-                decorateActionRow(device, 'Este dispositivo', ((_c = el('cloud-field-device-name')) === null || _c === void 0 ? void 0 : _c.dataset.resolvedName) || 'Mini', 'phone');
-                decorateActionRow(linked, 'Mis obras vinculadas', works.size + ' obra(s) autorizada(s)', 'building');
-                summary.append(device, linked);
+            else if (account.parentElement !== summary)
+                summary.append(account);
+            if (identity.parentElement !== summary)
+                summary.prepend(identity);
+            if (!previous) {
+                if (app === 'mini') {
+                    const linked = button('Mis obras vinculadas', () => { show(); }), device = button('Este dispositivo', () => { task('settings'); });
+                    linked.dataset.accountWorks = '';
+                    device.dataset.accountDevice = '';
+                    decorateActionRow(device, 'Este dispositivo', '', 'phone');
+                    decorateActionRow(linked, 'Mis obras vinculadas', '', 'building');
+                    summary.append(device, linked);
+                }
+                const backup = extras.querySelector('[data-open-backup-hub-btn]');
+                if (backup)
+                    summary.append(button('Respaldos y transferencia directa', () => { backup.click(); }));
+                const pendingButton = button('', () => { show(); });
+                pendingButton.dataset.accountPending = '';
+                summary.append(pendingButton);
+                const hint = node('p', 'connections-hint');
+                hint.textContent = 'Cerrar sesión conserva los datos guardados en este dispositivo.';
+                summary.append(hint);
+                taskContent.prepend(summary);
             }
-            const backup = extras.querySelector('[data-open-backup-hub-btn]');
-            if (backup)
-                summary.append(button('Respaldos y transferencia directa', () => { backup.click(); }));
-            const pendingCount = currentEvents().reduce((total, event) => total + event.count, 0);
-            summary.append(button('Pendientes por revisar · ' + pendingCount, () => { show(); }));
-            const hint = node('p', 'connections-hint');
-            hint.textContent = 'Cerrar sesión conserva los datos guardados en este dispositivo.';
-            summary.append(hint);
-            taskContent.prepend(summary);
+            const works = summary.querySelector('[data-account-works] small'), device = summary.querySelector('[data-account-device] small');
+            const select = el('cloud-field-binding');
+            if (works)
+                works.textContent = new Set([...((select === null || select === void 0 ? void 0 : select.options) || [])].map(o => o.dataset.orgId + '|' + o.dataset.projectId)).size + ' obra(s) autorizada(s)';
+            if (device)
+                device.textContent = ((_a = el('cloud-field-device-name')) === null || _a === void 0 ? void 0 : _a.dataset.resolvedName) || 'Mini';
+            const pendingButton = summary.querySelector('[data-account-pending]');
+            if (pendingButton)
+                pendingButton.textContent = 'Pendientes por revisar · ' + currentEvents().reduce((total, event) => total + event.count, 0);
         }
         function renderInvitation() {
             if (app !== 'mini')
@@ -858,9 +889,12 @@
                 move(el(prefix + 'status'), feedback);
                 const profileStatus = el(prefix + 'status');
                 if (profileStatus) {
+                    let profileSnapshot = JSON.stringify([profileStatus.dataset.accountEmail || '', profileStatus.dataset.accountName || '', profileStatus.dataset.accountPhoto || '']);
                     const profileWatcher = new MutationObserver(() => {
-                        if (released)
+                        const next = JSON.stringify([profileStatus.dataset.accountEmail || '', profileStatus.dataset.accountName || '', profileStatus.dataset.accountPhoto || '']);
+                        if (released || next === profileSnapshot)
                             return;
+                        profileSnapshot = next;
                         presentation === null || presentation === void 0 ? void 0 : presentation.refresh();
                         renderHeader();
                         if (currentTask === 'account')
