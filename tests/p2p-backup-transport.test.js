@@ -1368,3 +1368,37 @@ test('13. regresiones R2: correlación ACK contra transferId/SHA/kind/schema inv
   }
 });
 
+
+test('production sender consent, receiver and staging ACK reuse authenticated channels for A to B to A',async()=>{
+ const vm=require('node:vm'),Consent=require('../p2p-backup-consent.js'),Manager=require('../mini-peer-session-manager.js');
+ const source=fs.readFileSync(path.resolve(__dirname,'../p2p-roster-ui.js'),'utf8');
+ const section=(start,end)=>source.slice(source.indexOf(start),source.indexOf(end,source.indexOf(start)));
+ const [a,b]=linkedPair(),channels=[a,b],contexts=[],entries=[],leases=[],stores=[],off=[];let factories=0,closed=0;
+ for(const channel of channels){Core.markChannelAuthenticated(channel);const close=channel.close.bind(channel);channel.close=()=>{closed++;close();};}
+ for(let side=0;side<2;side++){
+  const channel=channels[side],peer={peerId:'peer-'+(1-side),peerApp:'mini',purpose:'backup',linkToken:'synthetic'},store=BackupBridge.createBackupStagingStore();stores.push(store);
+  const session={close(){closed++;}},lease=Manager.create({now:()=>0,schedule:()=>({}),cancel(){}}).lease(session,0,()=>{},{guest:true,transportOwnedExternally:true});lease.ready(channel);leases.push(lease);
+  const entry={transport:{},lease,busy:false,stopped:false,retryTimer:null,detachReceiver:null};entries.push(entry);
+  // Serialization adapters model the VM boundary; all framing/validation uses production Core.
+  const core={...Core,sendControl:(ch,type,value)=>Core.sendControl(ch,type,JSON.parse(JSON.stringify(value))),validateTransferStart:value=>Core.validateTransferStart(JSON.parse(JSON.stringify(value))),createRtcSession(){factories++;throw Error('unexpected RTC allocation');}};
+  const box={classList:{add(){},remove(){}},textContent:'',addEventListener(){}};
+  const ctx={AbortController,setTimeout,clearTimeout,root:{P2PBackupConsent:Consent,SaMiniP2PBackup:{...BackupBridge,backupStagedStore:store}},core,
+   activeSendAttempt:null,activeSession:null,activeChannel:null,activeManualPeerId:null,inFlightSendNotice:null,activePairConfirmation:null,activeAttendanceResponderDetach:null,activeBackupReceiverDetach:null,activeTransferPeerId:null,cleanupQrScanner(){},
+   identityStore:{getSelf:async()=>({deviceId:'self-'+side,displayName:'Synthetic'}),getPeer:async()=>peer},peerName:()=> 'Synthetic Mini',shell(){},morphShell(fn){fn();},body:()=>({innerHTML:'',querySelector:()=>box}),backButton:()=>'',vectorIcon:()=>'',esc:v=>v,secondary:()=>'',statusMessage:()=>'',backupSizeLabel:()=> 'test bytes',
+   miniBackupListeners:new Map([[peer.peerId,entry]]),miniBackupIntents:{invalidate(){}},isMiniBackupPeer:()=>true,ensureMiniBackupListener:async()=>entry,OFFER_DECISION_MS:85000,
+   refreshMiniP2PHeader:async()=>{},recordP2PActivity(){},signalTerminalSuccess(){},boundedUserSafeError:()=> 'Synthetic failure',renderError(){throw Error('unexpected receiver failure');},isTransferModalOpen:()=>false,toast(){},startMiniBackupInbox:async()=>{},
+   notices:()=>({show(options){const notice={update(){},dismiss(){}};const accept=options.actions?.find(action=>action.label==='Aceptar');if(accept)queueMicrotask(()=>accept.onSelect());return notice;}})};
+  vm.runInNewContext(section('function cleanupSession','function closeTransferModal')+section('const backupReceiverCleanups','function isTransferModalOpen')+section('function receiveNoticeHooks','let miniBackupAccountWatch')+section('async function stageReceivedBackup','// ---- Received Mini backup review')+section('async function sendBackupToPeer','async function waitBackupTransfer')+';this.send=sendBackupToPeer;this.prompt=promptIncomingBackup;this.cleanup=cleanupSession;',ctx);
+  contexts.push(ctx);off.push(Consent.listenForOffers(channel,core,(offer,respond)=>ctx.prompt(peer,offer,respond,channel,entry)));
+ }
+ try{
+  for(const [sequence,side] of [0,1,0].entries()){
+   const bytes=new TextEncoder().encode(JSON.stringify({schemaVersion:1,sequence,users:[],attendance:{}}));
+   await contexts[side].send('peer-'+(1-side),{bytes,size:bytes.length,sha256:await Core.sha256Hex(bytes)});
+   await waitFor(()=>entries.every(entry=>!entry.busy&&!entry.lease.busy()),'production owners settle');
+   assert.equal(stores[1-side].listStaged().length,side===0?Math.ceil((sequence+1)/2):1);
+   assert.equal(factories,0);assert.equal(closed,0);
+   entries.forEach((entry,index)=>{assert.equal(entry.lease,leases[index]);assert.equal(entry.lease.deadline,300000);assert.equal(entry.lease.valid(),true);assert.equal(channels[index].readyState,'open');assert.equal(Core.isChannelAuthenticated(channels[index]),true);});
+  }
+ }finally{off.forEach(detach=>detach());contexts.forEach(ctx=>ctx.cleanup());entries.forEach(entry=>entry.detachReceiver?.());leases.forEach(lease=>lease.retire());}
+});

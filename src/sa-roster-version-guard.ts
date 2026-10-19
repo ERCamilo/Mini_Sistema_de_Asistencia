@@ -249,7 +249,7 @@ interface SaVersionGuardOptions {
       });
     }
 
-    function classifyIncoming(roster: unknown): SaVersionGuardDecision {
+    function classifyIncoming(roster: unknown, localEmployeeCount?: number): SaVersionGuardDecision {
       const saProjectId = extractProjectId(roster);
       const record = roster as Record<string, unknown>;
       const version = extractVersionField(record);
@@ -311,7 +311,13 @@ interface SaVersionGuardOptions {
           reason: 'missing-or-malformed-stored-markers'
         });
       }
-      return decide(saProjectId, version.value, timestamp.value as string, previousForTimestamp.entry);
+      const decision = decide(saProjectId, version.value, timestamp.value as string, previousForTimestamp.entry);
+      // Repair receipts left by older reset flows. Unknown counts fail closed;
+      // only the identical accepted version may be restored into an empty Mini.
+      if (decision.outcome === 'equal' && localEmployeeCount === 0) {
+        return Object.freeze({ ...decision, outcome: 'first' as const, reason: 'local-personnel-missing' });
+      }
+      return decision;
     }
 
     function markApplied(roster: unknown): SaVersionGuardRecord {

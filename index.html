@@ -16,6 +16,8 @@
     <!-- Theme before first paint (no flash). Same list as ThemeSwitch.THEMES. -->
     <script>try { var savedTheme = localStorage.getItem('appTheme'); if (/^(dark|light|contrast|ocean|sol)$/.test(savedTheme || '')) document.documentElement.setAttribute('data-theme', savedTheme); } catch (e) { /* default theme */ }</script>
     <link rel="stylesheet" href="./p2p-transfer.css">
+    <link rel="stylesheet" href="./google-sign-in.css">
+    <link rel="stylesheet" href="./connection-screens.css">
     <link rel="stylesheet" href="./mini-notice.css">
     <link rel="stylesheet" href="./employee-report.css">
 
@@ -519,6 +521,12 @@
             grid-template-columns: auto 1fr;
             gap: 12px;
             margin-bottom: 12px;
+        }
+
+        @media (max-width: 389px) {
+            .tools-grid {
+                grid-template-columns: minmax(0, 1fr);
+            }
         }
 
         .whatsapp-cta {
@@ -1272,6 +1280,10 @@
         .btn-danger {
             background: rgba(239, 68, 68, 0.15);
             color: var(--danger-color);
+        }
+
+        #modal-confirm .btn-danger {
+            color: var(--text-color);
         }
 
         .action-item {
@@ -2463,6 +2475,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="./firebase-link.css">
 </head>
 
 <body>
@@ -2470,7 +2483,7 @@
     <div class="top-nav">
         <button type="button" class="header-theme-btn" id="btn-theme-quick" onclick="toggleQuickTheme()" aria-label="Cambiar tema" title="Cambiar tema"><span class="ic" data-icon="sun"></span></button>
         <div class="app-title" id="section-title">Asistencia</div>
-        <button type="button" class="header-p2p-link" id="btn-attendance-link" data-p2p-state="unlinked" data-p2p-header-state="unlinked" onclick="openP2PTransferModal()" aria-label="SA no vinculado. Abrir Transferencias para vincular SA u otro Mini" title="SA no vinculado">
+        <button type="button" class="header-p2p-link" id="btn-attendance-link" data-p2p-state="unlinked" data-p2p-header-state="unlinked" onclick="openP2PTransferModal()" aria-label="Conexión directa sin vincular. Abrir Conexiones para vincular SA u otro Mini" title="Conexión directa sin vincular">
             <span class="header-p2p-ring" aria-hidden="true">
                 <img class="header-p2p-app-icon" src="./sa-app-icon.svg" alt="" decoding="async">
                 <span class="header-p2p-state-dot"></span>
@@ -2997,14 +3010,14 @@
                 <!-- SECCIÓN: TRANSFERENCIAS P2P -->
                 <div class="settings-section">
                     <div class="settings-section-title">
-                        <span class="ic" data-icon="share"></span> Transferencias directas
+                        <span class="ic" data-icon="share"></span> Conexiones
                     </div>
                     <div class="export-options">
-                        <button type="button" class="export-option" onclick="openP2PTransferModal()">
+                        <button type="button" id="connections-open" class="export-option" onclick="openP2PTransferModal()">
                             <span style="font-size: 24px;" aria-hidden="true"><span class="ic" data-icon="link" data-icon-vector></span></span>
                             <div>
                                 <div style="font-weight: 600; color: var(--accent-color);">SA ↔ Mini</div>
-                                <div style="font-size: 12px; color: var(--text-muted);">Vincular dispositivos y recibir roster directamente</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Internet con Google o conexión directa con código y QR</div>
                             </div>
                         </button>
                     </div>
@@ -3564,7 +3577,7 @@
     </div>
 
     <!-- MODAL DE CONFIRMACIÓN (reemplaza confirm() nativo) -->
-    <div class="modal" id="modal-confirm" role="dialog" aria-modal="true">
+    <div class="modal" id="modal-confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
@@ -3600,6 +3613,96 @@
         </button>
     </nav>
 
+    <div id="firebase-link-modal" hidden>
+        <div class="modal-content">
+            <div class="modal-handle"></div>
+            <div class="firebase-link-panel">
+                <h2 id="firebase-link-title">Conectar con SA</h2>
+                <p id="firebase-link-status" class="firebase-link-status" aria-live="polite"></p>
+                <p id="firebase-link-error" class="firebase-link-error" role="alert"></p>
+                <button type="button" id="firebase-link-login" class="btn-full btn-primary">Continuar con Google</button>
+                <input id="firebase-link-code" class="search-input" aria-label="Código de invitación" placeholder="Código de invitación" autocomplete="off" spellcheck="false" maxlength="43">
+                <button type="button" id="firebase-link-review" class="btn-full btn-primary">Revisar invitación</button>
+                <section id="firebase-link-details" class="firebase-link-details" hidden><dl>
+                    <dt>Organización</dt><dd id="firebase-link-org"></dd>
+                    <dt>Obra</dt><dd id="firebase-link-project"></dd>
+                    <dt>Grupos</dt><dd><ul id="firebase-link-groups"></ul></dd>
+                </dl></section>
+                <button type="button" id="firebase-link-confirm" class="btn-full btn-primary" hidden>Confirmar vinculación</button>
+                <button type="button" id="firebase-link-logout" class="btn-full btn-secondary" hidden>Cerrar sesión</button>
+                <section id="cloud-field-panel" hidden aria-label="Personal y asistencia por internet">
+                    <h3>Personal y asistencia</h3>
+                    <p id="cloud-field-status" class="firebase-link-status" aria-live="polite"></p>
+                    <label for="cloud-field-device-name">Nombre de este Mini</label><input id="cloud-field-device-name" class="search-input" maxlength="120"><button type="button" id="cloud-field-device-save" class="btn-full btn-secondary">Guardar nombre del dispositivo</button>
+                    <button type="button" id="cloud-field-refresh" class="btn-full btn-secondary">Actualizar obras y grupos</button>
+                    <select id="cloud-field-binding" class="search-input" aria-label="Obra y grupo autorizados"></select>
+                    <button type="button" id="cloud-field-roster" class="btn-full btn-primary">Recibir y revisar personal</button>
+                    <label for="cloud-field-date">Fecha de asistencia</label><input type="date" id="cloud-field-date" class="search-input">
+                    <button type="button" id="cloud-field-send" class="btn-full btn-primary">Enviar asistencia de esta fecha</button>
+                    <button type="button" id="cloud-field-retry" class="btn-full btn-secondary">Reintentar envíos de este grupo</button>
+                    <section id="cloud-field-members" aria-label="Miembros y asistencia compartida"></section>
+                    <button type="button" id="cloud-field-leave" class="btn-full btn-secondary">Salir de esta obra</button>
+                    <section id="cloud-field-leave-review" class="firebase-link-details" hidden aria-label="Confirmar salida">
+                      <h4 id="cloud-field-leave-title">Salir de la obra</h4>
+                      <p>Este dispositivo dejará de enviar y recibir datos de la obra. Los datos guardados se conservan.</p>
+                      <button type="button" id="cloud-field-leave-confirm" class="btn-full btn-primary">Confirmar salida de este Mini</button>
+                      <button type="button" id="cloud-field-leave-cancel" class="btn-full btn-secondary">Cancelar</button>
+                    </section>
+                </section>
+                <button type="button" id="firebase-link-cancel" class="btn-full btn-secondary" onclick="closeModal('firebase-link-modal')">Volver a Mini</button>
+            </div>
+        </div>
+    </div>
+    <script src="./vendor/firebase-app-compat.js"></script>
+    <script src="./vendor/firebase-auth-compat.js"></script>
+    <script src="./firebase-field-config.js"></script>
+    <script src="./firebase-link.js"></script>
+    <script src="./connection-presentation.js"></script>
+    <script src="./attendance-days.js"></script>
+    <script src="./organization-share.js"></script>
+    <script src="./connection-notifications.js"></script>
+    <script src="./cloud-field.js"></script>
+    <script>window.miniFirebaseLinkView=MiniFirebaseLink.mount({document, sdk:window.firebase, config:window.MiniFirebaseFieldConfig, origin:location.origin,onLinked:()=>{void window.miniCloudFieldView?.refresh();}});</script>
+    <script>
+    if(window.MiniFirebaseFieldConfig){
+      try{
+        const cloudConfig=MiniFirebaseLink.validateConfig(window.MiniFirebaseFieldConfig,location.origin);
+        const cloudAuth=firebase.app('mini-field').auth();
+        document.getElementById('cloud-field-panel').hidden=false;
+        window.miniCloudFieldView=MiniCloudField.mount({document,endpoint:cloudConfig.endpoint,hooks:{
+          user:()=>cloudAuth.currentUser,
+          subscribe:fn=>cloudAuth.onAuthStateChanged(fn),
+          bindingsChanged:(uid,count)=>window.miniFirebaseLinkView?.setBindings(uid,count),
+          organization:adapter=>MiniOrganizationShare.mount({...adapter,document,storage:localStorage,
+            employees:()=>employeeRepository.getAll(),repository:()=>attendanceRepository,
+            onApplied:()=>{renderList();renderWeeklyTable();},
+            open:()=>{window.openP2PTransferModal?.();},
+            notify:()=>{}
+          }),
+          review:async roster=>{await window.reviewFirebaseRoster(roster);},
+          applied:projectId=>window.MiniP2PRosterVersions?.getGuard().getLastApplied(projectId)||null,
+          openNotice:async event=>{
+            if(window.miniConnectionsMenu?.canNavigate?.()===false)return false;
+            await window.openP2PTransferModal();await window.miniCloudFieldView.whenIdle();
+            return window.miniConnectionsMenu?.activate(event.kind==='roster'?'roster':'members',event.scope)||false;
+          },
+          announce:(event,review,later)=>{
+            const handle=MiniNotice.show({className:'connection-notification',state:'action',title:event.title,description:event.description,actions:[{label:'Revisar',onSelect:review},{label:'Después',tone:'secondary',onSelect:later}]});
+            return()=>handle.dismiss();
+          },
+          build:async(binding,roster,date,deviceId)=>{
+            const applied=MiniP2PRosterVersions.getGuard().getLastApplied(binding.projectId);
+            if(!applied||applied.rosterVersion!==roster.rosterVersion)throw new Error('Aplica el personal recibido antes de enviar.');
+            const ids=new Set(roster.employees.map(e=>e.saEmployeeId));
+            const selected=employeeRepository.getAll().filter(e=>e.saProjectId===binding.projectId&&ids.has(e.saEmployeeId));
+            const payload=AttendanceExport.generateAttendanceSubmission({workDate:date,saProjectId:binding.projectId,scope:{ownerUid:binding.ownerUid,siteId:binding.projectId,sourceId:binding.groupId},deviceId,rosterVersion:roster.rosterVersion,employeeRepository,employees:selected,repository:attendanceRepository,includeRosterCoverage:true,includeUnlinked:false});
+            return payload?.rows.some(r=>r.status==='present')?payload:null;
+          }
+        }});
+      }catch(e){document.getElementById('cloud-field-status').textContent='La conexión requiere una configuración válida.';}
+    }
+    </script>
+
     <script src="./local-date.js"></script>
     <script src="./report-send-guard.js"></script>
     <script src="./storage-maintenance.js"></script>
@@ -3627,6 +3730,9 @@
     <script src="./p2p-activity-store.js"></script>
     <script src="./sa-roster-version-guard.js"></script>
     <script src="./mini-notice.js"></script>
+    <script src="./mini-peer-session-manager.js"></script>
+    <script src="./p2p-demand-negotiation.js"></script>
+    <script src="./mini-peer-availability.js"></script>
     <script src="./p2p-backup-consent.js"></script>
     <script src="./mini-backup-summary.js"></script>
     <script src="./mini-backup-review.js"></script>
@@ -3636,6 +3742,7 @@
     <script src="./mini-welcome.js"></script>
     <script src="./employee-proposal.js"></script>
     <script src="./employee-proposal-sender.js"></script>
+    <script src="./connection-menu.js"></script>
     <script src="./p2p-roster-ui.js"></script>
     <script src="./field-requests.js"></script>
     <script src="./field-requests-coordinator.js"></script>
@@ -5362,7 +5469,7 @@
         // Modales "grandes": la barra de navegacion sigue visible y se cierran con el
         // + central (que pasa a x naranja). Solo uno abierto a la vez.
         const BIG_MODALS = new Set([
-            'modal-calendar', 'modal-date-jump', 'user-modal',
+            'firebase-link-modal', 'modal-calendar', 'modal-date-jump', 'user-modal',
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
             'modal-quick-actions', 'modal-hours', 'theme-menu',
             'modal-request-create', 'modal-request-answering', 'modal-request-review',
@@ -5371,6 +5478,7 @@
         let activeBigModal = null;
 
         function openModal(id) {
+            if (id === 'firebase-link-modal' && window.ConnectionMenu && window.openP2PTransferModal) { void window.openP2PTransferModal('internet'); return; }
             if (id === 'employee-number-conflict-modal') {
                 employeeNumberModal.open();
                 return;
@@ -5390,6 +5498,8 @@
         }
 
         function closeModal(id) {
+            if (id === 'firebase-link-modal' && document.getElementById('mini-p2p-transfer-modal')) { window.closeP2PTransferModal(); return; }
+            if (id === 'firebase-link-modal' && window.miniFirebaseLinkView && !window.miniFirebaseLinkView.close()) return;
             if (id === 'employee-number-conflict-modal') employeeNumberModal.close();
             else { const el = document.getElementById(id); if (el) el.classList.remove('active'); }
             if (id === 'modal-confirm' && _confirmResolve) {
@@ -8206,7 +8316,9 @@
             });
         };
 
-        window.applyReviewedSaRoster = ({ text, confirmedLinks = [] } = {}) => {
+        window.getLocalRosterEmployeeCount = () => employeeRepository.getAll().length;
+
+        window.applyReviewedSaRoster = ({ text, confirmedLinks = [], source = 'sa-p2p' } = {}) => {
             const saApi = window.SaRosterImport || null;
             if (!saApi) throw new Error('Módulo SA no disponible.');
             if (typeof text !== 'string' || !text.trim()) throw new Error('No hay un roster SA para aplicar.');
@@ -8223,7 +8335,7 @@
                 : guardApi.createSaRosterVersionGuard();
             let decision = null;
             try {
-                decision = versionGuard.classifyIncoming(roster);
+                decision = versionGuard.classifyIncoming(roster, employeeRepository.getAll().length);
             } catch (_) {
                 throw new Error('Este roster es una Versión dudosa y no se puede aplicar por seguridad.');
             }
@@ -8238,7 +8350,7 @@
             users = employeeRepository.getAll();
             try {
                 importHistoryRepository.recordImport({
-                    source: 'sa-p2p',
+                    source: source === 'sa-firebase' ? 'sa-firebase' : 'sa-p2p',
                     mode: 'merge',
                     summary: {
                         totalIncoming: result.totalValid,
@@ -8445,9 +8557,11 @@
                 title: 'Borrar todos los datos',
                 confirmText: 'Sí, borrar todo',
                 danger: true
-            }).then(ok => {
+            }).then(async ok => {
                 if (!ok) return;
 
+                // Mark per-day deletion before any asynchronous persistence can be interrupted.
+                attendanceStorage.current().reset?.();
                 // 1. Limpiar repositorios y persistencia desacoplada
                 if (employeeRepository && typeof employeeRepository.clearAll === 'function') {
                     employeeRepository.clearAll();
@@ -8480,10 +8594,12 @@
 
                 // 3. Limpiar todas las llaves legacy en localStorage
                 ['attendance', 'attendance_tombstones'].forEach(k => attendanceStorage.removeItem(k));
-                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp', 'mini_employee_report_v1'].forEach(k => localStorage.removeItem(k));
+                ['users', 'attendance', 'weeklyAttendance', 'employee_tombstones', 'attendance_tombstones', 'mini-sa-outbox-v1', 'requests', 'requestTemplates', 'import_history_v1', 'sa_roster_version_guard_v1', 'local_work_contexts_v1', 'local_work_active_context_v1', 'lastUpdateTimestamp', 'mini_employee_report_v1'].forEach(k => localStorage.removeItem(k));
                 
                 // 4. Persistir snapshot completamente limpio (localStorage + IndexedDB)
+                localDb.prepareReset(captureDbSnapshot());
                 saveData();
+                await Promise.all([localDbWriteQueue, attendanceStorage.current().flush?.()]);
 
                 // 5. Re-renderizar la interfaz limpia
                 renderList();
@@ -8492,7 +8608,8 @@
                 renderWorkContextBar();
                 updateDashboard();
                 updateUndoImportButton();
-                showToast('Todos los datos han sido borrados.');
+                const pending = localStorage.getItem(window.MiniLocalDb.RESET_SNAPSHOT_KEY) || localStorage.getItem(window.MiniData.RESET_KEY);
+                showToast(pending ? 'Los datos se borraron de Mini. Falta completar el guardado; vuelve a abrir la app.' : 'Todos los datos han sido borrados.');
             });
         };
 

@@ -27,6 +27,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install isolated private TURN tool typings
+        run: npm install --prefix "$RUNNER_TEMP/private-turn-types" --no-package-lock --ignore-scripts --no-audit --no-fund @types/node@22.10.2
+      - name: Compile private TURN test tool
+        run: ./node_modules/.bin/tsc -p scripts/private-turn/tsconfig.json --typeRoots "$RUNNER_TEMP/private-turn-types/node_modules/@types" --outDir "$RUNNER_TEMP/private-turn-tool"
+      - name: Export private TURN test tool output
+        run: echo "PRIVATE_TURN_TOOL_OUTPUT=$RUNNER_TEMP/private-turn-tool" >> "$GITHUB_ENV"
       - run: npm test
 
   tutorials:
@@ -54,3 +60,7 @@ jobs:
           else
             npm run test:e2e:ci
           fi
+      - name: Connections browser regressions
+        run: |
+          export PLAYWRIGHT_MODULE="$(npm root -g)/playwright/index.mjs"
+          npm run test:e2e:connections

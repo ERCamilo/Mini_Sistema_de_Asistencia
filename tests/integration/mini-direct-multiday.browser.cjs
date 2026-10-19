@@ -1,0 +1,40 @@
+// Real, local-only WebRTC acceptance. SA's existing interval UI and Mini's live responder.
+const assert=require('node:assert/strict'),path=require('node:path');
+const saRoot=process.env.SA_ROOT;if(!saRoot)throw Error('SA_ROOT required');
+const load=require('node:module').createRequire(saRoot+'/package.json');
+const {chromium}=load('playwright'),{startLab,device,pair}=require(saRoot+'/e2e/multi-device/lab.cjs');
+(async()=>{let browser,lab;try{
+ browser=await chromium.launch({executablePath:'/snap/bin/chromium',args:['--no-sandbox']});
+ const miniRoot=path.resolve(__dirname,'../..');
+ console.log('MINI_ROOT',miniRoot);
+ lab=await startLab(miniRoot);
+ const sa=await device(browser,lab,'sa','SA sintético'),mini=await device(browser,lab,'mini','Mini sintético');
+ await mini.page.evaluate(()=>MiniNotice.show({id:'direct-fixture-notice',state:'info',title:'Aviso sintético',duration:null,className:'direct-fixture-notice'}));
+ assert.equal(await mini.page.locator('.mini-notice.direct-fixture-notice').count(),1);
+ await mini.page.evaluate(()=>MiniNotice.dismiss('direct-fixture-notice'));
+ await pair(sa,mini);await sa.page.locator('[data-send-now]').click();
+ await mini.page.locator('[data-review-roster]').click();assert.equal(await mini.page.evaluate(()=>employeeRepository.getAll().length),0);
+ await mini.page.locator('[data-apply-roster]').click();await mini.page.locator('.mini-roster-result').filter({hasText:'Personal actualizado'}).waitFor();
+ await sa.page.evaluate(()=>closeP2PRosterTransfer());await mini.page.evaluate(()=>closeP2PTransferModal());
+ const today=await mini.page.evaluate(()=>selectedDate);
+ const shift=n=>new Date(Date.parse(today+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+ const dates=[shift(-3),shift(-1),today];
+ await mini.page.evaluate(dates=>{const e=employeeRepository.getAll().find(e=>e.saEmployeeId==='emp-1');dates.forEach((date,i)=>attendanceRepository.setRecord(e.id,date,'present',6+i));saveData();},dates);
+ await sa.page.evaluate(()=>openMiniAttendanceImport());await sa.page.locator('[data-mini-mode="connected"]').click();
+ await sa.page.locator('[data-mini-connected-selector]').selectOption(mini.self.deviceId);
+ await sa.page.locator('[data-mini-grouping="period"]').click();
+ await sa.page.locator('[data-mini-range-start]').fill(dates[0]);await sa.page.locator('[data-mini-range-end]').fill(today);
+ await sa.page.locator('[data-mini-action="fetch-connected"]').click();
+ const read=name=>sa.page.evaluate(async name=>{const {default:db}=await import('/js/modules/services/IndexedDBService.js');await db.init();return db.getAll(name);},name);
+ for(let attempt=0;attempt<120;attempt++){if((await read('attendanceSubmissionInbox')).length===3)break;await sa.page.waitForTimeout(250);}
+ const received=await read('attendanceSubmissionInbox');console.log('DIRECT incoming',received.length,await sa.page.locator('[data-mini-transport-seam]').innerText());assert.deepEqual(received.map(r=>r.sourceSnapshot.workDate).sort(),dates);
+ assert.equal((await read('attendance')).length,0);
+ assert.deepEqual(received.map(r=>r.sourceSnapshot.rows.find(r=>r.saEmployeeId==='emp-1')).map(r=>r.normalHours+r.overtimeHours).sort(),[6,7,8]);
+ await sa.page.locator('[data-mini-action="fetch-connected"]').click();await sa.page.locator('[data-mini-transport-seam]').filter({hasText:'duplicados'}).waitFor();
+ assert.equal((await read('attendanceSubmissionInbox')).length,3);assert.equal((await read('attendance')).length,0);
+ await mini.page.reload({waitUntil:'networkidle'});assert.equal(await mini.page.evaluate(()=>employeeRepository.getAll().length),3);
+ assert.equal(await mini.page.evaluate(()=>Object.keys(attendanceRepository.getAll()).length),3);
+ assert.deepEqual(sa.errors,[]);assert.deepEqual(mini.errors,[]);
+ assert.ok(lab.signaling.some(r=>r.type==='offer'));
+ console.log('PASS real direct SA interval requests 3 attendance days, skips blank date, exact hours, duplicate request blocked, explicit SA review required, Mini reload preserved');
+}catch(error){console.error(error);process.exitCode=1;}finally{await browser?.close();await lab?.close();}})();

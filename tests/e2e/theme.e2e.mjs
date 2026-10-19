@@ -1,13 +1,14 @@
 // tests/e2e/theme.e2e.mjs — theme quick button and no-flash start (real browser).
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadPlaywright, serve, PHONE } from '../tutorials/lib.mjs';
+import { loadPlaywright, serve, PHONE, ROOT } from '../tutorials/lib.mjs';
 
 let browser, server, base;
 before(async () => {
   const { chromium } = await loadPlaywright();
-  server = await serve();
-  base = `http://localhost:${server.address().port}/`;
+  server = await serve(ROOT);
+  console.log('M10B_ROOT', ROOT);
+  base = `http://127.0.0.1:${server.address().port}/`;
   browser = await chromium.launch();
 });
 after(async () => { await browser?.close(); server?.close(); });
@@ -22,7 +23,7 @@ async function namedDevice(theme) {
   await page.goto(base + 'manifest.json');
   await page.evaluate(t => { localStorage.setItem('tutorialsSeen', '["marcar-asistencia"]'); if (t) localStorage.setItem('appTheme', t); }, theme);
   await page.goto(base, { waitUntil: 'networkidle' });
-  if (await page.isVisible('#mini-welcome-name')) { await page.fill('#mini-welcome-name', 'Tema'); await page.click('.mini-welcome-submit'); }
+  if (await page.waitForSelector('#mini-welcome-name', { timeout: 4000 }).then(() => true, () => false)) { await page.fill('#mini-welcome-name', 'Tema'); await page.click('.mini-welcome-submit'); }
   await page.waitForTimeout(400);
   return { context, page, errors };
 }

@@ -15,6 +15,7 @@
     const MARKER_KEY = 'legacy-migration-v1';
     const OUTBOX_KEY = 'mini-sa-outbox-v1';
     const FEATURE_FLAG_KEY = 'miniLocalDbEnabled';
+    const RESET_SNAPSHOT_KEY = 'mini-reset-snapshot-pending-v1';
     const SETTINGS_KEYS = [
         'appTheme',
         'iconStyle',
@@ -223,18 +224,36 @@
     }
     function createLocalDb(options) {
         const adapter = options.adapter || (options.indexedDB ? createIndexedDbAdapter(options.indexedDB) : null);
+        function prepareReset(value) {
+            if (!options.storage.setItem)
+                throw new Error('Reset guard storage is unavailable');
+            options.storage.setItem(RESET_SNAPSHOT_KEY, JSON.stringify(normalizeSnapshot(value)));
+        }
         async function readState() {
             if (!isEnabled(options.storage) || !adapter || !await adapter.readMarker())
                 return null;
+            const reset = options.storage.getItem(RESET_SNAPSHOT_KEY);
+            if (reset) {
+                const clean = normalizeSnapshot(JSON.parse(reset));
+                await writeState(clean);
+                return clean;
+            }
             const snapshot = await adapter.readSnapshot();
             return snapshot ? normalizeSnapshot(snapshot) : null;
         }
         async function writeState(value) {
+            var _a, _b;
             if (!isEnabled(options.storage))
                 throw new Error('Local database is disabled');
             if (!adapter || !await adapter.readMarker())
                 throw new Error('Local database is not ready');
-            return adapter.writeSnapshot(normalizeSnapshot(value));
+            const normalized = normalizeSnapshot(value);
+            const verified = await adapter.writeSnapshot(normalized);
+            const pending = options.storage.getItem(RESET_SNAPSHOT_KEY);
+            if (pending && snapshotsMatch(normalized, normalizeSnapshot(JSON.parse(pending))) && snapshotsMatch(normalized, verified)) {
+                (_b = (_a = options.storage).removeItem) === null || _b === void 0 ? void 0 : _b.call(_a, RESET_SNAPSHOT_KEY);
+            }
+            return verified;
         }
         async function migrateLegacyData() {
             if (!isEnabled(options.storage))
@@ -275,13 +294,14 @@
                 return { status: 'legacy-authoritative', reason };
             }
         }
-        return { migrateLegacyData, readState, writeState };
+        return { migrateLegacyData, readState, writeState, prepareReset };
     }
     return {
         DB_NAME,
         DB_VERSION,
         STORE_NAME,
         FEATURE_FLAG_KEY,
+        RESET_SNAPSHOT_KEY,
         SETTINGS_KEYS,
         createIndexedDbAdapter,
         createOutboxStore,

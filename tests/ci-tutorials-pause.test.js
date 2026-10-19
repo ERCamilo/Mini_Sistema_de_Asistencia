@@ -46,3 +46,18 @@ test('browser shell selects CI by default, full replay only for true, and propag
   });
   assert.equal(failed.status, 7, failed.stderr);
 });
+
+test('connections browser regression has its own executable CI step and global Playwright', () => {
+  const step = workflow.match(/      - name: Connections browser regressions\n((?:        [^\n]*\n|          [^\n]*\n?)+)/);
+  assert.ok(step, 'connections checks must run in a dedicated browser-job step');
+  assert.doesNotMatch(step[1], /^        if:/m, 'connections checks cannot depend on tutorial opt-in');
+  const block = step[1].match(/        run: \|\n((?:          [^\n]*\n?)+)/);
+  assert.ok(block, 'dedicated step has an executable shell body');
+  const shell = block[1].replace(/^          /gm, '');
+  const stub = 'npm() { if [ "$1" = root ]; then printf /tools; else printf "%s:%s\\n" "$*" "$PLAYWRIGHT_MODULE"; return "${STUB_EXIT:-0}"; fi; };\n';
+  const result = spawnSync('bash', ['-e', '-c', stub + shell], { env: { ...process.env, STUB_EXIT: '0' }, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), 'run test:e2e:connections:/tools/playwright/index.mjs', 'a commented command does not execute the regression');
+  const failed = spawnSync('bash', ['-e', '-c', stub + shell], { env: { ...process.env, STUB_EXIT: '9' }, encoding: 'utf8' });
+  assert.equal(failed.status, 9, 'connections failures fail CI');
+});

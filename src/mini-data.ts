@@ -42,6 +42,7 @@ type MiniDataMigrationResult =
   const DAYS_STORE = 'attendanceDays';
   const META_STORE = 'meta';
   const FLAG_KEY = 'miniDataV2';
+  const RESET_KEY = 'mini-attendance-reset-pending-v1';
   const ATTENDANCE_KEY = 'attendance';
   const TOMBSTONES_KEY = 'attendance_tombstones';
   const V1_KEYS = [ATTENDANCE_KEY, 'weeklyAttendance', TOMBSTONES_KEY];
@@ -132,9 +133,15 @@ type MiniDataMigrationResult =
     let persistedTombstones: string | null = null;
     const persisted = new Map<string, string>();
     let queue: Promise<void> = Promise.resolve();
+    let resetGeneration = 0;
 
     async function hydrate() {
-      const all = await backend.readAll();
+      let all = await backend.readAll();
+      if (fallback.getItem(RESET_KEY) === 'true') {
+        await backend.write({ puts: [], deletes: Object.keys(all.days), meta: { attendanceTombstones: null } });
+        fallback.removeItem?.(RESET_KEY);
+        all = await backend.readAll();
+      }
       persisted.clear();
       const dates = Object.keys(all.days).sort();
       const days: MiniDataDays = {};
@@ -148,17 +155,22 @@ type MiniDataMigrationResult =
     }
 
     async function persistLatest() {
+      const generation = resetGeneration;
       let next: Record<string, unknown> = {};
       try { next = attendanceRaw ? JSON.parse(attendanceRaw) : {}; } catch { next = {}; }
       const { puts, deletes } = diffDays(persisted, isRecord(next) ? next : {});
       const tombstones = tombstonesRaw;
       const meta = tombstones !== persistedTombstones ? { attendanceTombstones: tombstones } : undefined;
-      if (!puts.length && !deletes.length && !meta) return;
+      if (!puts.length && !deletes.length && !meta) {
+        if (generation === resetGeneration) fallback.removeItem?.(RESET_KEY);
+        return;
+      }
       try {
         await backend.write({ puts, deletes, meta });
         puts.forEach(p => persisted.set(p.date, JSON.stringify(p.records)));
         deletes.forEach(d => persisted.delete(d));
         if (meta) persistedTombstones = tombstones;
+        if (generation === resetGeneration) fallback.removeItem?.(RESET_KEY);
       } catch (error) {
         // Memory keeps the change; the next write retries every unsaved day.
         console.warn('Mini: no se pudo guardar la asistencia en IndexedDB.', error);
@@ -172,6 +184,13 @@ type MiniDataMigrationResult =
 
     return {
       hydrate,
+      reset() {
+        fallback.setItem(RESET_KEY, 'true');
+        resetGeneration += 1;
+        attendanceRaw = null;
+        tombstonesRaw = null;
+        schedule();
+      },
       flush: () => queue,
       getItem(key: string): string | null {
         if (key === ATTENDANCE_KEY) return attendanceRaw;
@@ -281,5 +300,5 @@ type MiniDataMigrationResult =
     };
   }
 
-  return { DB_NAME, FLAG_KEY, isEnabled, diffDays, createMemoryBackend, openIdbBackend, createDayStorage, migrateFromV1, releaseV1, createSwitchableStorage, isVerified, exportAttendance, markRolledBack };
+  return { DB_NAME, FLAG_KEY, RESET_KEY, isEnabled, diffDays, createMemoryBackend, openIdbBackend, createDayStorage, migrateFromV1, releaseV1, createSwitchableStorage, isVerified, exportAttendance, markRolledBack };
 });

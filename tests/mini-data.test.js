@@ -222,3 +222,62 @@ test('isVerified tells whether a device has v2 data', async () => {
   await MiniData.migrateFromV1({ backend, readSource: async () => ({ attendanceRaw: null, tombstonesRaw: null }) });
   assert.equal(await MiniData.isVerified(backend), true);
 });
+
+
+test('full reset leaves a synchronous marker so a launch before the queued delete cannot restore attendance', async () => {
+ const backend=spyBackend();const fallback=localStore();
+ await backend.write({puts:Object.keys(v1).map(date=>({date,records:v1[date]})),deletes:[],meta:{attendanceTombstones:'[]'}});
+ const storage=MiniData.createDayStorage({backend,fallback});await storage.hydrate();storage.reset();
+ assert.equal(fallback.getItem(MiniData.RESET_KEY),'true');
+ const next=MiniData.createDayStorage({backend,fallback});await next.hydrate();
+ assert.equal(next.getItem('attendance'),null);assert.deepEqual((await backend.readAll()).days,{});
+ await storage.flush();assert.equal(fallback.getItem(MiniData.RESET_KEY),null);
+});
+
+test('reset write failure retains the marker and the next successful launch finishes deletion', async () => {
+ const options={};const backend=spyBackend(options);const fallback=localStore();
+ await backend.write({puts:[{date:'2026-09-01',records:day()}],deletes:[]});
+ const storage=MiniData.createDayStorage({backend,fallback});await storage.hydrate();options.failWrites=1;storage.reset();await storage.flush();
+ assert.equal(fallback.getItem(MiniData.RESET_KEY),'true');
+ const next=MiniData.createDayStorage({backend,fallback});await next.hydrate();assert.equal(next.getItem('attendance'),null);assert.equal(fallback.getItem(MiniData.RESET_KEY),null);
+});
+
+test('an older in-flight write cannot clear one or more newer reset intents', async () => {
+  for (const resetCount of [1, 2]) {
+    const inner = MiniData.createMemoryBackend();
+    const fallback = localStore();
+    const errors = [];
+    let releaseWrite, signalStarted, writes = 0;
+    const blocked = new Promise(resolve => { releaseWrite = resolve; });
+    const started = new Promise(resolve => { signalStarted = resolve; });
+    const backend = {
+      readAll: () => inner.readAll(),
+      async write(batch) {
+        writes += 1;
+        if (writes === 1) {
+          signalStarted();
+          await blocked;
+        } else if (writes <= resetCount + 1) {
+          throw new Error('reset cleanup interrupted');
+        }
+        return inner.write(batch);
+      }
+    };
+    const storage = MiniData.createDayStorage({ backend, fallback, onError: error => errors.push(error.message) });
+    await storage.hydrate();
+    storage.setItem('attendance', JSON.stringify(v1));
+    await started;
+    for (let reset = 0; reset < resetCount; reset += 1) storage.reset();
+    assert.equal(fallback.getItem(MiniData.RESET_KEY), 'true');
+    releaseWrite();
+    await storage.flush();
+    assert.equal(errors.length, resetCount);
+    assert.deepEqual((await inner.readAll()).days, v1, 'the older write completed before failed cleanup');
+    assert.equal(fallback.getItem(MiniData.RESET_KEY), 'true', 'older completion must retain the reset intent');
+    const next = MiniData.createDayStorage({ backend, fallback });
+    await next.hydrate();
+    assert.equal(next.getItem('attendance'), null);
+    assert.deepEqual((await inner.readAll()).days, {});
+    assert.equal(fallback.getItem(MiniData.RESET_KEY), null, 'successful reset recovery clears the marker');
+  }
+});

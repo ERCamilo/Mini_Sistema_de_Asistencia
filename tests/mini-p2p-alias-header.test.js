@@ -263,14 +263,14 @@ test('linked header shows SA project name and routes to Transferencias; unlinked
   assert.equal(state, 'linked');
   assert.equal(linked.labelState.text, 'SA disconnected', 'header visual label is screen-reader-only status copy');
   assert.ok(linked.headerAttrs['aria-label'].includes('Proyecto Obra Norte'), 'aria must carry project name');
-  assert.ok(linked.headerAttrs['aria-label'].includes('Abrir Transferencias'), 'aria must describe Transferencias routing');
+  assert.ok(linked.headerAttrs['aria-label'].includes('Abrir Conexiones'), 'aria must describe Transferencias routing');
   assert.equal(linked.headerBtn.onclick, linked.ctx.openP2PTransferModal, 'linked tap must open Transferencias, not scanner');
 
   const unlinked = loadUi({ selfName: 'Mini almacen', peers: [] });
   const state2 = await unlinked.ctx.refreshMiniP2PHeader();
   assert.equal(state2, 'unlinked');
-  assert.equal(unlinked.labelState.text, 'SA no vinculado');
-  assert.equal(unlinked.headerAttrs['aria-label'], 'SA no vinculado. Abrir Transferencias para vincular SA u otro Mini');
+  assert.equal(unlinked.labelState.text, 'Conexión directa sin vincular');
+  assert.equal(unlinked.headerAttrs['aria-label'], 'Conexión directa sin vincular. Abrir Conexiones para vincular SA u otro Mini');
   assert.equal(unlinked.headerBtn.onclick, unlinked.ctx.openP2PTransferModal, 'unlinked tap opens Transferencias (SA or Mini), not straight to the camera');
 
   const longPeer = { peerId: 'sa-2', peerApp: 'sa', displayName: 'Proyecto Obra Norte Muy Largo Excede', linkToken: 'tok', linkedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString() };
@@ -319,6 +319,6 @@ test('alias setup and header meet accessibility and mobile contract', () => {
   assert.ok(css.includes('.header-p2p-link-label'), 'header keeps screen-reader status copy');
   assert.ok(css.includes('.header-p2p-ring'), 'header must expose circular connection ring styling');
   assert.match(css, /@media\s*\(max-width:\s*640px\)/, 'transfer shell must adapt to mobile');
-  assert.match(html, /id="btn-attendance-link"[\s\S]*aria-label="SA no vinculado\. Abrir Transferencias para vincular SA u otro Mini"[\s\S]*sa-app-icon\.svg/, 'header must use the real SA vector app icon with an accessible name');
+  assert.match(html, /id="btn-attendance-link"[\s\S]*aria-label="Conexión directa sin vincular\. Abrir Conexiones para vincular SA u otro Mini"[\s\S]*sa-app-icon\.svg/, 'header must use the real SA vector app icon with an accessible name');
   assert.match(html, /\.header-p2p-link\s*\{[^}]*min-height:\s*44px;/, 'header control must meet 44px');
 });

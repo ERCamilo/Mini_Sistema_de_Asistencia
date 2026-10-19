@@ -420,3 +420,273 @@ html.mini-welcome-open, html.mini-welcome-open body { overflow: hidden; }
 .employee-send-dialog footer {display:flex;flex-wrap:wrap;gap:12px;}
 .employee-send-dialog button {min-height:44px;flex:1;padding:10px;background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);border-radius:10px;cursor:pointer;}
 .employee-send-dialog button.primary {background:var(--accent-color);color:var(--bg-color);}
+
+.mini-p2p-shell .connections-methods {display:flex;gap:8px;padding:10px 14px;flex:none;border-bottom:1px solid var(--border-color);}
+.mini-p2p-shell .connections-methods button {flex:1;min-width:0;min-height:44px;border:0;border-radius:10px;padding:8px;font:inherit;font-size:13px;background:var(--input-bg);color:var(--text-color);cursor:pointer;}
+.mini-p2p-shell .connections-methods button[aria-selected="true"] {box-shadow:inset 0 -3px var(--accent-color);font-weight:600;}
+.mini-p2p-shell .connections-methods button:disabled {opacity:.5;cursor:default;}
+.mini-p2p-shell .connections-methods button:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+.mini-p2p-shell [data-connection-panel][hidden],.mini-p2p-shell .connections-methods[hidden] {display:none!important;}
+
+/* One connections overview: routes are details of each link. */
+.connections-home[hidden],.connections-task[hidden],.connections-feedback[hidden],.connections-form[hidden],[data-connections-store][hidden] {display:none!important;}
+.connections-home,.connections-task {flex:1;min-height:0;overflow:auto;}
+.connections-account,.connections-toolbar,.connections-card-actions {display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
+.connections-account {padding:12px;background:var(--input-bg);border-radius:12px;}
+.connections-account strong {flex:1;min-width:120px;}
+.connections-list,.connections-extras,.connections-form,.connections-task-content {display:grid;gap:12px;min-width:0;}
+.connections-source-list,#sa-field-devices {display:contents;}
+.connections-list .connections-card {position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:14px;border:0;border-radius:14px;background:var(--input-bg);min-width:0;}
+.connections-card .connections-route {flex-basis:100%;font-size:11px;color:var(--text-muted);font-weight:600;}
+.connections-card .mini-p2p-peer-copy,.connections-card .sa-p2p-peer-copy {flex:1;min-width:130px;}
+.connections-card .mini-p2p-device-actions,.connections-card .sa-p2p-device-actions,.connections-card-actions {flex-basis:100%;justify-content:flex-start;}
+.connections-card h3,.connections-card p {margin:0;flex-basis:100%;overflow-wrap:anywhere;}
+.connections-card [data-device-confirmation] {flex-basis:100%;}
+.connections-card [data-device-confirmation][hidden] {display:none!important;}
+.connections-feedback {flex:none;max-height:100px;overflow:auto;padding:0 18px;font-size:12px;color:var(--text-muted);}
+.connections-feedback p:empty {display:none;}
+.connections-home button,.connections-task button,.connections-home select,.connections-task select,.connections-task input {min-height:44px;border:0;border-radius:10px;background:var(--input-bg);color:var(--text-color);font:inherit;padding:10px 12px;max-width:100%;}
+.connections-home button,.connections-task button {cursor:pointer;}
+.connections-home [data-connections-add] {background:var(--accent-color);color:var(--text-color);font-weight:600;}
+.connections-home button:focus-visible,.connections-task button:focus-visible,.connections-task input:focus-visible,.connections-task select:focus-visible {outline:2px solid var(--accent-color);outline-offset:3px;}
+.connections-home button:disabled,.connections-task button:disabled {opacity:.5;cursor:default;}
+.connections-form label {display:grid;gap:6px;}
+.connections-task input,.connections-task select {width:100%;box-sizing:border-box;}
+.connections-card [data-cloud-action='leave'],.connections-card [data-device-action] {color:var(--text-muted);}
+
+.connections-home [hidden],.connections-task [hidden],.mini-p2p-body[hidden],.sa-p2p-body[hidden] {display:none!important;}
+
+.connections-card button {background:var(--card-bg);}
+
+/* Actions first: review tasks, today's work, then connection administration. */
+.connections-priorities,.connections-pending,.connections-primary-actions {display:grid;gap:12px;min-width:0;}
+.connections-priorities h3 {margin:0;font-size:16px;}
+.connections-pending:has(.connections-clear) {gap:6px;}
+.connections-clear {margin:0;font-size:12px;color:var(--text-muted);}
+.connections-action-card {position:relative;display:grid;gap:9px;padding:16px;border-radius:16px;background:var(--input-bg);min-width:0;}
+.connections-action-card p {margin:0;font-size:12px;color:var(--text-muted);overflow-wrap:anywhere;}
+.connections-action-card strong {padding-right:35px;}
+.connections-count {position:absolute;right:14px;top:14px;display:grid;place-items:center;min-width:26px;height:26px;padding:0 4px;border-radius:99px;background:var(--accent-color);color:var(--text-color);font-size:12px;font-weight:700;}
+.connections-action-card [data-notice-review],.connections-action-card [data-primary-action="send"],.connections-action-card [data-primary-action="personal"] {background:var(--accent-color);color:var(--text-color);font-weight:700;}
+.connections-toolbar {padding:6px 0;}
+.connections-account {font-size:12px;}
+.connections-list .connections-card {gap:7px;padding:12px;}
+.connections-card p {font-size:12px;color:var(--text-muted);}
+.connections-card .connections-route {font-size:10px;}
+.connections-action-card button {width:100%;text-align:center;min-height:44px;}
+.connections-home {display:grid;align-content:start;gap:14px;}
+.connections-action-card small {color:var(--text-muted);}
+
+.connections-open .connection-notification,body:has(.modal.active) .connection-notification {visibility:hidden;pointer-events:none;}
+
+.connections-count,.connections-action-card [data-notice-review],.connections-action-card [data-primary-action="send"],.connections-action-card [data-primary-action="personal"] {color:var(--bg-color);}
+
+.connections-task {--connection-surface:var(--input-bg);--connection-muted:var(--text-muted);--connection-accent:var(--accent-color);--connection-on-accent:var(--bg-color);--connection-danger:var(--danger-color);}
+
+/* Interior connection screens from the approved design boards. */
+.connections-task {display:grid;align-content:start;gap:16px;}
+.connections-screen-title {margin:0;font-size:22px;line-height:1.25;}
+.connections-task .connections-account {margin-top:4px;}
+.connections-context {padding:14px 16px;border-radius:14px;background:var(--connection-surface);min-width:0;overflow-wrap:anywhere;}
+.connections-context strong {display:block;font-size:14px;}
+.connections-context p,.connections-hint {margin:6px 0 0;color:var(--connection-muted);font-size:12px;line-height:1.5;}
+.connections-route-choices {display:grid;gap:12px;border:0;padding:0;margin:0;min-width:0;}
+.connections-route-choices legend {padding:0;margin-bottom:12px;color:var(--connection-muted);font-size:13px;}
+.connections-task .connections-route-card {display:flex;align-items:center;gap:12px;padding:18px;border-radius:16px;background:var(--connection-surface);cursor:pointer;border:2px solid transparent;}
+.connections-route-card:has(:checked) {border-color:var(--connection-accent);}
+.connections-route-card span {display:grid;gap:7px;min-width:0;}
+.connections-route-card small {color:var(--connection-muted);line-height:1.45;}
+.connections-task input[type=radio],.connections-task input[type=checkbox] {width:22px;min-height:22px;height:22px;flex:none;padding:0;accent-color:var(--connection-accent);}
+.connections-metrics {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.connections-metrics .connections-context {padding:14px 8px;text-align:center;}
+.connections-metrics strong {font-size:22px;color:var(--connection-accent);font-variant-numeric:tabular-nums;}
+.connections-send-preview,.connections-preview-rows,.connections-account-summary,.connections-detail-actions,.connections-personal-toolbar {display:grid;gap:10px;min-width:0;}
+.connections-send-preview summary {padding:12px;min-height:44px;box-sizing:border-box;cursor:pointer;color:var(--connection-accent);}
+.connections-avatar {display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:var(--connection-accent);color:var(--connection-on-accent);font-size:22px;font-weight:700;margin-bottom:12px;}
+.connections-personal-toolbar strong {color:var(--connection-accent);font-size:13px;}
+.connections-task #sa-field-employees {display:grid;gap:8px;max-height:340px;overflow:auto;}
+.connections-task #sa-field-employees label {display:flex;align-items:center;gap:12px;min-height:44px;padding:12px;border-radius:12px;background:var(--connection-surface);}
+.connections-task #firebase-link-details {padding:16px;border-radius:16px;background:var(--connection-surface);}
+.connections-task #firebase-link-details dl {display:grid;gap:8px;margin:0;}
+.connections-task #firebase-link-details dt {color:var(--connection-muted);font-size:12px;}
+.connections-task #firebase-link-details dd {margin:0 0 8px;font-weight:600;overflow-wrap:anywhere;}
+.connections-task [data-screen-primary],.connections-task #cloud-field-send,.connections-task #firebase-link-review,.connections-task #firebase-link-confirm,.connections-task #sa-field-publish {background:var(--connection-accent);color:var(--connection-on-accent);font-weight:700;}
+.connections-task [data-cloud-action=leave],.connections-task #cloud-field-leave,.connections-task #cloud-field-leave-confirm {color:var(--connection-danger);}
+.connections-task #cloud-field-leave-review,.connections-task [data-device-confirmation] {padding:16px;border-radius:14px;background:var(--connection-surface);}
+.connections-detail .connections-card {display:grid;gap:12px;}
+.connections-task [data-connections-back] {justify-self:start;font-size:12px;}
+@media(max-width:520px){.connections-task {gap:12px;}.connections-screen-title {font-size:20px;}.connections-card-actions {display:grid;grid-template-columns:1fr 1fr;width:100%;}.connections-detail-actions {grid-template-columns:1fr;}}
+
+.connections-capabilities {display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border-color);}
+.connections-capabilities p {margin:5px 0 0;color:var(--connection-muted);font-size:12px;line-height:1.5;}
+.connections-task #sa-field-invite {display:grid;gap:12px;padding:16px;border-radius:16px;background:var(--connection-surface);}
+.connections-task #sa-field-code {font-family:monospace;font-size:12px;overflow-wrap:anywhere;}
+
+.connections-detail [data-connection-detail],.connections-task[data-screen=account] [data-connection-account-open] {display:none;}
+
+.mini-p2p-shell {--connection-surface:var(--input-bg);--connection-base:var(--card-bg);--connection-text:var(--text-color);--connection-muted:var(--text-muted);--connection-accent:var(--accent-color);--connection-on-accent:var(--bg-color);--connection-border:var(--border-color);}
+
+/* Approved B: actions first — compact account, action cards and link rows. */
+[data-connection-screen=home] header .connections-account {display:flex;flex-wrap:nowrap;padding:0;background:none;gap:6px;margin-left:auto;min-width:0;max-width:45%;}
+[data-connection-screen=home] header .connections-account strong {flex:none;display:grid;place-items:center;min-width:26px;width:26px;height:26px;border-radius:50%;background:var(--connection-surface);color:var(--connection-accent);font-size:11px;}
+[data-connection-screen=home] header .connections-account button {min-height:44px;border:0;border-radius:8px;background:none;color:var(--connection-muted);font:inherit;font-size:10px;padding:4px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;}
+[data-connection-screen=home] header .connections-account [id$=logout] {display:none!important;}
+[data-connection-screen=home] header .connections-account:has([id$=login]:not([hidden])) [data-connection-account-open] {display:none;}
+.connections-home {gap:12px;}
+.connections-home h3 {font-size:14px;margin:4px 0 0;}
+.connections-pending-heading {display:none;}
+.connections-priorities[data-app=sa] .connections-primary-actions {grid-template-columns:1fr 1fr;gap:10px;}
+.connections-home .connections-action-card {grid-template-columns:44px minmax(0,1fr);gap:6px 12px;border:1px solid var(--connection-border);border-radius:12px;padding:14px;background:linear-gradient(135deg,var(--connection-surface),var(--connection-base));}
+.connections-line-icon {width:29px;height:29px;stroke:var(--connection-accent);stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.connections-action-card>.connections-line-icon {grid-column:1;grid-row:1 / 3;align-self:center;padding:6px;background:var(--connection-base);border-radius:8px;box-sizing:content-box;}
+.connections-action-card>strong,.connections-action-card>h3,.connections-action-card>p {grid-column:2;margin:0;padding:0;}
+.connections-action-card>button,.connections-action-card>small {grid-column:1 / -1;}
+.connections-action-card>button {margin-top:8px;min-height:44px;}
+.connections-priorities[data-app=sa] .connections-primary-actions .connections-action-card {display:grid;grid-template-columns:1fr;gap:7px;position:relative;min-height:112px;padding:14px;}
+.connections-priorities[data-app=sa] .connections-primary-actions .connections-action-card>* {grid-column:1;grid-row:auto;}
+.connections-priorities[data-app=sa] .connections-primary-actions .connections-line-icon {padding:0;background:none;width:28px;height:28px;}
+.connections-priorities[data-app=sa] .connections-primary-actions button {position:absolute;inset:0;width:100%;height:100%;margin:0;background:transparent;color:transparent;border-radius:12px;}
+.connections-priorities[data-app=sa] .connections-primary-actions .connections-action-card:focus-within {outline:2px solid var(--connection-accent);outline-offset:2px;}
+.connections-home .connections-clear {padding:12px;border-radius:12px;background:var(--connection-surface);}
+.connections-home .connections-toolbar {order:8;justify-content:flex-end;}
+.connections-home .connections-toolbar button {font-size:11px;min-height:44px;padding:6px 10px;}
+.connections-home .connections-list .connections-card[data-connection-transport=internet] {display:grid;grid-template-columns:minmax(0,1fr) 34px;gap:3px;padding:12px 14px;border:1px solid var(--connection-border);border-radius:10px;position:relative;}
+.connections-home .connections-card[data-connection-transport=internet]>.connections-route,.connections-home .connections-card[data-connection-transport=internet]>.connections-card-actions,.connections-home .connections-card[data-connection-transport=internet]>button:not([data-connection-detail]),.connections-home .connections-card[data-connection-transport=internet]>section {display:none;}
+.connections-home .connections-card[data-connection-transport=internet]>h3,.connections-home .connections-card[data-connection-transport=internet]>strong {grid-column:1;font-size:12px;padding-right:26px;}
+.connections-home .sa-field-device>p:not([data-row-status]) {display:none;}
+.connections-home .connections-card[data-connection-transport=internet]>p {grid-column:1;font-size:10px;margin:0;}
+.connections-home .connections-card[data-connection-transport=internet]>[data-connection-detail] {position:absolute;inset:0;min-height:44px;width:100%;padding:0;border:0;background:transparent;color:transparent;}
+.connections-home .connections-card[data-connection-transport=internet]>[data-connection-detail]::after {content:'›';position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:22px;color:var(--connection-muted);}
+.connections-home [data-access-status=active] [data-row-status]::before {content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--connection-accent);margin-right:6px;}
+.connections-home .connections-extras:empty {display:none;}
+@media(max-width:400px){[data-connection-screen=home] header .connections-account {max-width:39%;}[data-connection-screen=home] header .connections-account button {max-width:105px;}.connections-priorities[data-app=sa] .connections-primary-actions .connections-action-card {padding:12px;}}
+
+[data-connection-screen=home] header .mini-p2p-topbar-icon,[data-connection-screen=home] header .sa-p2p-topbar-icon {display:none;}
+[data-connection-screen=home] header [data-p2p-close] {order:3;margin-left:4px;}
+[data-connection-screen=home] header .connections-account {order:2;}
+[data-connection-screen=home] header .mini-p2p-title-wrap,[data-connection-screen=home] header .sa-p2p-title-wrap {min-width:0;flex:1;}
+.connections-home:has(.connections-card[data-connection-transport=internet]) .connections-extras {display:none;}
+.connections-home .connections-toolbar {justify-content:space-between;}
+.connections-home .connections-toolbar [data-connections-add] {flex:1;border:1px solid var(--connection-border);background:var(--connection-surface);color:var(--connection-text);min-height:54px;text-align:left;}
+.connections-priorities[data-app=mini] .connections-pending [data-notice-review] {background:var(--connection-surface);color:var(--connection-text);border:1px solid var(--connection-border);}
+
+.connections-home .connections-card[data-connection-transport=internet] {grid-template-columns:28px minmax(0,1fr) 18px;}
+.connections-home .connections-card[data-connection-transport=internet]>h3,.connections-home .connections-card[data-connection-transport=internet]>strong,.connections-home .connections-card[data-connection-transport=internet]>p {grid-column:2;}
+.connections-home .connections-card[data-connection-transport=internet]>.connections-row-icon {grid-column:1;grid-row:1 / 3;width:22px;height:22px;align-self:center;}
+.connections-home .connections-count {background:var(--danger-color);color:var(--connection-on-accent);right:auto;left:43px;top:8px;min-width:18px;height:18px;font-size:10px;}
+
+.connections-home .connections-list .connections-card[data-connection-transport=internet] {grid-template-columns:28px minmax(0,1fr) 18px;min-width:0;}
+.connections-home .connections-list .connections-card[data-connection-transport=internet]>h3,.connections-home .connections-list .connections-card[data-connection-transport=internet]>strong {min-width:0;padding-right:0;}
+
+/* Approved interior screens: identity, invitation, choices and review cards. */
+.connections-task .connections-route-card:has(:checked) {background:var(--connection-accent);color:var(--connection-on-accent);border-color:var(--connection-accent);}
+.connections-task .connections-route-card:has(:checked) small {color:inherit;opacity:.85;}
+.connections-task .connections-route-card:has(:checked) input {accent-color:var(--connection-on-accent);}
+.connections-task .connections-personal-toolbar {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.connections-personal-toolbar #sa-field-all {width:auto;min-height:44px;padding:6px 10px;background:none;color:var(--connection-accent);font-size:12px;}
+.connections-task .connections-account-summary>.connections-context {display:grid;grid-template-columns:48px minmax(0,1fr);column-gap:14px;align-items:center;}
+.connections-account-summary>.connections-context .connections-avatar {grid-column:1;grid-row:1 / 3;margin:0;}
+.connections-account-summary>.connections-context strong,.connections-account-summary>.connections-context p {grid-column:2;}
+.connections-detail-actions {padding:12px;border-radius:14px;background:var(--connection-surface);}
+.connections-task #cloud-field-leave-review {text-align:center;padding:24px 18px;}
+.connections-task #cloud-field-leave-confirm {background:var(--connection-danger);color:var(--connection-on-accent);font-weight:700;}
+.connections-task #cloud-field-device-name {margin-bottom:6px;}
+.connections-invitation-preview {display:grid;gap:12px;text-align:center;justify-items:center;}
+.connections-invitation-preview p {color:var(--connection-muted);font-size:12px;margin:0;}
+.connections-invitation-qr {width:200px;max-width:100%;background:var(--connection-qr-paper);padding:8px;border-radius:12px;box-sizing:border-box;}
+.connections-invitation-qr svg {display:block;width:100%;height:auto;}
+.connections-task .org-member-list {display:grid;gap:8px;margin-bottom:16px;}
+.connections-task .org-member-card {display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--connection-border);padding:12px;background:var(--connection-surface);}
+.org-member-card .connections-avatar {width:40px;height:40px;flex:none;margin:0;font-size:18px;}
+.org-member-card>span:last-child {display:grid;gap:4px;min-width:0;overflow-wrap:anywhere;}
+.org-member-card small {color:var(--connection-muted);font-size:12px;}
+.connections-task .org-member-card[aria-pressed=true] {background:var(--connection-accent);color:var(--connection-on-accent);border-color:var(--connection-accent);}
+.org-member-card[aria-pressed=true] small {color:inherit;}
+.connections-task .org-share-row {display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:16px;margin:12px 0;border:1px solid var(--connection-border);border-radius:14px;background:var(--connection-base);}
+.org-share-row>strong,.org-share-row>p {grid-column:1 / -1;margin:0;}
+.connections-task .org-share-row button[aria-pressed=true] {background:var(--connection-accent);color:var(--connection-on-accent);}
+.connections-task .org-share-row button {font-size:12px;padding:10px;}
+[data-connection-screen=home] header .connections-account .connection-google-button {display:none!important;}
+[data-connection-screen=home] header .connections-account:has([id$=login]:not([hidden])) [data-connection-account-open] {display:block;}
+
+.mini-roster-review:not(.mini-backup-review) .mini-roster-details {border:0;background:none;}
+.mini-roster-review:not(.mini-backup-review) .mini-roster-details ul {display:grid;gap:8px;padding:0;margin:10px 0;list-style:none;}
+.mini-roster-review:not(.mini-backup-review) .mini-roster-details li {display:grid;gap:5px;padding:14px;border:1px solid var(--border-color);border-radius:12px;background:var(--input-bg);}
+.mini-roster-review:not(.mini-backup-review) .mini-roster-details li span {color:var(--text-muted);font-size:12px;line-height:1.5;}
+.mini-roster-review:not(.mini-backup-review) .mini-roster-footer {display:grid;gap:10px;}
+.mini-roster-review:not(.mini-backup-review) .mini-roster-metrics {gap:8px;}
+
+.connections-task[data-screen=account] .connections-account {padding:0;background:none;margin:0;display:grid;gap:10px;}
+.connections-task[data-screen=account] .connections-account>strong,.connections-task[data-screen=account] [data-connection-account-open] {display:none;}
+.connections-task[data-screen=account] .connection-google-button {width:100%;}
+
+.connections-task #sa-field-employees label>span {display:grid;gap:5px;min-width:0;}
+.connections-task #sa-field-employees small {font-size:12px;color:var(--connection-muted);}
+
+.connections-mini-peers { margin-block: 12px; }
+.connections-mini-peers h3 { color: var(--text-color); font-size: 15px; margin-block: 8px; }
+.connections-mini-peer { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 8px; padding: 12px; margin-block: 8px; border: 1px solid var(--border-color); border-inline-start-width: 4px; border-radius: 12px; background: var(--card-bg); color: var(--text-color); }
+.connections-mini-peer strong { overflow-wrap: anywhere; }
+.connections-mini-peer .connections-hint { grid-column: 1 / -1; margin: 0; color: var(--text-muted); font-size: 12px; }
+.connections-mini-peer-state { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; color: var(--text-color); background: var(--input-bg); border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 700; line-height: 1.4; }
+.connections-mini-peer-state .mini-connection-icon { width: 18px; height: 18px; flex: none; }
+.connections-mini-peer[data-state="connected"] { --peer-status-tone: var(--success-color); }
+.connections-mini-peer[data-state="connecting"] { --peer-status-tone: var(--warning-color); }
+.connections-mini-peer[data-state="error"] { --peer-status-tone: var(--danger-color); }
+.connections-mini-peer:is([data-state="connected"], [data-state="connecting"], [data-state="error"]) { border-color: var(--peer-status-tone); background: color-mix(in srgb, var(--peer-status-tone) 8%, var(--card-bg)); }
+.connections-mini-peer:is([data-state="connected"], [data-state="connecting"], [data-state="error"]) .connections-mini-peer-state { background: color-mix(in srgb, var(--peer-status-tone) 45%, var(--bg-color)); }
+.connections-mini-peer-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
+.connections-mini-peer-actions button { min-height: 44px; min-width: 44px; flex: 1; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--input-bg); color: var(--text-color); font: inherit; }
+.connections-mini-peer-actions button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.connections-mini-peer-actions button:disabled { opacity: .6; }
+
+.connections-mini-peer-details { grid-column: 1 / -1; grid-row: 4; min-width: 0; padding: 10px; border-radius: 8px; background: var(--input-bg); color: var(--text-color); font-size: 12px; line-height: 1.5; }
+.connections-mini-peer-details p { margin: 0 0 4px; overflow-wrap: anywhere; }
+.connections-mini-peer-details small { color: var(--text-muted); font-size: 12px; }
+.connections-mini-peer-link { font-family: ui-monospace, monospace; }
+.connections-mini-peer-actions { grid-row: 5; }
+
+.connections-account-photo,.connections-profile-photo {width:32px;height:32px;object-fit:cover;border-radius:50%;flex:none;}
+.connections-profile-photo {grid-column:1;grid-row:1 / 3;width:48px;height:48px;}
+.connections-account-photo[hidden],.connections-profile-photo[hidden],.connections-account > strong[hidden],.connections-account-summary .connections-avatar[hidden] {display:none!important;}
+/* Sharing home: device-first actions and stable, alias-led cards. */
+.mini-p2p-shell .connections-home .connections-toolbar.connections-device-toolbar { order: -2; display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; padding: 0; }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-device] { grid-column: 1 / -1; min-height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--accent-color); color: var(--bg-color); font-size: 16px; font-weight: 700; }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-add] { min-height: 44px; font-size: 13px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-color); }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-refresh] { width: 44px; overflow: hidden; font-size: 0; padding: 10px; }
+.mini-p2p-shell .connections-home .connections-device-toolbar [data-connections-refresh] svg { width: 22px; height: 22px; }
+.connections-home .connections-mini-peers { order: -1; margin: 0; min-width: 0; }
+.connections-mini-peer { grid-template-columns: 48px minmax(0, 1fr); gap: 8px 12px; padding: 16px; border-inline-start-width: 1px; background: var(--card-bg); }
+.connections-mini-peer > strong { grid-column: 2; grid-row: 1; align-self: center; font-size: 16px; line-height: 1.4; min-width: 0; }
+.connections-peer-avatar { grid-column: 1; grid-row: 1 / 3; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; background: var(--input-bg); color: var(--accent-color); font-size: 17px; font-weight: 700; }
+.connections-peer-linked { grid-column: 2; grid-row: 2; color: var(--text-muted); font-size: 12px; }
+.connections-mini-peer-state { grid-row: 3; font-size: 12px; border-radius: 8px; }
+.connections-mini-peer .connections-hint { grid-row: 4; line-height: 1.5; }
+.connections-mini-peer-actions { grid-row: 5; }
+.connections-mini-peer-details { grid-row: 6; padding: 0 10px; }
+.connections-mini-peer-details summary { min-height: 44px; padding: 12px 0; box-sizing: border-box; cursor: pointer; font-weight: 600; }
+.connections-mini-peer-details summary:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; border-radius: 4px; }
+.connections-mini-peer-details[open] { padding-bottom: 10px; }
+.connections-mini-peer:is([data-state="connected"], [data-state="connecting"], [data-state="error"]) { background: var(--card-bg); border-color: var(--border-color); }
+.connections-mini-peer:is([data-state="connected"], [data-state="connecting"], [data-state="error"]) .connections-mini-peer-state { background: var(--peer-status-tone); color: var(--bg-color); }
+[data-connection-screen=home] header .connections-account { max-width: 48%; }
+.mini-p2p-shell[data-connection-screen=home] header .connections-account button { flex: none; max-width: none; overflow: visible; text-overflow: clip; font-size: 12px; min-width: 44px; padding: 8px; color: var(--accent-color); font-weight: 600; }
+[data-connection-screen=home] header .connections-account [data-connection-account-open] { border: 1px solid var(--border-color); background: var(--input-bg); }
+.connections-home > h3 { color: var(--text-muted); }
+.connections-home .connections-empty { padding: 14px; }
+
+/* One fullscreen mobile shell for every sharing step, including safe areas. */
+@media (max-width: 600px) {
+  .mini-p2p-overlay { padding: 0; align-items: stretch; }
+  .mini-p2p-overlay > .mini-p2p-shell, .mini-p2p-overlay > .mini-p2p-shell[data-mini-connection-page] { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; box-sizing: border-box; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .mini-p2p-shell[data-mini-connection-page] > .mini-p2p-topbar { padding: 12px max(14px, env(safe-area-inset-right, 0px)) 12px max(14px, env(safe-area-inset-left, 0px)); gap: 8px; }
+  .mini-p2p-body, .connections-home, .connections-task { padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); overscroll-behavior: contain; overflow-x: hidden; }
+  .mini-p2p-body, .connections-home, .connections-task, .connections-list, .connections-source-list { min-width: 0; }
+  .mini-p2p-title { font-size: 20px; }
+  .mini-p2p-topbar-icon { display: none; }
+  [data-connection-screen=home] header .connections-account { max-width: 50%; }
+  [data-connection-screen=home] header .connections-account > .connections-account-photo {width:28px;height:28px;}
+  .connections-mini-peer { padding: 14px; }
+  .employee-send-overlay { padding: 0; }
+  .employee-send-dialog { height: 100dvh; max-height: 100dvh; max-width: none; border: 0; border-radius: 0; padding: max(18px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) max(18px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px)); }
+}

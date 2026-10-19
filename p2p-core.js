@@ -492,13 +492,14 @@
     }
   }
 
-  async function createRtcSession({ signaling, initiator, iceServers = ICE_SERVERS, onChannel, onState }) {
-    const pc = new RTCPeerConnection({ iceServers });
+  async function createRtcSession({ signaling, initiator, iceServers = ICE_SERVERS, iceTransportPolicy, onChannel, onState, demandNegotiation }) {
+    const pc = new RTCPeerConnection(iceTransportPolicy === undefined ? { iceServers } : { iceServers, iceTransportPolicy });
     let channel = null;
     let offerSent = false;
     let closed = false;
     let offSignaling = null;
     let expiryTimer = null;
+    let demand = null;
     const pendingIce = [];
     const flushIce = async () => {
       if (!pc.remoteDescription) return;
@@ -508,11 +509,12 @@
       if (closed) return;
       closed = true;
       if (expiryTimer) clearTimeout(expiryTimer);
+      demand?.close();
       markChannelUnauthenticated(channel);
       try { offSignaling?.(); } catch (_) {}
       try { channel?.close?.(); } catch (_) {}
       try { pc.close(); } catch (_) {}
-      try { signaling.close(boundedCloseReason(reason)); } catch (_) {}
+      if (!demandNegotiation) { try { signaling.close(boundedCloseReason(reason)); } catch (_) {} }
     };
     const failClosed = error => {
       if (closed) return;
@@ -535,7 +537,22 @@
       };
       channel.onerror = () => failClosed(new Error('Canal de datos P2P falló.'));
     };
-    if (initiator) setChannel(pc.createDataChannel('sa-mini-p2p', { ordered: true }));
+    if (demandNegotiation) {
+      pc.ondatachannel = event => setChannel(event.channel);
+      const helper = root.P2PDemandNegotiation || (typeof require === 'function' ? require('./p2p-demand-negotiation.js') : null);
+      if (!helper) { closeSession(); throw new Error('Negociación Mini no disponible.'); }
+      const { localPeerId, remotePeerId } = demandNegotiation;
+      if (!localPeerId || !remotePeerId || localPeerId === remotePeerId) { closeSession(); throw new Error('Identidades Mini inválidas.'); }
+      demand = helper.create({ pc, polite: localPeerId > remotePeerId,
+        send: (type, data) => signaling.send(type, data),
+        prepareChannel: () => { if (!channel) setChannel(pc.createDataChannel('sa-mini-p2p', { ordered: true })); },
+        discardProvisionalChannel: () => {
+          const provisional = channel; channel = null;
+          if (provisional) { markChannelUnauthenticated(provisional); bindChannelSession(provisional, null); provisional.onopen = null; provisional.onclose = null; provisional.onerror = null; try { provisional.close(); } catch (_) {} }
+        },
+        onError: failClosed
+      });
+    } else if (initiator) setChannel(pc.createDataChannel('sa-mini-p2p', { ordered: true }));
     else pc.ondatachannel = event => setChannel(event.channel);
 
     pc.onicecandidate = event => {
@@ -574,10 +591,11 @@
           throw new Error(event.error || event.reason || 'La señalización P2P se cerró.');
         }
         if (event.type === 'peer-joined' || (event.type === 'ready' && Number(event.peerCount) >= 2)) {
-          await makeOffer();
+          if (!demand) await makeOffer();
         }
         if (event.type !== 'signal' || !event.frame) return;
         const { type, data } = validateSignalFrameObject(event.frame);
+        if (demand) { await demand.receive({ type, data }); return; }
         if (type === 'offer' && !initiator) {
           await pc.setRemoteDescription(data);
           await flushIce();
@@ -605,7 +623,8 @@
       failClosed(error);
       throw error;
     }
-    return { pc, get channel() { return channel; }, close: closeSession, isClosed: () => closed };
+    return { pc, get channel() { return channel; }, close: closeSession, isClosed: () => closed,
+      ...(demand ? { startNegotiation: () => demand.start() } : {}) };
   }
 
   function waitForBufferedAmount(channel, low = 128 * 1024) {
