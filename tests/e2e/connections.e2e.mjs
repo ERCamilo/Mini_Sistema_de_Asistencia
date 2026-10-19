@@ -341,6 +341,82 @@ async function openApplication(width, theme, seedUsers) {
   } catch (error) { await context.close(); throw error; }
 }
 
+// Exact-origin local proof: keep the shipped hostname loader and mock only the SDK boundary.
+async function openCustomDomainApplication(width) {
+  const origin = 'https://miniasist.erlin.do', mobile = width < 600;
+  const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: mobile, hasTouch: mobile, serviceWorkers: 'block', reducedMotion: 'reduce' });
+  const blockedHttp = [], blockedSockets = [];
+  try {
+    await context.route('**/*', async route => {
+      const url = new URL(route.request().url());
+      if (url.origin !== origin) { blockedHttp.push(url.href); return route.abort(); }
+      if (url.pathname === '/vendor/firebase-app-compat.js') return route.fulfill({ contentType: 'text/javascript', body: `
+        window.googleSdkFixture = { popupCalls: 0, persistence: [], providers: [] };
+        const auth = {
+          currentUser: null,
+          onAuthStateChanged(callback) { callback(null); return () => {}; },
+          setPersistence(mode) { googleSdkFixture.persistence.push(mode); return Promise.resolve(); },
+          signInWithPopup(provider) {
+            googleSdkFixture.popupCalls++; googleSdkFixture.providers.push(provider.parameters);
+            return new Promise(resolve => { googleSdkFixture.finish = resolve; });
+          },
+          signOut() { return Promise.resolve(); }
+        };
+        const app = { auth: () => auth };
+        window.firebase = {
+          initializeApp(config, name) { googleSdkFixture.config = config; googleSdkFixture.appName = name; return app; },
+          app: () => app,
+          auth: { GoogleAuthProvider: class { setCustomParameters(parameters) { this.parameters = parameters; } } }
+        };
+      ` });
+      if (url.pathname === '/vendor/firebase-auth-compat.js') return route.fulfill({ contentType: 'text/javascript', body: '// Auth SDK boundary supplied by the local fixture.' });
+      // Browser sees only the exact custom origin; bytes come from the local fixture server.
+      return route.fulfill({ response: await route.fetch({ url: base + url.pathname + url.search }) });
+    });
+    await context.routeWebSocket('**/*', socket => { blockedSockets.push(socket.url()); socket.close({ code: 1008, reason: 'Local-only custom-domain regression' }); });
+    const page = await context.newPage(), errors = [];
+    page.setDefaultTimeout(5000);
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto(origin + '/');
+    await page.locator('#mini-welcome-name').fill('Synthetic custom domain test');
+    await page.getByRole('button', { name: 'Continuar', exact: true }).click();
+    await page.waitForTimeout(1300);
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+    return { context, page, errors, blockedHttp, blockedSockets };
+  } catch (error) { await context.close(); throw error; }
+}
+
+for (const width of [390, 1280]) test(`full app custom domain ${width}px: enabled Google action reaches the SDK popup once`, async () => {
+  const { context, page, errors, blockedHttp, blockedSockets } = await openCustomDomainApplication(width);
+  try {
+    assert.equal(new URL(page.url()).origin, 'https://miniasist.erlin.do');
+    await page.locator('#btn-attendance-link').click();
+    await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
+    const account = page.locator('[data-connection-account-open]');
+    assert.equal(await account.textContent(), 'Iniciar sesión');
+    assert.equal(await account.isDisabled(), false);
+    await account.click();
+    const login = page.locator('#firebase-link-login');
+    assert.equal(await login.isVisible(), true);
+    assert.equal(await login.isDisabled(), false);
+    await login.click();
+    await page.waitForFunction(() => googleSdkFixture.popupCalls === 1);
+    assert.equal(await login.isDisabled(), true, 'native busy guard stays active during popup');
+    await login.evaluate(node => { node.click(); node.click(); });
+    assert.deepEqual(await page.evaluate(() => ({
+      popupCalls: googleSdkFixture.popupCalls, persistence: googleSdkFixture.persistence,
+      providers: googleSdkFixture.providers, projectId: googleSdkFixture.config.projectId,
+      endpoint: MiniFirebaseFieldConfig.endpoint, appName: googleSdkFixture.appName
+    })), { popupCalls: 1, persistence: ['local'], providers: [{ prompt: 'select_account' }], projectId: 'phoenix-asistencia-ab641', endpoint: 'https://firebase-bridge-test.erlin.do', appName: 'mini-field' });
+    await page.evaluate(() => googleSdkFixture.finish());
+    await page.waitForFunction(() => !document.getElementById('firebase-link-login').disabled);
+    assert.equal(await page.evaluate(() => googleSdkFixture.popupCalls), 1);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(blockedHttp, [], 'zero off-origin HTTP attempts, including real Google');
+    assert.deepEqual(blockedSockets, [], 'zero WebSocket attempts');
+  } finally { await context.close(); }
+});
+
 async function assertViewportFit(page, selector) {
   const layout = await page.locator(selector).evaluate(node => {
     const rect = node.getBoundingClientRect();

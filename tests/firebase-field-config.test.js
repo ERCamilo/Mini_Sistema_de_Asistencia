@@ -56,3 +56,28 @@ test('explicit injected configuration is preserved on the new preview and denied
         assert.equal(root.MiniFirebaseFieldConfig, injected);
     }
 });
+
+
+test('authorized custom domain enables exactly the existing public Firebase metadata', () => {
+    const preview = { location: { hostname: 'firebase-circuit-test.mini-sistema-asistencia-preview.pages.dev' } };
+    const custom = { location: { hostname: 'miniasist.erlin.do' } };
+    vm.runInNewContext(source, preview);
+    vm.runInNewContext(source, custom);
+    assert.ok(custom.MiniFirebaseFieldConfig);
+    assert.equal(JSON.stringify(custom.MiniFirebaseFieldConfig), JSON.stringify(preview.MiniFirebaseFieldConfig));
+});
+
+test('custom-domain authorization does not enable related or unapproved hosts', () => {
+    for (const hostname of ['www.miniasist.erlin.do', 'sub.miniasist.erlin.do', 'miniasist.erlin.do.attacker.test', 'notminiasist.erlin.do', 'miniasist-erlin.do', 'erlin.do', 'gentleman-programming.github.io', 'erlin.github.io', 'mini-sistema-asistencia-preview.pages.dev', 'other.mini-sistema-asistencia-preview.pages.dev']) {
+        const root = { location: { hostname } };
+        vm.runInNewContext(source, root);
+        assert.equal(root.MiniFirebaseFieldConfig, null, hostname);
+    }
+});
+
+test('authorized custom domain preserves an explicitly injected configuration', () => {
+    const injected = { endpoint: 'https://fixture.example.test' };
+    const root = { location: { hostname: 'miniasist.erlin.do' }, MiniFirebaseFieldConfig: injected };
+    vm.runInNewContext(source, root);
+    assert.equal(root.MiniFirebaseFieldConfig, injected);
+});
