@@ -1,0 +1,11 @@
+.release-modal .modal-content { max-height: 88dvh; overflow-y: auto; color: var(--text-color); }
+.release-modal h2 { font-size: 1.3rem; overflow-wrap: anywhere; }
+.release-modal h3 { font-size: 1.05rem; margin-bottom: .25rem; }
+.release-modal p { color: var(--text-muted); line-height: 1.5; }
+.release-modal li { margin: .7rem 0; line-height: 1.5; overflow-wrap: anywhere; }
+.release-modal ul { padding-left: 1.25rem; }
+.release-modal button { min-height: 44px; white-space: normal; margin-top: .65rem; }
+.release-list section + section { border-top: 1px solid var(--border-color); margin-top: 1rem; padding-top: .5rem; }
+#app-update-status { color: var(--text-muted); line-height: 1.5; }
+.release-modal .btn-primary { color: var(--bg-color); }
+.release-modal .btn-secondary { color: var(--text-color); }

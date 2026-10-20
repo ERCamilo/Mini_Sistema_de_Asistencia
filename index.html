@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="./connection-screens.css">
     <link rel="stylesheet" href="./mini-notice.css">
     <link rel="stylesheet" href="./employee-report.css">
+    <link rel="stylesheet" href="./app-updates.css">
 
     <style>
         /* --- DEFINICIÓN DE TEMAS (VARIABLES CSS) --- */
@@ -2674,6 +2675,13 @@
         </div>
     </div>
 
+    <div class="modal release-modal" id="whats-new-modal" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
+      <div class="modal-content"><h2 id="whats-new-title" data-release-title>Novedades</h2><div class="release-list" data-release-list></div><p data-release-status role="status"></p><button type="button" class="btn-full btn-primary" onclick="window.MiniUpdates.close('whats-new-modal')">Entendido</button></div>
+    </div>
+    <div class="modal release-modal" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
+      <div class="modal-content"><h2 id="update-title" data-release-title>Actualización disponible</h2><p>Actualiza cuando termines tu trabajo. Tus datos guardados se conservan.</p><div class="release-list" data-release-list></div><p data-release-status role="status" aria-live="polite"></p><button type="button" class="btn-full btn-primary" data-release-apply>Actualizar ahora</button><button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.close('update-modal')">Más tarde</button></div>
+    </div>
+
     <!-- MODAL DE TEMAS (NUEVO) -->
     <div class="modal big" id="theme-menu">
         <div class="modal-content">
@@ -2990,16 +2998,18 @@
                                 <div style="font-size: 12px; color: var(--text-muted);" id="storage-mode-hint">Revisando…</div>
                             </div>
                         </button>
-                        <button type="button" class="export-option" onclick="clearCacheAndReload()">
+                        <button type="button" class="export-option" onclick="window.MiniUpdates.check()">
                             <span style="font-size: 24px;"><span class="ic" data-icon="refresh"></span></span>
                             <div>
-                                <div style="font-weight: 600;">Buscar actualización</div>
-                                <div style="font-size: 12px; color: var(--text-muted);">Limpia el caché y carga la última versión</div>
+                                <div style="font-weight: 600;">Buscar actualizaciones</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Revisa las novedades antes de actualizar</div>
                             </div>
                         </button>
                     </div>
+                    <button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.showNews()">Novedades</button>
+                    <p id="app-update-status" role="status" aria-live="polite"></p>
                     <div class="app-version" style="margin-top:12px;font-size:12px;color:var(--text-muted);line-height:1.6;">
-                        <div>Mini versión <span id="mini-version">v2.13.0</span></div>
+                        <div>Mini versión <span id="mini-version" data-app-version>—</span></div>
                         <div>Actualizado: <span id="mini-build-date">—</span></div>
                     </div>
                 </div>
@@ -3757,6 +3767,9 @@
     <script src="./bulk-actions.js"></script>
     <script src="./employee-change-report.js"></script>
     <script src="./employee-report-ui.js"></script>
+    <script src="./app-version.js"></script>
+    <script src="./app-update-manager.js"></script>
+    <script src="./app-updates.js"></script>
     <script src="./build-info.js"></script>
     <script>
         let users = [];
@@ -3976,7 +3989,6 @@
 
 
         let deferredInstallPrompt = null;
-        let pwaUpdateReloaded = false;
 
         function initPWA() {
             if ('serviceWorker' in navigator) {
@@ -3985,11 +3997,6 @@
                         registration.update().catch(() => { });
                     }
                 }).catch(() => { });
-                navigator.serviceWorker.addEventListener('controllerchange', () => {
-                    if (pwaUpdateReloaded) return;
-                    pwaUpdateReloaded = true;
-                    location.reload();
-                });
             }
 
             // Si ya esta instalada (modo standalone), marcarlo
@@ -4893,6 +4900,24 @@
             updateUndoImportButton();
             renderWorkContextBar();
             localPersistenceReady = initLocalPersistence();
+            localPersistenceReady.then(() => {
+                window.MiniUpdates.init({
+                    openModal, closeModal,
+                    isBusy: () => !localPersistenceReady || !!window.MiniWelcome?.isOpen() || !!document.querySelector('input:focus, textarea:focus'),
+                    beforeReload: async () => {
+                        if (!localPersistenceReady || document.querySelector('.modal.active:not(#update-modal), .mini-p2p-overlay') || window.MiniWelcome?.isOpen()) throw new Error('Hay una edición abierta.');
+                        await localPersistenceReady;
+                        await localDbWriteQueue;
+                        const dayStore = attendanceStorage.current();
+                        await dayStore.flush?.();
+                        if (dayStore.isPersisted && !dayStore.isPersisted()) throw new Error('La asistencia no se guardó.');
+                        if (window.MiniLocalDb.isEnabled(localStorage)) {
+                            if (!localDbReady) throw new Error('El almacenamiento no está listo.');
+                            await localDb.writeState(captureDbSnapshot());
+                        } else writeLegacyMirror(captureLocalSnapshot());
+                    }
+                });
+            }).catch(error => console.warn('Mini: no se pudo iniciar el control de actualizaciones.', error));
             installBackNavigation();
             maybePromptStorageHelp();
             watchFirstRunTutorial();
@@ -5498,6 +5523,7 @@
         }
 
         function closeModal(id) {
+            window.MiniUpdates?.onModalClosed(id);
             if (id === 'firebase-link-modal' && document.getElementById('mini-p2p-transfer-modal')) { window.closeP2PTransferModal(); return; }
             if (id === 'firebase-link-modal' && window.miniFirebaseLinkView && !window.miniFirebaseLinkView.close()) return;
             if (id === 'employee-number-conflict-modal') employeeNumberModal.close();

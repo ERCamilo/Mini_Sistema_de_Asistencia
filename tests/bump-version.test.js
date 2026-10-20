@@ -29,7 +29,8 @@ test('rejects non semantic versions instead of guessing', async () => {
 
 test('pre-commit hook bumps then stamps and stages only version + generated files', () => {
   const hook = readFileSync(require.resolve('../.githooks/pre-commit'), 'utf8');
-  assert.ok(hook.indexOf('node scripts/bump-version.mjs') < hook.indexOf('node scripts/stamp-build.mjs'));
+  assert.match(hook, /node scripts\/sync-app-version\.mjs/);
+  assert.ok(hook.indexOf('node scripts/sync-app-version.mjs') < hook.indexOf('node scripts/stamp-build.mjs'));
   assert.match(hook, /git add package\.json package-lock\.json build-info\.js sw\.js/);
 });
 
