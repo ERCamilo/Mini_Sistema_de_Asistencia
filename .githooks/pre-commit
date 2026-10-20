@@ -1,8 +1,10 @@
 #!/bin/sh
-# Before each commit: bump the patch version once per branch (see
-# scripts/bump-version.mjs), then regenerate the Mini build stamp.
+# Before each commit: align package metadata to src/app-version.ts, validate
+# the release manifest, then regenerate the Mini build stamp.
 # Stages ONLY the version files and the generated files.
 set -e
-node scripts/bump-version.mjs
+node scripts/sync-app-version.mjs
+node scripts/release-manifest.cjs
 node scripts/stamp-build.mjs
 git add package.json package-lock.json build-info.js sw.js
+git add app-release.json

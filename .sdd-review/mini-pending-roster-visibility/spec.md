@@ -14,3 +14,8 @@ Correction proof: focused tests observed 16/18 passing RED and 18/18 GREEN. Peer
 The second browser run still failed label containment despite intrinsic button widths. The pending actions wrapper must span the full existing action-card grid row, rather than occupy its 44px icon column. Browser A–E acceptance remains pending; width-only node checks are not layout proof.
 
 Full-row wrapper contract observed RED 18/19 and GREEN 19/19 after the scoped grid-column correction. This verifies stylesheet wiring, not actual browser geometry; mapper must recheck actual label containment and complete A–E acceptance.
+
+## T1 closure and T2 integration intent
+T1 is committed c34db0b723fc95b5ae1ec045867d34b08120122e, native reviewed/acknowledged without findings, full 1097/1097 and browser A–E passed. Integrate exact main b9d4cf85ceec2e9f6a42568c435c27f0250816b2 by merge, retaining T1 and upstream PWA update/version policy. Resolve only generated metadata conflicts, preserve upstream SW logic/precache, retain 2.17.5, and verify six T1 runtime/test files unchanged. Version 2.17.6 is a separate follow-up before visible PR delivery. Parent full checks/merge commit remain pending; no audit fixes/push/deployment.
+
+T2 merged pinned main locally without commit; conflicts were limited to generated metadata and resolved preserving all upstream SW bytes except native CACHE_VERSION. Native fixed stamp is 2026-10-20T19:40:41.000Z at version 2.17.5. All six T1 runtime/test files remain byte-identical; all 29 nonconflict upstream paths remain exact. Compile/sync/manifest and 50 focused tests pass; parent full verification/merge commit and separate visible version release remain pending.

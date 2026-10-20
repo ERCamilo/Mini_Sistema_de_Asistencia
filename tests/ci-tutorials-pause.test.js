@@ -4,9 +4,9 @@ const { readFileSync } = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const scripts = require('../package.json').scripts;
 const workflow = readFileSync(require.resolve('../.github/workflows/ci.yml'), 'utf8');
-const fullCommand = 'tsc && node --test tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/employee-report.e2e.mjs tests/e2e/positions.e2e.mjs tests/e2e/sheet-import.e2e.mjs tests/e2e/tutorials.e2e.mjs';
+const fullCommand = 'tsc && node --test tests/e2e/app-updates.e2e.mjs tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/employee-report.e2e.mjs tests/e2e/positions.e2e.mjs tests/e2e/sheet-import.e2e.mjs tests/e2e/tutorials.e2e.mjs';
 
-test('full local replay is unchanged and CI excludes only tutorial replay', () => {
+test('local replay includes update checks and CI excludes only tutorial replay', () => {
   assert.equal(scripts['test:e2e'], fullCommand);
   assert.equal(scripts['test:e2e:ci'], fullCommand.replace(' tests/e2e/tutorials.e2e.mjs', ''));
 });

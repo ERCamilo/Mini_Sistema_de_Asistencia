@@ -192,6 +192,11 @@ type MiniDataMigrationResult =
         schedule();
       },
       flush: () => queue,
+      isPersisted: () => {
+        const next = attendanceRaw ? JSON.parse(attendanceRaw) as Record<string, unknown> : {};
+        const diff = diffDays(persisted, next);
+        return diff.puts.length === 0 && diff.deletes.length === 0 && tombstonesRaw === persistedTombstones;
+      },
       getItem(key: string): string | null {
         if (key === ATTENDANCE_KEY) return attendanceRaw;
         if (key === TOMBSTONES_KEY) return tombstonesRaw;

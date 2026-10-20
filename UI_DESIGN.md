@@ -485,3 +485,7 @@ La portada común prioriza personal disponible y asistencia recibida, con Revisa
 ### Alcance de los slices locales (2026-10-06)
 
 M5 incorpora únicamente las APIs de avisos y presentación y sus pruebas puras. Los apartados 8.10 y 8.11 describen el diseño integrado previsto: intercambio organizativo, menú común y cableado real de la app pertenecen a M6/M7/M8. No se certifica activación ni navegador desde este slice y no se concede permiso de publicación.
+
+## Novedades y actualizaciones
+
+Los diálogos de novedades usan los tokens del tema, contenido desplazable dentro de 88dvh y botones de al menos 44px. Se abren mediante el gestor de modales existente para conservar Atrás. Los avisos automáticos esperan al cierre de ediciones/diálogos. Actualizar requiere una acción explícita y el guardado local confirmado; Más tarde conserva la pantalla. Ver [guía](docs/sistema-de-novedades.md).

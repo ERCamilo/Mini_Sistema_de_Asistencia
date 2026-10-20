@@ -75,12 +75,13 @@ test('initPWA checks for updates without a stale SW cache', () => {
   assert.match(html, /registration\.update\(\)/);
 });
 
-test('initPWA reloads once when a newer worker takes control (no loops)', () => {
-  assert.match(html, /controllerchange/);
-  assert.match(html, /location\.reload\(\)/);
-  assert.match(html, /pwaUpdateReloaded/);
-  assert.match(html, /if\s*\(\s*pwaUpdateReloaded\s*\)\s*return/);
-  assert.match(html, /pwaUpdateReloaded\s*=\s*true/);
+test('controllerchange ofrece la actualización sin recargar y distingue la primera instalación', () => {
+  const updates = read('app-updates.js');
+  assert.match(updates, /controllerchange/);
+  assert.match(updates, /hadController/);
+  assert.match(updates, /controllerChanged\(previous\)/);
+  assert.doesNotMatch(html, /pwaUpdateReloaded/);
+  assert.ok(html.includes('whats-new-modal') && html.includes('update-modal'));
 });
 
 test('manual clearCacheAndReload remains as fallback and keeps app data', () => {

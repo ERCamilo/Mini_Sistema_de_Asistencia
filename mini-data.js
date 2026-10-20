@@ -171,6 +171,11 @@
                 schedule();
             },
             flush: () => queue,
+            isPersisted: () => {
+                const next = attendanceRaw ? JSON.parse(attendanceRaw) : {};
+                const diff = diffDays(persisted, next);
+                return diff.puts.length === 0 && diff.deletes.length === 0 && tombstonesRaw === persistedTombstones;
+            },
             getItem(key) {
                 if (key === ATTENDANCE_KEY)
                     return attendanceRaw;
