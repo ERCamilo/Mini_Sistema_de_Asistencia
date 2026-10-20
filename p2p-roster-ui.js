@@ -996,7 +996,7 @@
       const stateLabel = isTransferring ? 'En transferencia' : (isOnline ? 'Conectado' : (isConnecting ? 'Conectando…' : 'Desconectado'));
       const avatarStateClass = isTransferring ? 'is-transferring' : (isOnline ? 'is-online' : '');
       const peerStaged = getEffectiveStaged(peer.peerId);
-      const peerPendingBadge = peerStaged ? `<span class="mini-count-badge" role="status" aria-label="1 pendiente">1</span>` : '';
+      const peerPendingBadge = `<span class="mini-count-badge" data-roster-pending-peer="${esc(peer.peerId)}" role="status" aria-label="${peerStaged ? '1 pendiente' : 'Sin pendientes'}"${peerStaged ? '' : ' hidden'}>${peerStaged ? '1' : ''}</span>`;
       const stateMeta = isOnline ? 'Conectado recientemente' : `Última conexión: ${esc(lastSeen)}`;
       return `
         <div class="mini-p2p-peer-row">
@@ -1085,12 +1085,7 @@
     body().querySelectorAll('[data-wait-attendance]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitAttendance, 'attendance')));
     body().querySelectorAll('[data-review-staged]').forEach(btn => btn.addEventListener('click', () => reviewPersistedStagedRoster(btn.dataset.reviewStaged)));
     body().querySelectorAll('[data-discard-staged]').forEach(btn => btn.addEventListener('click', async () => {
-      const peerId = String(btn.dataset.discardStaged || '').trim();
-      const current = getEffectiveStaged(peerId);
-      try { stagedStore?.clear?.(peerId || current?.peerId); } catch (_) {}
-      try { if (!peerId || String(pendingRoster?.peer?.peerId || pendingRoster?.peerId || '') === peerId) pendingRoster = null; } catch (_) {}
-      try { activityStore?.markStagedReviewed?.(peerId || current?.peerId); } catch (_) {}
-      try { await refreshMiniP2PHeader(); } catch (_) {}
+      await discardPersistedStagedRoster(btn.dataset.discardStaged);
       renderHome();
     }));
     body().querySelectorAll('[data-review-backup]').forEach(btn => btn.addEventListener('click', async () => {
@@ -2355,6 +2350,16 @@
     try { refreshMiniP2PHeader().catch(() => {}); } catch (_) {}
     return true;
   }
+  async function discardPersistedStagedRoster(value) {
+      const peerId = String(value || '').trim();
+      const current = getEffectiveStaged(peerId);
+      try { stagedStore?.clear?.(peerId || current?.peerId); } catch (_) {}
+      try { if (!peerId || String(pendingRoster?.peer?.peerId || pendingRoster?.peerId || '') === peerId) pendingRoster = null; } catch (_) {}
+      try { activityStore?.markStagedReviewed?.(peerId || current?.peerId); } catch (_) {}
+      try { await refreshMiniP2PHeader(); } catch (_) {}
+      document.dispatchEvent(new CustomEvent('p2p-staged-roster-change'));
+  }
+
   async function reviewPersistedStagedRoster(peerId = null) {
     const staged = getEffectiveStaged(peerId);
     if (!staged || typeof staged.text !== 'string' || !staged.text) { toast('No hay roster pendiente por revisar.'); return renderHome(); }
@@ -2407,6 +2412,7 @@
         signalTerminalSuccess(receivedKey, { title: 'Roster recibido', detail: String(pendingRoster.employeeCount || 0) + ' empleados verificados.' });
       } catch (_) {}
       try { await refreshMiniP2PHeader(); } catch (_) {}
+      document.dispatchEvent(new CustomEvent('p2p-staged-roster-change'));
       if (!background && isTransferModalOpen()) renderRosterReceived();
       else {
         try {
@@ -3333,7 +3339,7 @@
   root.MiniP2PBackupInbox={ snapshot: miniBackupConnectionSnapshot, subscribe: subscribeMiniBackupConnections, reconnect: reconnectMiniBackupPeer, start: startMiniBackupInbox, ensure: ensureMiniBackupListener, stop: stopMiniBackupListener, retire: closeMiniBackupConnection, stopAll: stopAllMiniBackupListeners, listeners: miniBackupListeners };
   root.MiniP2PPassiveInbox={ start: startPassiveInbox, ensure: ensurePeerListener, stop: stopPeerListener, backoffDelayMs: passiveBackoffDelayMs, isStarted: () => passiveInboxStarted, listeners: passivePeerListeners, armPassiveChannel, isPeerOnline, isNetworkOnline };
   root.MiniP2PPresence = { isPeerOnline, getPeerState: getPeerVisualState, getPresence: getPeerPresence, attach: attachPresence, detach: detachPresence, isNetworkOnline, expireStale: expireStalePresence, handleOffline: handleNetworkOffline, handleOnline: handleNetworkOnline, HEARTBEAT_MS: core.PRESENCE_HEARTBEAT_MS || 25000, TTL_MS: core.PRESENCE_TTL_MS || 60000, BACKOFF_SCHEDULE_MS: PASSIVE_BACKOFF_SCHEDULE_MS };
-  root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster };
+  root.MiniP2PActivityUi={ stagedCount: getStagedPendingCount, staged: getEffectiveStaged, stagedList: getAllStaged, activities: getRecentP2PActivities, reviewStaged: reviewPersistedStagedRoster, discardStaged: discardPersistedStagedRoster };
 
   try {
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshMiniBackupInbox(true); });

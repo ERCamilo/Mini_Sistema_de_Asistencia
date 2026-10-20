@@ -231,3 +231,14 @@
 .mini-p2p-shell .mini-account-card .mini-account-action:disabled {cursor:not-allowed;background:var(--input-bg);color:var(--text-color);opacity:1;}
 .mini-p2p-shell .mini-account-card .mini-account-action:focus-visible {outline:2px solid var(--accent-color);outline-offset:3px;}
 .mini-p2p-shell .mini-account-card .mini-account-action img {width:20px;height:20px;flex:none;}
+
+/* Local SA review work remains first-class; obsolete extras stay hidden. */
+.mini-p2p-shell .connections-home .connections-staged-rosters {display:grid;gap:12px;order:-1;}
+.mini-p2p-shell .connections-home .connections-staged-rosters[hidden] {display:none;}
+.mini-p2p-shell .connections-staged-card {background:var(--input-bg);color:var(--text-color);}
+.mini-p2p-shell .connections-staged-card .connections-card-actions {grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:8px;}
+.mini-p2p-shell .connections-staged-card button {width:auto;flex:0 0 auto;min-height:44px;min-width:44px;padding:10px 16px;border:0;border-radius:12px;background:var(--card-bg);color:var(--text-color);}
+.mini-p2p-shell .connections-staged-card [data-review-staged] {background:var(--accent-color);color:var(--bg-color);font-weight:700;}
+.mini-p2p-shell .connections-staged-card button:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+
+.mini-p2p-shell [data-roster-pending-peer][hidden] {display:none;}
