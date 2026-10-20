@@ -1,10 +1,15 @@
-const CACHE_VERSION = 'asistencia-v2.17.4-20261019-094536-000';
+const CACHE_VERSION = 'asistencia-v2.17.5-20261020-151922-777';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './build-info.js',
+  './app-version.js',
+  './app-update-manager.js',
+  './app-updates.js',
+  './app-updates.css',
+  './app-release.json',
   './employee-number-rules.js',
   './employee-number-modal.js',
   './employee-repository.js',
@@ -150,6 +155,8 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
+
+  if (url.origin === self.location.origin && url.pathname.endsWith('/app-release.json') && url.searchParams.has('__incoming')) return;
 
   // Tutorial videos stream with range requests: let the browser handle them.
   if (url.pathname.endsWith('.webm')) return;

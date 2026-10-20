@@ -89,9 +89,11 @@ test('a failed IndexedDB write is reported and retried with the next change', as
   storage.setItem('attendance', JSON.stringify({ '2026-09-01': day(8) }));
   await storage.flush();
   assert.deepEqual(errors, ['simulated write failure']);
+  assert.equal(storage.isPersisted(), false, 'una cola resuelta no garantiza que se guardó la asistencia');
   storage.setItem('attendance', JSON.stringify({ '2026-09-01': day(8), '2026-09-02': day(9) }));
   await storage.flush();
   assert.deepEqual(backend.writes[0].puts.map(p => p.date), ['2026-09-01', '2026-09-02'], 'the failed day is written again');
+  assert.equal(storage.isPersisted(), true);
   const all = await backend.inner.readAll();
   assert.deepEqual(Object.keys(all.days).sort(), ['2026-09-01', '2026-09-02']);
 });

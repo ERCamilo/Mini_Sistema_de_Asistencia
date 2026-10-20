@@ -237,6 +237,8 @@ export async function runTutorial(tutorial, { browser, base, mode = 'test', vide
   try {
     await page.setContent('<body style="margin:0;background:#0b1020"></body>');
     await page.goto(base, { waitUntil: 'networkidle' });
+    // Network idle does not acknowledge IndexedDB hydration on a full device.
+    await page.evaluate(() => localPersistenceReady);
     await page.waitForTimeout(record ? 700 : 150);
     await tutorial.steps(api);
     closeCaption();
