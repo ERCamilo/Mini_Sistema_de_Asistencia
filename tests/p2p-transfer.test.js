@@ -838,7 +838,10 @@ test('retired collision channel cannot revoke its replacement transport', async 
 
 class DrainChannel extends CaptureChannel {
   constructor() { super(); this.bufferedAmount = 1024 * 1024; this.handlers = new Map(); }
-  addEventListener(type, fn) { this.handlers.set(type, [...(this.handlers.get(type) || []), fn]); }
+  addEventListener(type, fn) {
+    this.handlers.set(type, [...(this.handlers.get(type) || []), fn]);
+    if (type === 'bufferedamountlow') this.onWaiting?.();
+  }
   removeEventListener(type, fn) { this.handlers.set(type, (this.handlers.get(type) || []).filter(x => x !== fn)); }
   emit(type) { for (const fn of [...(this.handlers.get(type) || [])]) fn({}); }
   listenerCount() { let n = 0; for (const list of this.handlers.values()) n += list.length; return n; }
@@ -847,8 +850,10 @@ class DrainChannel extends CaptureChannel {
 test('sendPayload rejects when the channel closes while waiting for the buffer to drain', async () => {
   const channel = new DrainChannel();
   Core.markChannelAuthenticated(channel);
+  // Close only once the sender is really waiting: a fixed delay races with the SHA-256 under load.
+  const waiting = new Promise(resolve => { channel.onWaiting = resolve; });
   const pending = Core.sendPayload(channel, { kind: 'backup', schema: 'mini-backup/v1', bytes: new Uint8Array([1, 2, 3]) });
-  setTimeout(() => { channel.readyState = 'closed'; channel.emit('close'); }, 5);
+  waiting.then(() => { channel.readyState = 'closed'; channel.emit('close'); });
   await assert.rejects(pending, /cerró|closed/i);
   assert.equal(channel.listenerCount(), 0, 'drain listeners must be cleaned up');
 });
@@ -866,8 +871,9 @@ test('sendPayload rejects when the buffer never drains within the stall timeout'
 test('sendPayload still completes when the buffer drains in time', async () => {
   const channel = new DrainChannel();
   Core.markChannelAuthenticated(channel);
+  const waiting = new Promise(resolve => { channel.onWaiting = resolve; });
   const pending = Core.sendPayload(channel, { kind: 'backup', schema: 'mini-backup/v1', bytes: new Uint8Array([1, 2, 3]), stallTimeoutMs: 500 });
-  setTimeout(() => { channel.bufferedAmount = 0; channel.emit('bufferedamountlow'); }, 5);
+  waiting.then(() => { channel.bufferedAmount = 0; channel.emit('bufferedamountlow'); });
   const result = await pending;
   assert.equal(result.totalChunks, 1);
 });
