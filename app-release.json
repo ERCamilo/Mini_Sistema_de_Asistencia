@@ -1,6 +1,15 @@
 {
-  "version": "2.17.7",
+  "version": "2.17.8",
   "changelog": [
+    {
+      "version": "2.17.8",
+      "date": "2026-10-21",
+      "title": "Actualizar ahora renueva la aplicación",
+      "items": [
+        "El botón Actualizar ahora descarga los archivos nuevos y reinicia la aplicación conservando tus datos.",
+        "La actualización muestra su progreso y permite reintentar si falla la conexión."
+      ]
+    },
     {
       "version": "2.17.7",
       "date": "2026-10-21",

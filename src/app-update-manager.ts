@@ -3,7 +3,7 @@ interface AppUpdateManagerOptions {
   read(key: string): string | null; write(key: string, value: string): void;
   now(): number; online(): boolean; fetchRelease(): Promise<unknown>; canShow(): boolean;
   show(kind: 'news' | 'update', releases: AppRelease[], version: string, close: () => void, apply: () => Promise<void>): boolean;
-  beforeReload(): Promise<void>; reload(): void; status(message: string): void;
+  beforeReload(): Promise<void>; prepareUpdate?(): Promise<void>; reload(): void; status(message: string): void;
 }
 
 (function exposeAppUpdateManager(root: any, factory: () => unknown) {
@@ -39,8 +39,20 @@ interface AppUpdateManagerOptions {
       if (applying || !incoming) return;
       applying = true;
       const generation = ++applyGeneration;
-      try { await options.beforeReload(); if (generation === applyGeneration) options.reload(); }
-      catch (_) { options.status('No se pudo actualizar. Guarda o cierra tus cambios y vuelve a intentarlo.'); }
+      let saved = false;
+      try {
+        options.status('Guardando datos…');
+        await options.beforeReload();
+        if (generation !== applyGeneration) return;
+        saved = true;
+        options.status('Descargando actualización…');
+        await options.prepareUpdate?.();
+        if (generation === applyGeneration) { options.status('Reiniciando aplicación…'); options.reload(); }
+      }
+      catch (_) {
+        options.status(saved ? 'No se pudo actualizar. Revisa tu conexión y vuelve a intentarlo; tus datos se conservan.'
+          : 'No se pudo actualizar. Guarda o cierra tus cambios y vuelve a intentarlo.');
+      }
       finally { applying = false; }
     }
     function showNews(manual = false) {

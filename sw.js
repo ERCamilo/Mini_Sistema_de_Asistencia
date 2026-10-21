@@ -1,4 +1,6 @@
-const CACHE_VERSION = 'asistencia-v2.17.7-20261021-183528-279';
+const CACHE_VERSION = 'asistencia-v2.17.8-20261021-193124-725';
+
+importScripts(`./app-shell-refresh.js?__v=${CACHE_VERSION}`);
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -8,6 +10,7 @@ const PRECACHE_ASSETS = [
   './app-version.js',
   './app-update-manager.js',
   './app-updates.js',
+  './app-shell-refresh.js',
   './app-updates.css',
   './app-release.json',
   './employee-number-rules.js',
@@ -123,15 +126,16 @@ self.addEventListener('activate', event => {
       Promise.all(
         keys.filter(k => k !== CACHE_VERSION && !KEEP_CACHE_PREFIXES.some(p => k.startsWith(p))).map(k => caches.delete(k))
       )
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 // HTML: network-first so an online user always gets the latest version;
 // falls back to the cached page when offline or when the network is too slow.
 const NAVIGATION_TIMEOUT_MS = 4000;
-function networkFirstNavigation(request) {
+async function networkFirstNavigation(request) {
+  const fresh = await AppShellRefresh.getFreshShellResponse(request, caches, CACHE_VERSION);
+  if (fresh) return fresh;
   const fromCache = () => caches.open(CACHE_VERSION)
     .then(cache => cache.match(request, { ignoreSearch: true }))
     .then(cached => cached || caches.match('./index.html'));
@@ -187,4 +191,17 @@ self.addEventListener('fetch', event => {
       });
     })
   );
+});
+
+// Renew only application files and acknowledge completion before the page reloads.
+self.addEventListener('message', event => {
+  if (event.data === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
+  if (event.data?.type !== 'REFRESH_APP_SHELL' || !event.ports[0]) return;
+  const port = event.ports[0];
+  event.waitUntil(AppShellRefresh.refreshAppShell({
+    assets: PRECACHE_ASSETS, scope: self.registration.scope, cacheName: CACHE_VERSION, storage: caches, fetcher: fetch
+  }).then(updated => port.postMessage({ ok: true, updated })).catch(error => {
+    console.error('[SW] No se pudo renovar la aplicación', error);
+    port.postMessage({ ok: false });
+  }));
 });
