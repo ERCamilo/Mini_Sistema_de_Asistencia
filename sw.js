@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.17.7-20261021-120152-742';
+const CACHE_VERSION = 'asistencia-v2.17.7-20261021-124938-052';
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -61,6 +61,9 @@ const PRECACHE_ASSETS = [
   './employee-positions.js',
   './sheet-import.js',
   './sa-roster-import.js',
+  './private-turn.js',
+  './private-turn-bootstrap.js',
+  './private-turn-production.js',
   './p2p-core.js',
   './p2p-pairing.js',
   './p2p-peer-alias-store.js',
