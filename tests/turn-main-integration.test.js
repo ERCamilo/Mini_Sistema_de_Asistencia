@@ -36,8 +36,30 @@ test('production TURN is wired but switched off, and only the exact marker can e
   assert.equal(html.split(marker).length, 2, 'one disabled marker');
   const at = tags.map(tag => { assert.equal(html.split(tag).length, 2, tag); return html.indexOf(tag); });
   assert.ok(at[0] < at[1] && at[1] < at[2] && html.indexOf(marker) < at[2], 'marker and scripts load in dependency order');
-  assert.ok(at[2] < html.indexOf('<script src="./p2p-core.js"></script>'), 'TURN is ready before the P2P core starts');
+  assert.ok(html.indexOf('<script src="./p2p-core.js"></script>') < html.indexOf(marker), 'the P2P core is loaded before the TURN entry');
   assert.doesNotMatch(html, /MiniProductionTurn\s*=\s*\{[^}]*enabled\s*:\s*true/);
   assert.doesNotMatch(html, /private-turn-public-preview/);
   for (const name of ['private-turn', 'private-turn-bootstrap', 'private-turn-production']) assert.ok(sw.includes(`'./${name}.js'`), `${name} precached`);
+});
+
+test('production TURN scripts run after the P2P core, so the real entry initializes once the marker is on', () => {
+  const vm = require('node:vm');
+  const html = read('index.html');
+  const core = html.indexOf('<script src="./p2p-core.js"></script>');
+  const entry = html.indexOf('<script src="./private-turn-production.js"></script>');
+  assert.ok(core > -1 && core < html.indexOf('<script src="./private-turn.js"></script>') && core < entry, 'core loads before the TURN scripts');
+  const order = [...html.matchAll(/<script src="\.\/(p2p-core|private-turn|private-turn-bootstrap|private-turn-production)\.js"><\/script>/g)].map(m => m[1]);
+  const status = enabled => {
+    const events = [];
+    const context = { location: { origin: 'https://miniasist.erlin.do' }, MiniProductionTurn: { enabled }, console, URL, TextEncoder, TextDecoder,
+      document: { dispatchEvent: e => events.push(e) }, CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init.detail; } },
+      setTimeout, clearTimeout, fetch: async () => { throw new Error('offline'); }, crypto: require('node:crypto').webcrypto };
+    context.window = context; context.globalThis = context; context.self = context;
+    vm.createContext(context);
+    for (const name of order) vm.runInContext(read(`${name}.js`), context, { filename: `${name}.js` });
+    return context.PrivateTurnProduction.status();
+  };
+  assert.deepEqual(order, ['p2p-core', 'private-turn', 'private-turn-bootstrap', 'private-turn-production']);
+  assert.equal(status(false), 'off');
+  assert.equal(status(true), 'active');
 });

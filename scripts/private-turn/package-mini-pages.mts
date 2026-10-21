@@ -53,7 +53,7 @@ async function packagePreview() {
     const release = { label: 'beta 1.9', revision };
     const injected = '<script>window.MiniPublicTurnPreview=' + JSON.stringify({ enabled: true, ...release }) + ';</script>'
         + extras.map(name => '<script src="./' + name + '"></script>').join('');
-    content.set('index.html', Buffer.from(html.replace(anchor, anchor + injected)));
+    content.set('index.html', Buffer.from(html.replace(turnTags[2], turnTags[2] + injected)));
     content.set('sw.js', Buffer.from(sw.replace(list[0], list[0].replace(/\s*\];$/, ',\n' + extras.map(name => "  './" + name + "',\n").join('') + '];'))
         .replace(/^const CACHE_VERSION = '[^']*';/m, `const CACHE_VERSION = 'mini-turn-${candidate ? 'candidate' : 'commit'}-${revision}';`)));
     // All input validation precedes the exclusive output-directory creation.
