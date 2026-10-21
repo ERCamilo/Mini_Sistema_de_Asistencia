@@ -12,7 +12,7 @@ test('account presentation preserves original Auth controls and never enables di
  assert.ok(source.includes('identity.append(account)'));
  assert.ok(source.includes("el('firebase-link-login')"));
  assert.ok(source.includes("el('firebase-link-logout')"));
- assert.ok(source.includes('disabled.disabled=true'));
+ assert.ok(!source.includes('disabled.disabled=true'),'no inert Google button when disabled');
  assert.ok(!source.includes('login.hidden=false'));
  assert.ok(!source.includes('initializeApp'));
 });

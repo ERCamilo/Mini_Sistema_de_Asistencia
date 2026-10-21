@@ -53,13 +53,26 @@
     }
     function describePage(s) {
         if (s.home)
-            return { key: 'home', title: 'Compartir', back: false };
+            return { key: 'home', title: 'Conexiones', back: false };
         if ((s.task === 'invitation' || s.task === 'link') && s.linkPhase)
             return { key: s.linkPhase === 'linked' ? 'linked' : s.linkPhase === 'preview' ? 'confirm' : 'invitation', title: s.linkPhase === 'linked' ? 'Dispositivo vinculado' : s.linkPhase === 'preview' ? 'Confirmar vínculo' : 'Vincular con mi obra', back: true };
         if (s.task)
-            return { key: s.task, title: s.taskTitle || 'Compartir', back: true };
+            return { key: s.task, title: s.taskTitle || 'Conexiones', back: true };
         const titles = { 'personal-review': 'Actualizar personal', 'personal-result': 'Personal actualizado', 'personal-received': 'Personal recibido' };
         return { key: s.native || 'direct', title: titles[s.native || ''] || s.nativeTitle || 'Conexión directa', back: true };
+    }
+    /** The three real links, in the order shown by Vincular. One tap on each enters its flow. */
+    function describeLinkChoices(o) {
+        return [
+            { key: 'internet', title: 'Obra de SA por internet', hint: 'Con tu cuenta Google. Envía asistencia y recibe personal desde cualquier lugar.', disabled: !o.internetAvailable, reason: o.internetAvailable ? '' : 'Google no está disponible en esta versión.' },
+            { key: 'direct', title: 'SA, conexión directa', hint: 'Escanea su QR o escribe su código. Ambos equipos abiertos.', disabled: false, reason: '' },
+            { key: 'mini', title: 'Otro Mini', hint: 'Para pasar copias de seguridad entre dos Minis.', disabled: false, reason: '' }
+        ];
+    }
+    function describeAccountButton(o) {
+        var _a;
+        const email = (o.email || '').trim(), name = (o.name || '').trim() || email;
+        return email ? { kind: 'initial', initial: (((_a = name.match(/[\p{L}\p{N}]/u)) === null || _a === void 0 ? void 0 : _a[0]) || 'G').toLocaleUpperCase(), label: 'Mi cuenta · ' + email } : { kind: 'icon', initial: '', label: 'Mi cuenta' };
     }
     function describeFeedback(state, pageChanged, open) { return { banner: state === 'success' || state === 'error', open: !pageChanged && open, busy: state === 'busy' }; }
     function peerInitials(name) {
@@ -177,8 +190,10 @@
                 const initials = peerInitials(peer.name);
                 if (view.avatar.textContent !== initials)
                     view.avatar.textContent = initials;
-                if (view.name.textContent !== peer.name)
+                if (view.name.textContent !== peer.name) {
                     view.name.textContent = peer.name;
+                    view.name.title = peer.name;
+                }
                 if (view.statusLabel.textContent !== model.label) {
                     view.statusLabel.textContent = model.label;
                     const kind = model.state === 'connected' ? 'check' : model.state === 'connecting' ? 'clock' : model.state === 'error' ? 'warning' : 'unlink';
@@ -216,7 +231,7 @@
                 cancel(timer); timer = null; pending.clear(); rows.clear(); } };
     }
     function icon(d, kind) {
-        const paths = { link: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', send: 'M22 2L9 15M22 2l-7 20-4-9-9-4z', calendar: 'M8 2v4M16 2v4M3 10h18M3 4h18v18H3zM8 15h2M14 15h2', share: 'M6 12l12-7M6 12l12 7M18 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6', refresh: 'M3 12a9 9 0 0 1 15-7l3 3M21 3v5h-5M21 12a9 9 0 0 1-15 7l-3-3M3 21v-5h5', back: 'M15 18l-6-6 6-6', chevron: 'M9 6l6 6-6 6', building: 'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4', phone: 'M7 2h10v20H7zM10 18h4', people: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8', cloud: 'M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12z', qr: 'M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6z', document: 'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8', clock: 'M12 8v5l3 2M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20', unlink: 'M9 15l-2 2a4 4 0 0 1-6-6l3-3M15 9l2-2a4 4 0 0 1 6 6l-3 3M3 3l18 18', tag: 'M3 3h8l10 10-8 8L3 11zM7 7h.01', check: 'M5 12l4 4L19 6', warning: 'M12 3L2 21h20L12 3zM12 9v5M12 17h.01' };
+        const paths = { link: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', send: 'M22 2L9 15M22 2l-7 20-4-9-9-4z', calendar: 'M8 2v4M16 2v4M3 10h18M3 4h18v18H3zM8 15h2M14 15h2', share: 'M6 12l12-7M6 12l12 7M18 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 16a3 3 0 1 0 0 6 3 3 0 0 0 0-6', refresh: 'M3 12a9 9 0 0 1 15-7l3 3M21 3v5h-5M21 12a9 9 0 0 1-15 7l-3-3M3 21v-5h5', back: 'M15 18l-6-6 6-6', chevron: 'M9 6l6 6-6 6', building: 'M3 22V2h12v20M15 10h6v12M6 6h2M10 6h2M6 10h2M10 10h2M6 14h2M10 14h2M18 14h1M18 18h1M6 22v-4h6v4', phone: 'M7 2h10v20H7zM10 18h4', people: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-4M16 3a4 4 0 0 1 0 8', cloud: 'M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-2 6 6 0 0 1 0 12z', qr: 'M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h3v3h3v3h-6z', document: 'M14 2H6v20h14V8l-6-6M14 2v6h6M9 13h8M9 17h8', clock: 'M12 8v5l3 2M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20', unlink: 'M9 15l-2 2a4 4 0 0 1-6-6l3-3M15 9l2-2a4 4 0 0 1 6 6l-3 3M3 3l18 18', tag: 'M3 3h8l10 10-8 8L3 11zM7 7h.01', check: 'M5 12l4 4L19 6', backup: 'M12 3v12M7 10l5 5 5-5M4 21h16', person: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', warning: 'M12 3L2 21h20L12 3zM12 9v5M12 17h.01' };
         const svg = d.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('aria-hidden', 'true');
@@ -245,6 +260,18 @@
         account.className = 'mini-connection-header-account';
         account.dataset.miniHeaderAccount = '';
         account.setAttribute('aria-label', 'Mi cuenta');
+        const faceNode = d.createElement('span'), photo = d.createElement('img');
+        photo.className = 'mini-connection-header-photo';
+        photo.alt = '';
+        photo.setAttribute('aria-hidden', 'true');
+        photo.referrerPolicy = 'no-referrer';
+        photo.hidden = true;
+        account.append(faceNode, photo);
+        photo.onload = () => { if (photo.getAttribute('src')) {
+            photo.hidden = false;
+            faceNode.hidden = true;
+        } };
+        photo.onerror = () => { photo.hidden = true; faceNode.hidden = false; };
         const progress = d.createElement('p');
         progress.className = 'mini-connection-progress';
         progress.textContent = 'Un momento…';
@@ -276,7 +303,7 @@
         banner.setAttribute('role', 'status');
         let stopped = false, queued = false, last = '', lastState = '', lastStatus = '';
         function refresh() {
-            var _a, _b, _c, _d, _e, _f, _g;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
             if (stopped)
                 return;
             const home = !((_a = o.shell.querySelector('[data-connections-home]')) === null || _a === void 0 ? void 0 : _a.hidden);
@@ -291,15 +318,14 @@
             }
             else if (!home) {
                 const native = o.body.querySelector('.mini-roster-review:not(.mini-backup-review)') ? 'personal-review' : o.body.querySelector('.mini-roster-result') ? 'personal-result' : o.body.querySelector('[data-review-roster]') ? 'personal-received' : 'direct';
-                snapshot = { native, nativeTitle: ((_d = o.body.querySelector('h3')) === null || _d === void 0 ? void 0 : _d.textContent) || '' };
+                snapshot = { native, nativeTitle: ((_d = o.body.querySelector('[data-mini-title]')) === null || _d === void 0 ? void 0 : _d.dataset.miniTitle) || ((_e = o.body.querySelector('h3')) === null || _e === void 0 ? void 0 : _e.textContent) || '' };
             }
             const page = describePage(snapshot);
             o.shell.dataset.miniConnectionPage = page.key;
             if (heading.textContent !== page.title)
                 heading.textContent = page.title;
             back.hidden = !page.back || (!home && o.task.hidden && !o.body.querySelector('[data-back],[data-finish-roster]'));
-            account.hidden = page.key === 'home';
-            account.disabled = !home && !!o.task.hidden;
+            account.hidden = !home && !!o.task.hidden;
             if (subtitle)
                 subtitle.hidden = page.key !== 'home';
             const status = d.getElementById('firebase-link-status'), name = (status === null || status === void 0 ? void 0 : status.dataset.accountName) || (status === null || status === void 0 ? void 0 : status.dataset.accountEmail) || 'Cuenta Google', initial = name.trim().slice(0, 1).toUpperCase() || 'G';
@@ -313,12 +339,31 @@
                 if (avatar && avatar.textContent !== initial)
                     avatar.textContent = initial;
             }
-            if (account.textContent !== initial)
-                account.textContent = initial;
-            account.title = name;
-            account.dataset.signedIn = String(!!(status === null || status === void 0 ? void 0 : status.dataset.accountEmail));
+            const face = describeAccountButton({ email: status === null || status === void 0 ? void 0 : status.dataset.accountEmail, name: status === null || status === void 0 ? void 0 : status.dataset.accountName });
+            if (face.kind === 'initial') {
+                if (faceNode.textContent !== face.initial || faceNode.querySelector('svg'))
+                    faceNode.replaceChildren(d.createTextNode(face.initial));
+            }
+            else if (!faceNode.querySelector('svg'))
+                faceNode.replaceChildren(icon(d, 'person'));
+            const photoUrl = face.kind === 'initial' ? (((_f = o.photo) === null || _f === void 0 ? void 0 : _f.call(o)) || '') : '';
+            if ((photo.getAttribute('src') || '') !== photoUrl) {
+                photo.hidden = true;
+                faceNode.hidden = false;
+                if (photoUrl)
+                    photo.src = photoUrl;
+                else
+                    photo.removeAttribute('src');
+                if (photoUrl && photo.complete && photo.naturalWidth > 0) {
+                    photo.hidden = false;
+                    faceNode.hidden = true;
+                }
+            }
+            account.title = face.label;
+            account.setAttribute('aria-label', face.label);
+            account.dataset.signedIn = String(face.kind === 'initial');
             const key = page.key + '|' + page.title;
-            const cloud = d.getElementById('cloud-field-status'), state = (cloud === null || cloud === void 0 ? void 0 : cloud.dataset.operationState) || 'idle', message = ((_e = cloud === null || cloud === void 0 ? void 0 : cloud.textContent) === null || _e === void 0 ? void 0 : _e.trim()) || '', view = describeFeedback(state, key !== last, details.open), changed = state !== lastState || message !== lastStatus;
+            const cloud = d.getElementById('cloud-field-status'), state = (cloud === null || cloud === void 0 ? void 0 : cloud.dataset.operationState) || 'idle', message = ((_g = cloud === null || cloud === void 0 ? void 0 : cloud.textContent) === null || _g === void 0 ? void 0 : _g.trim()) || '', view = describeFeedback(state, key !== last, details.open), changed = state !== lastState || message !== lastStatus;
             if (feedback === null || feedback === void 0 ? void 0 : feedback.parentElement) {
                 const parent = feedback.parentElement;
                 if (parent !== details) {
@@ -326,7 +371,7 @@
                     details.append(feedback);
                 }
                 details.open = view.open;
-                const hidden = !((_f = feedback.textContent) === null || _f === void 0 ? void 0 : _f.trim());
+                const hidden = !((_h = feedback.textContent) === null || _h === void 0 ? void 0 : _h.trim());
                 if (details.hidden !== hidden)
                     details.hidden = hidden;
             }
@@ -348,12 +393,12 @@
             }
             lastState = state;
             lastStatus = message;
-            const busy = view.busy || ((_g = d.getElementById('firebase-link-status')) === null || _g === void 0 ? void 0 : _g.dataset.linkBusy) === 'true';
+            const busy = view.busy || ((_j = d.getElementById('firebase-link-status')) === null || _j === void 0 ? void 0 : _j.dataset.linkBusy) === 'true';
             if (progress.hidden === busy)
                 progress.hidden = !busy;
             o.account.disabled = busy;
             back.disabled = busy;
-            account.disabled = busy || (!home && !!o.task.hidden);
+            account.disabled = busy;
             const close = o.shell.querySelector('[data-p2p-close]');
             if (close)
                 close.disabled = busy;
@@ -374,7 +419,7 @@
             observer.observe(feedback, { childList: true, subtree: true });
         const status = d.getElementById('firebase-link-status');
         if (status)
-            observer.observe(status, { attributes: true, attributeFilter: ['data-account-email', 'data-account-name', 'data-link-phase', 'data-link-busy'] });
+            observer.observe(status, { attributes: true, attributeFilter: ['data-account-email', 'data-account-name', 'data-account-photo', 'data-link-phase', 'data-link-busy'] });
         const confirm = d.getElementById('firebase-link-confirm');
         if (confirm)
             observer.observe(confirm, { attributes: true, attributeFilter: ['hidden'] });
@@ -387,5 +432,5 @@
                 details.before(feedback); details.remove(); back.remove(); account.remove(); heading.textContent = originalTitle; delete heading.dataset.miniPageTitle; delete o.shell.dataset.miniConnectionPage; if (subtitle)
                 subtitle.hidden = false; } };
     }
-    return { mountManualPairFeedback, describePage, describeFeedback, peerInitials, describePeer, createLinkFingerprint, observePhase, describePeerDetails, mountPeers, icon, mount };
+    return { mountManualPairFeedback, describePage, describeLinkChoices, describeAccountButton, describeFeedback, peerInitials, describePeer, createLinkFingerprint, observePhase, describePeerDetails, mountPeers, icon, mount };
 });

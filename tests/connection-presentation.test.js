@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {describePage}=require('../connection-presentation.js');
 test('a single title describes each connection stage, including native personal and direct pairing',()=>{
- assert.deepEqual(describePage({home:true,taskTitle:'viejo'}),{key:'home',title:'Compartir',back:false});
+ assert.deepEqual(describePage({home:true,taskTitle:'viejo'}),{key:'home',title:'Conexiones',back:false});
  assert.equal(describePage({task:'send',taskTitle:'Enviar asistencia'}).title,'Enviar asistencia');
  assert.equal(describePage({native:'personal-review',nativeTitle:'Revisa qué cambiará'}).title,'Actualizar personal');
  assert.equal(describePage({native:'personal-result'}).title,'Personal actualizado');
@@ -184,4 +184,34 @@ test('manual pairing accepts core-normalized formats and keeps transport errors 
  assert.equal(view.validate(),true);view.showError('<img onerror=bad>');assert.equal(status.hidden,false);assert.equal(status.textContent,'<img onerror=bad>');
  for(const field of [code,key])assert.equal(field.attributes['aria-invalid'],undefined);
  code.listeners.input();assert.equal(status.hidden,true);
+});
+
+test('link choices cover the three real links with one tap each and explain a disabled Google route',()=>{
+ const {describeLinkChoices}=require('../connection-presentation.js');
+ const all=describeLinkChoices({internetAvailable:true});
+ assert.deepEqual(all.map(c=>c.key),['internet','direct','mini']);
+ assert.deepEqual(all.map(c=>c.title),['Obra de SA por internet','SA, conexión directa','Otro Mini']);
+ assert.ok(all.every(c=>c.disabled===false&&c.reason===''&&c.hint.length>0&&c.hint.length<=90));
+ const offline=describeLinkChoices({internetAvailable:false});
+ assert.equal(offline[0].disabled,true);assert.equal(offline[0].reason,'Google no está disponible en esta versión.');
+ assert.ok(offline.slice(1).every(c=>c.disabled===false));
+});
+
+test('shared vocabulary: no screen title or choice uses the retired names',()=>{
+ const {describePage,describeLinkChoices}=require('../connection-presentation.js');
+ const text=JSON.stringify([describePage({home:true}),describePage({task:'link',taskTitle:'Vincular'}),describeLinkChoices({internetAvailable:true})]);
+ for(const retired of ['Asociar','Compartir','Respaldos P2P','Vincular dispositivo'])assert.ok(!text.includes(retired),retired);
+});
+
+test('the single header account control shows a person icon when signed out and the initial when signed in',()=>{
+ const {describeAccountButton}=require('../connection-presentation.js');
+ assert.deepEqual(describeAccountButton({}),{kind:'icon',initial:'',label:'Mi cuenta'});
+ assert.deepEqual(describeAccountButton({email:'',name:'Cuenta Google'}),{kind:'icon',initial:'',label:'Mi cuenta'});
+ assert.deepEqual(describeAccountButton({email:'ana@x.do',name:'ana pérez'}),{kind:'initial',initial:'A',label:'Mi cuenta · ana@x.do'});
+ assert.deepEqual(describeAccountButton({email:'jm@x.do'}),{kind:'initial',initial:'J',label:'Mi cuenta · jm@x.do'});
+});
+
+test('native screens can name themselves for the header instead of leaking an inner section title',()=>{
+ const {describePage}=require('../connection-presentation.js');
+ assert.equal(describePage({native:'direct',nativeTitle:'Respaldos'}).title,'Respaldos');
 });
