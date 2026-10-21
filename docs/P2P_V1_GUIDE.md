@@ -105,7 +105,8 @@ El funcionamiento del ecosistema no depende obligatoriamente de WebRTC ni de la 
 - **Señalización Efímera**: El servicio de señalización se utiliza únicamente para descubrimiento y negociación SDP/ICE (Offer/Answer). No almacena ni registra cuerpos de datos o respaldos.
 - **Límite de Tamaño**:
   - Respaldo máximo v1: **25 MiB**.
-  - Roster máximo v1: **10 MiB**.
+  - Roster máximo v1: **5 MiB**.
+  - Una transferencia se cancela (y el canal se revoca) tras **30 s** sin actividad: el emisor falla si el canal no se vacía o se cierra, y el receptor libera lo recibido a medias.
 
 ---
 

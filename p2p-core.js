@@ -18,6 +18,7 @@
   const MAX_ROSTER_BYTES = 5 * 1024 * 1024;
   const MAX_BACKUP_BYTES = 25 * 1024 * 1024;
   const CHUNK_SIZE = 12 * 1024;
+  const TRANSFER_STALL_TIMEOUT_MS = 30 * 1000;
   const MAX_SIGNAL_BYTES = 64 * 1024;
   const MAX_SDP_BYTES = 32 * 1024;
   const MAX_ICE_CANDIDATE_BYTES = 8 * 1024;
@@ -627,12 +628,23 @@
       ...(demand ? { startNegotiation: () => demand.start() } : {}) };
   }
 
-  function waitForBufferedAmount(channel, low = 128 * 1024) {
+  function waitForBufferedAmount(channel, low = 128 * 1024, stallTimeoutMs = TRANSFER_STALL_TIMEOUT_MS) {
     if (channel.bufferedAmount <= low) return Promise.resolve();
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
+      let timer = null;
+      const settle = outcome => {
+        clearTimeout(timer);
+        for (const type of ['bufferedamountlow', 'close', 'error']) channel.removeEventListener(type, handlers[type]);
+        outcome();
+      };
+      const handlers = {
+        bufferedamountlow: () => settle(resolve),
+        close: () => settle(() => reject(new Error('El canal de datos P2P se cerró durante el envío.'))),
+        error: () => settle(() => reject(new Error('El canal de datos P2P falló durante el envío.')))
+      };
       channel.bufferedAmountLowThreshold = low;
-      const handler = () => { channel.removeEventListener('bufferedamountlow', handler); resolve(); };
-      channel.addEventListener('bufferedamountlow', handler);
+      for (const type of Object.keys(handlers)) channel.addEventListener(type, handlers[type]);
+      timer = setTimeout(() => settle(() => reject(new Error('El envío P2P se atascó: el canal no se vació a tiempo.'))), stallTimeoutMs);
     });
   }
 
@@ -691,7 +703,7 @@
     catch (error) { revokeChannel(channel, error); throw error; }
   }
 
-  async function sendPayload(channel, { kind, schema, text, bytes, onProgress }) {
+  async function sendPayload(channel, { kind, schema, text, bytes, onProgress, stallTimeoutMs }) {
     if (!isChannelAuthenticated(channel)) throw new Error('Canal P2P no autenticado.');
     const isRoster = kind === ROSTER_KIND;
     const isBackup = kind === BACKUP_KIND;
@@ -726,7 +738,8 @@
     const start = validateTransferStart({ protocol: TRANSFER_PROTOCOL, type: 'start', transferId, kind, schema, size: rawBytes.byteLength, chunkSize: CHUNK_SIZE, totalChunks, sha256: digest });
     await sendAuthenticated(channel, JSON.stringify(start));
     for (let index = 0; index < totalChunks; index++) {
-      await waitForBufferedAmount(channel);
+      try { await waitForBufferedAmount(channel, undefined, stallTimeoutMs); }
+      catch (error) { revokeChannel(channel, error); throw error; }
       const start = index * CHUNK_SIZE;
       const end = Math.min(rawBytes.byteLength, start + CHUNK_SIZE);
       const chunk = rawBytes.slice(start, end);
@@ -740,11 +753,19 @@
     return { transferId, size: rawBytes.byteLength, sha256: digest, kind, schema, totalChunks };
   }
 
-  function createTransferReceiver({ channel, onComplete, onProgress, onError } = {}) {
+  function createTransferReceiver({ channel, onComplete, onProgress, onError, idleTimeoutMs = TRANSFER_STALL_TIMEOUT_MS } = {}) {
     let current = null;
     let failed = false;
+    let idleTimer = null;
+    const clearIdle = () => { clearTimeout(idleTimer); idleTimer = null; };
+    const armIdle = () => {
+      clearIdle();
+      idleTimer = setTimeout(() => fail(new Error('Transferencia P2P cancelada por inactividad.')), idleTimeoutMs);
+      idleTimer.unref?.();
+    };
     const fail = error => {
       if (failed) return;
+      clearIdle();
       current = null;
       failed = true;
       const failure = error instanceof Error ? error : new Error(String(error));
@@ -769,6 +790,7 @@
              if (current) throw new Error('Ya hay una transferencia en curso.');
              const meta = validateTransferStart(msg);
              current = { meta, chunks: new Array(meta.totalChunks), received: 0, receivedBytes: 0 };
+             armIdle();
              return true;
            }
            if (msg.type === 'end') {
@@ -780,6 +802,7 @@
              let offset = 0;
              for (const chunk of current.chunks) { if (!chunk) throw new Error('Chunk faltante.'); bytes.set(chunk, offset); offset += chunk.byteLength; }
              if (offset !== current.meta.size) throw new Error('Tamaño recibido no coincide.');
+             clearIdle();
              const digest = await sha256Hex(bytes);
              if (digest !== current.meta.sha256) throw new Error('SHA-256 no coincide.');
               let text;
@@ -815,6 +838,7 @@
          current.chunks[index] = raw.slice(4);
          current.received += 1;
          current.receivedBytes += payloadLength;
+         armIdle();
          onProgress?.(current.received / current.meta.totalChunks);
          return true;
       } catch (error) { fail(error); return true; }
@@ -1065,7 +1089,7 @@
     DB_NAME, SIGNALING_URL, TRANSFER_PROTOCOL, CONTROL_PROTOCOL, ROSTER_KIND, ROSTER_SCHEMA,
     BACKUP_KIND, MINI_BACKUP_SCHEMA, SA_BACKUP_SCHEMA,
     LINK_TOKEN_BYTES,
-    MAX_ROSTER_BYTES, MAX_BACKUP_BYTES, CHUNK_SIZE, MAX_SIGNAL_BYTES, MAX_SDP_BYTES, MAX_ICE_CANDIDATE_BYTES,
+    MAX_ROSTER_BYTES, MAX_BACKUP_BYTES, CHUNK_SIZE, TRANSFER_STALL_TIMEOUT_MS, MAX_SIGNAL_BYTES, MAX_SDP_BYTES, MAX_ICE_CANDIDATE_BYTES,
     PAIR_SESSION_TTL_MS, ICE_SERVERS,
     PRESENCE_PING_TYPE, PRESENCE_PONG_TYPE, PRESENCE_HEARTBEAT_MS, PRESENCE_TTL_MS,
     randomToken, randomCode, randomPairKey, sha256Hex, hmacHex,
