@@ -347,3 +347,28 @@ for (const [label, mutate] of [
   assert.equal(f.provider.getLeaseRemainingMs(), 0);
   assert.doesNotMatch(JSON.stringify(events), /synthetic|expiresAt|iceServers|idToken/);
 });
+
+const PRODUCTION = { profile: 'mini-production', origin: 'https://miniasist.erlin.do', contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds', clockSource: 'issuer' } };
+const productionBody = () => ({ username: 'synthetic-user', credential: 'synthetic-password', ttl: 300, expiresAt: 1700000300, iceServers: [{ urls: 'stun:turn.test.invalid:3478' }, { urls: 'turn:turn.test.invalid:3478', username: 'synthetic-user', credential: 'synthetic-password' }] });
+test('production profile uses the fixed endpoint, issuer Date and ordinary (not forced) relay policy', async () => {
+  const seen = [];
+  const f = fixture({ ...PRODUCTION, monotonicNow: () => 100, fetcher: async (url, options) => { seen.push({ url, options }); return Response.json(productionBody(), { headers: { Date: new Date(1700000000000).toUTCString() } }); } });
+  const config = await f.provider.getConfiguration();
+  assert.equal(config.iceTransportPolicy, 'all');
+  assert.equal(seen[0].url, 'https://turn-api.erlin.do/turn-creds');
+  assert.equal(seen[0].options.credentials, 'omit'); assert.equal(seen[0].options.redirect, 'error');
+});
+test('production profile rejects other origins, forced relay, private origins and wrong clock contracts', () => {
+  for (const change of [{ origin: 'https://foreign.invalid' }, { origin: 'https://ercamilo.github.io' }, { origin: 'https://127.0.0.1:9443' }, { origin: 'https://miniasist.erlin.do:8443' },
+    { forceRelay: true }, { allowedOrigins: ['https://a2.tail2a0a8e.ts.net:8443'] }, { contract }, { contract: { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds' } }]) {
+    assert.throws(() => fixture({ ...PRODUCTION, ...change }), /TURN_CONFIGURATION_INVALID/, JSON.stringify(change));
+  }
+});
+test('production guest never fetches', async () => {
+  const f = fixture({ ...PRODUCTION }); f.setUser(null);
+  assert.equal(await f.provider.getConfiguration(), null); assert.equal(f.calls(), 0);
+});
+test('production profile does not accept the private header instead of Date', async () => {
+  const f = fixture({ ...PRODUCTION, monotonicNow: () => 100, fetcher: async () => Response.json(productionBody(), { headers: { 'X-Turn-Issued-Date': new Date(1700000000000).toUTCString() } }) });
+  await assert.rejects(f.provider.getConfiguration());
+});
