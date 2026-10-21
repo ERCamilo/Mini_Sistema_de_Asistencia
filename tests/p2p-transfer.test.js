@@ -833,3 +833,72 @@ test('retired collision channel cannot revoke its replacement transport', async 
     assert.equal(session.isClosed(), false); assert.equal(session.pc.closeCalls, 0); session.close();
   } finally { if (previous === undefined) delete globalThis.RTCPeerConnection; else globalThis.RTCPeerConnection = previous; }
 });
+
+// --- Stall protection (sender drain + receiver idle watchdog) ---
+
+class DrainChannel extends CaptureChannel {
+  constructor() { super(); this.bufferedAmount = 1024 * 1024; this.handlers = new Map(); }
+  addEventListener(type, fn) {
+    this.handlers.set(type, [...(this.handlers.get(type) || []), fn]);
+    if (type === 'bufferedamountlow') this.onWaiting?.();
+  }
+  removeEventListener(type, fn) { this.handlers.set(type, (this.handlers.get(type) || []).filter(x => x !== fn)); }
+  emit(type) { for (const fn of [...(this.handlers.get(type) || [])]) fn({}); }
+  listenerCount() { let n = 0; for (const list of this.handlers.values()) n += list.length; return n; }
+}
+
+test('sendPayload rejects when the channel closes while waiting for the buffer to drain', async () => {
+  const channel = new DrainChannel();
+  Core.markChannelAuthenticated(channel);
+  // Close only once the sender is really waiting: a fixed delay races with the SHA-256 under load.
+  const waiting = new Promise(resolve => { channel.onWaiting = resolve; });
+  const pending = Core.sendPayload(channel, { kind: 'backup', schema: 'mini-backup/v1', bytes: new Uint8Array([1, 2, 3]) });
+  waiting.then(() => { channel.readyState = 'closed'; channel.emit('close'); });
+  await assert.rejects(pending, /cerró|closed/i);
+  assert.equal(channel.listenerCount(), 0, 'drain listeners must be cleaned up');
+});
+
+test('sendPayload rejects when the buffer never drains within the stall timeout', async () => {
+  const channel = new DrainChannel();
+  Core.markChannelAuthenticated(channel);
+  await assert.rejects(
+    Core.sendPayload(channel, { kind: 'backup', schema: 'mini-backup/v1', bytes: new Uint8Array([1, 2, 3]), stallTimeoutMs: 20 }),
+    /atascó|stall/i
+  );
+  assert.equal(channel.listenerCount(), 0);
+});
+
+test('sendPayload still completes when the buffer drains in time', async () => {
+  const channel = new DrainChannel();
+  Core.markChannelAuthenticated(channel);
+  const waiting = new Promise(resolve => { channel.onWaiting = resolve; });
+  const pending = Core.sendPayload(channel, { kind: 'backup', schema: 'mini-backup/v1', bytes: new Uint8Array([1, 2, 3]), stallTimeoutMs: 500 });
+  waiting.then(() => { channel.bufferedAmount = 0; channel.emit('bufferedamountlow'); });
+  const result = await pending;
+  assert.equal(result.totalChunks, 1);
+});
+
+test('receiver fails an incomplete transfer after the idle timeout and frees it', async () => {
+  const [sender, receiverChannel] = linkedPair();
+  Core.markChannelAuthenticated(sender); Core.markChannelAuthenticated(receiverChannel);
+  let error = null;
+  const receiver = Core.createTransferReceiver({ channel: receiverChannel, idleTimeoutMs: 20, onError: e => { error = e; } });
+  const bytes = new Uint8Array(30000).fill(7);
+  const start = Core.validateTransferStart({ protocol: Core.TRANSFER_PROTOCOL, type: 'start', transferId: 't-idle', kind: 'backup', schema: 'mini-backup/v1', size: bytes.length, chunkSize: Core.CHUNK_SIZE, totalChunks: 3, sha256: await Core.sha256Hex(bytes) });
+  await receiver({ data: JSON.stringify(start) });
+  await waitFor(() => error, 'idle timeout');
+  assert.match(error.message, /inactividad|idle/i);
+  assert.equal(Core.isChannelAuthenticated(receiverChannel), false, 'channel must be revoked');
+});
+
+test('receiver idle timer is cleared on completion and on a never-started channel', async () => {
+  const [sender, receiverChannel] = linkedPair();
+  Core.markChannelAuthenticated(sender); Core.markChannelAuthenticated(receiverChannel);
+  let error = null, done = null;
+  const receiver = Core.createTransferReceiver({ channel: receiverChannel, idleTimeoutMs: 20, onComplete: r => { done = r; }, onError: e => { error = e; } });
+  receiverChannel.addEventListener('message', receiver);
+  await Core.sendPayload(sender, { kind: 'backup', schema: 'mini-backup/v1', bytes: new Uint8Array([9, 9, 9]) });
+  await waitFor(() => done, 'completion');
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(error, null, 'no spurious idle failure after success');
+});

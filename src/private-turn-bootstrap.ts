@@ -4,8 +4,12 @@ interface PrivateTurnBootstrapAuth {
 }
 interface PrivateTurnBootstrapSession { pc: unknown; channel?: unknown; close(...args: unknown[]): void; getLeaseRemainingMs?: () => number; }
 interface PrivateTurnBootstrapCore { createRtcSession(options: Record<string, unknown>): Promise<PrivateTurnBootstrapSession>; }
+// available: relay credentials obtained; unavailable: signed in but the credential service
+// failed (direct connection only); not-requested: guest or anonymous user.
+type PrivateTurnRelayStatus = 'available' | 'unavailable' | 'not-requested';
 interface PrivateTurnBootstrapOptions {
-    profile?: 'mini-pages-turn-test';
+    profile?: 'mini-pages-turn-test' | 'mini-production';
+    onRelayStatus?: (status: PrivateTurnRelayStatus) => void;
     enabled: boolean;
     forceRelay?: boolean;
     diagnostics?: boolean;
@@ -92,12 +96,15 @@ interface PrivateTurnBootstrapRoot {
     function install(options: PrivateTurnBootstrapOptions): PrivateTurnBootstrapHandle {
         if (options.enabled !== true) return { active: false, dispose: () => {} };
         const origin = root.location?.origin || '', identity = options.appIdentity, core = root.SaMiniP2P;
-        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test') fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test' && options.profile !== 'mini-production') fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         const publicPreview = options.profile === 'mini-pages-turn-test';
+        // Optional production profile: the only one that may fall back to STUN, never forces relay.
+        const production = options.profile === 'mini-production';
+        if (production && (origin !== 'https://miniasist.erlin.do' || identity !== 'mini' || options.forceRelay === true || options.diagnostics === true || options.previewRelease !== undefined || (options.allowedOrigins || []).length)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         if (publicPreview && (origin !== 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev' || identity !== 'mini' || options.forceRelay !== true || options.diagnostics !== true || (options.allowedOrigins || []).length)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         try {
             const url = new URL(origin);
-            if (url.protocol !== 'https:' || (!publicPreview && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
+            if (url.protocol !== 'https:' || (!publicPreview && !production && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         } catch { fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID'); }
         if ((options.allowedOrigins || []).some(value => !['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'].includes(value))) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         if (!core || !root.PrivateTurn || !root.fetch || (identity === 'sa' && !options.loadSaAuth)) fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
@@ -137,7 +144,15 @@ interface PrivateTurnBootstrapRoot {
         // may complete later; the label observer preserves this same identity.
         const readyVersion = () => { doc?.removeEventListener?.('DOMContentLoaded', readyVersion); void Promise.resolve().then(decorateVersion); };
         let unsubscribe: () => void = () => {};
-        const provider = root.PrivateTurn.createProvider({ enabled: true, profile: options.profile, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => auth?.currentUser || null, fetcher, now: options.now });
+        // Anonymous users are treated as guests by the production profile (server policy must match).
+        const activeUser = () => { const user = auth?.currentUser || null; return production && user?.isAnonymous === true ? null : user; };
+        const provider = root.PrivateTurn.createProvider({ enabled: true, profile: options.profile, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: activeUser, fetcher, now: options.now });
+        const notifyRelay = (status: PrivateTurnRelayStatus) => { try { options.onRelayStatus?.(status); } catch { /* Observers cannot change connection creation. */ } };
+        // Only a credential-service outage may fall back; account, scope and disposal changes never do.
+        const isCredentialOutage = (error: unknown) => {
+            const failure = error as { name?: unknown; message?: unknown } | null;
+            return failure?.name === 'PrivateTurnError' && (failure.message === 'TURN_UNAVAILABLE' || failure.message === 'TURN_INVALID_RESPONSE');
+        };
         // Private observations are bounded and never become connection authority.
         const observations = new Map<number, () => void>();
         const history = new Map<number, PrivateTurnBootstrapDiagnostic>();
@@ -404,15 +419,23 @@ interface PrivateTurnBootstrapRoot {
                 bind(next);
                 captured = epoch;
                 authResolved = true;
-                append(record, { stage: 'auth', code: auth?.currentUser ? 'AUTH_SIGNED_IN' : 'AUTH_GUEST', elapsedMs: elapsed() });
-                const uid = auth?.currentUser?.uid || null, bound = auth;
+                append(record, { stage: 'auth', code: activeUser() ? 'AUTH_SIGNED_IN' : 'AUTH_GUEST', elapsedMs: elapsed() });
+                const uid = activeUser()?.uid || null, bound = auth;
                 const acquisitionOffset = elapsed();
-                const config = await provider.getConfiguration(options.diagnostics === true ? event => {
-                    try { guard(captured, capturedScope); append(record, { ...event, elapsedMs: Math.min(300000, acquisitionOffset + event.elapsedMs) }); } catch { /* Ignore stale acquisition events. */ }
-                } : undefined);
+                let config: PrivateTurnConfiguration | null, unavailable = false;
+                try {
+                    config = await provider.getConfiguration(options.diagnostics === true ? event => {
+                        try { guard(captured, capturedScope); append(record, { ...event, elapsedMs: Math.min(300000, acquisitionOffset + event.elapsedMs) }); } catch { /* Ignore stale acquisition events. */ }
+                    } : undefined);
+                } catch (error) {
+                    if (!production || !isCredentialOutage(error)) throw error;
+                    config = null; unavailable = true;
+                }
+                // Also what keeps a fallback from outliving disposal, an account or a scope change.
                 guard(captured, capturedScope);
-                if (auth !== bound || (auth?.currentUser?.uid || null) !== uid || (identity === 'mini' && miniAuth() !== bound)) fail('TURN_BOOTSTRAP_STALE');
-                record.credentials = config ? 'available' : 'guest'; publish(record);
+                if (auth !== bound || (activeUser()?.uid || null) !== uid || (identity === 'mini' && miniAuth() !== bound)) fail('TURN_BOOTSTRAP_STALE');
+                record.credentials = unavailable ? 'failed' : config ? 'available' : 'guest'; publish(record);
+                notifyRelay(config ? 'available' : unavailable ? 'unavailable' : 'not-requested');
                 append(record, { stage: 'rtc', code: 'RTC_START', elapsedMs: elapsed() });
                 const observed = options.diagnostics === true ? { ...sessionOptions } : sessionOptions;
                 if (options.diagnostics === true) {

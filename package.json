@@ -1,6 +1,6 @@
 {
   "name": "asistencia-mini",
-  "version": "2.17.6",
+  "version": "2.17.7",
   "private": true,
   "scripts": {
     "build": "tsc && node scripts/sync-app-version.mjs && node scripts/stamp-build.mjs && node scripts/release-manifest.cjs",
@@ -10,7 +10,8 @@
     "tutorials": "tsc && node tests/tutorials/record.mjs",
     "test:e2e": "tsc && node --test tests/e2e/app-updates.e2e.mjs tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/employee-report.e2e.mjs tests/e2e/positions.e2e.mjs tests/e2e/sheet-import.e2e.mjs tests/e2e/tutorials.e2e.mjs",
     "test:e2e:connections": "tsc && node --test tests/e2e/connections.e2e.mjs",
-    "test:e2e:ci": "tsc && node --test tests/e2e/app-updates.e2e.mjs tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/employee-report.e2e.mjs tests/e2e/positions.e2e.mjs tests/e2e/sheet-import.e2e.mjs"
+    "test:e2e:ci": "tsc && node --test tests/e2e/app-updates.e2e.mjs tests/e2e/storage-v2.e2e.mjs tests/e2e/theme.e2e.mjs tests/e2e/whatsapp.e2e.mjs tests/e2e/employee-report.e2e.mjs tests/e2e/positions.e2e.mjs tests/e2e/sheet-import.e2e.mjs",
+    "test:release": "node scripts/release-manifest.cjs --check --release"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

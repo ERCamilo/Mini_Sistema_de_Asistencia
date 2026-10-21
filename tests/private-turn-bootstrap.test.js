@@ -569,3 +569,92 @@ test('public signed bootstrap reuses named Mini user with fixed issuer Date cont
   const handle=f.install({profile:'mini-pages-turn-test',forceRelay:true,diagnostics:true,contract:{ttlUnit:'seconds',expiresAtFormat:'unix-seconds',clockSource:'issuer'}});
   await f.root.SaMiniP2P.createRtcSession({});assert.equal(url,'https://turn-api.erlin.do/turn-creds');assert.equal(f.calls()[0].iceTransportPolicy,'relay');assert.ok(f.appNames.every(name=>name==='mini-field'));handle.dispose();
 });
+
+// --- Optional production profile (prepared, off): fail-open to STUN only here ---
+const productionContract = { ttlUnit: 'seconds', expiresAtFormat: 'unix-seconds', clockSource: 'issuer' };
+const previewOrigin = 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev';
+const turnBody = () => ({ username: 'synthetic-user', credential: 'synthetic-password', ttl: 300, expiresAt: 1700000300, iceServers: [{ urls: 'stun:turn.test.invalid:3478' }, { urls: 'turn:turn.test.invalid:3478', username: 'synthetic-user', credential: 'synthetic-password' }] });
+const turnResponse = (body = turnBody(), headers = { Date: new Date(1700000000000).toUTCString() }) => Response.json(body, { headers });
+function productionFixture(overrides = {}) {
+  let requests = 0;
+  const f = fixture({ location: { origin: 'https://miniasist.erlin.do' }, performance: { now: () => 100 },
+    fetch: async () => { requests++; return turnResponse(); }, ...overrides });
+  const statuses = [];
+  return { ...f, statuses, requests: () => requests,
+    install: changes => f.install({ profile: 'mini-production', contract: productionContract, onRelayStatus: status => statuses.push(status), ...changes }) };
+}
+test('production profile: a signed-in user gets credentials with the ordinary (not forced) policy', async () => {
+  const f = productionFixture(); const handle = f.install();
+  await f.root.SaMiniP2P.createRtcSession({ signaling: {} });
+  assert.equal(f.requests(), 1); assert.equal(f.calls()[0].iceTransportPolicy, 'all'); assert.ok(f.calls()[0].iceServers.some(server => server.username === 'synthetic-user'));
+  assert.deepEqual(f.statuses, ['available']); handle.dispose();
+});
+test('production profile only installs for the exact Mini origin, without forced relay or diagnostics', () => {
+  for (const change of [{ location: { origin: 'https://ercamilo.github.io' } }, { location: { origin: 'https://127.0.0.1:9443' } }, { location: { origin: previewOrigin } }, { location: { origin: 'https://miniasist.erlin.do:8443' } }]) {
+    assert.throws(() => productionFixture(change).install(), /TURN_BOOTSTRAP_CONFIGURATION_INVALID/, JSON.stringify(change));
+  }
+  for (const change of [{ appIdentity: 'sa', loadSaAuth: async () => ({}) }, { forceRelay: true }, { diagnostics: true }, { allowedOrigins: ['https://a2.tail2a0a8e.ts.net:8443'] }, { previewRelease: { label: 'beta 1.9', revision: 'abcdef1' } }]) {
+    assert.throws(() => productionFixture().install(change), /TURN_BOOTSTRAP_CONFIGURATION_INVALID/, JSON.stringify(change));
+  }
+});
+const failures = {
+  'network error': () => { throw new Error('synthetic-secret'); },
+  'HTTP 503': async () => new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } }),
+  'malformed JSON': async () => new Response('{', { headers: { 'Content-Type': 'application/json', Date: new Date(1700000000000).toUTCString() } }),
+  'wrong content type': async () => new Response('x', { headers: { 'Content-Type': 'text/html' } }),
+  'invalid contract': async () => turnResponse({ ...turnBody(), ttl: 9999 })
+};
+for (const [label, fetch] of Object.entries(failures)) {
+  test(`production fail-open: ${label} keeps the connection on the caller's own options (STUN) and reports it`, async () => {
+    const f = productionFixture({ fetch }); const handle = f.install();
+    const options = { signaling: { id: 'pairing' }, onState() {} };
+    await f.root.SaMiniP2P.createRtcSession(options);
+    assert.equal(f.calls().length, 1); assert.equal(f.calls()[0], options, 'pairing options pass through untouched');
+    assert.equal(f.calls()[0].iceTransportPolicy, undefined); assert.equal(f.calls()[0].iceServers, undefined);
+    assert.deepEqual(f.statuses, ['unavailable']); handle.dispose();
+  });
+}
+test('production guest and anonymous users never request credentials and keep the original options', async () => {
+  const f = productionFixture(); const handle = f.install();
+  f.auth.currentUser = null; const guest = { signaling: {} }; await f.root.SaMiniP2P.createRtcSession(guest);
+  f.auth.currentUser = { uid: 'anon-1', isAnonymous: true, getIdToken: async () => { throw new Error('must not be called'); } }; const anonymous = { signaling: {} }; await f.root.SaMiniP2P.createRtcSession(anonymous);
+  assert.equal(f.requests(), 0); assert.equal(f.calls()[0], guest); assert.equal(f.calls()[1], anonymous);
+  assert.deepEqual(f.statuses, ['not-requested', 'not-requested']); handle.dispose();
+});
+test('production: a user that links an anonymous account becomes eligible for credentials', async () => {
+  const f = productionFixture(); const handle = f.install();
+  f.setUser({ uid: 'one', isAnonymous: false, getIdToken: async () => 'synthetic-token' }); await f.root.SaMiniP2P.createRtcSession({});
+  assert.equal(f.requests(), 1); assert.deepEqual(f.statuses, ['available']); handle.dispose();
+});
+for (const change of ['account', 'dispose', 'scope']) {
+  test(`production fail-open never applies to a ${change} change while credentials are pending`, async () => {
+    const gate = deferred(); const f = productionFixture({ fetch: () => gate.promise }); const handle = f.install();
+    const rejected = assert.rejects(f.root.SaMiniP2P.createRtcSession({}), /TURN_ACCOUNT_CHANGED|TURN_BOOTSTRAP_STALE/);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (change === 'account') f.setUser({ uid: 'two', getIdToken: async () => 'other' }); else if (change === 'dispose') handle.dispose(); else f.setScope('two');
+    gate.resolve(turnResponse()); await rejected;
+    assert.equal(f.calls().length, 0); assert.deepEqual(f.statuses, []); handle.dispose();
+  });
+}
+test('production: a stale scope plus an API failure still rejects instead of falling back', async () => {
+  const gate = deferred(); const f = productionFixture({ fetch: () => gate.promise }); const handle = f.install();
+  const rejected = assert.rejects(f.root.SaMiniP2P.createRtcSession({}), /TURN_BOOTSTRAP_STALE/);
+  await new Promise(resolve => setTimeout(resolve, 0)); f.setScope('two'); gate.resolve(new Response('{}', { status: 503, headers: { 'Content-Type': 'application/json' } })); await rejected;
+  assert.equal(f.calls().length, 0); assert.deepEqual(f.statuses, []); handle.dispose();
+});
+test('production flag off: a disabled production profile leaves the factory untouched', async () => {
+  const f = productionFixture(); const handle = f.install({ enabled: false });
+  assert.equal(handle.active, false); assert.equal(f.root.SaMiniP2P.createRtcSession, f.original); assert.equal(f.listeners(), 0);
+});
+test('preview relay profile stays mandatory: an API failure still rejects and never falls back', async () => {
+  const f = fixture({ location: { origin: previewOrigin }, performance: { now: () => 100 }, fetch: async () => { throw new Error('synthetic-secret'); } });
+  const handle = f.install({ profile: 'mini-pages-turn-test', contract: productionContract, forceRelay: true, diagnostics: true });
+  await assert.rejects(f.root.SaMiniP2P.createRtcSession({ signaling: {} }), /TURN_UNAVAILABLE/); assert.equal(f.calls().length, 0); handle.dispose();
+});
+test('the preview profile cannot be installed on the production origin, and vice versa', () => {
+  assert.throws(() => fixture({ location: { origin: 'https://miniasist.erlin.do' } }).install({ profile: 'mini-pages-turn-test', contract: productionContract, forceRelay: true, diagnostics: true }), /TURN_BOOTSTRAP_CONFIGURATION_INVALID/);
+});
+test('relay status observers cannot change connection creation', async () => {
+  const f = productionFixture(); const handle = f.install({ onRelayStatus: () => { throw new Error('observer failure'); } });
+  await f.root.SaMiniP2P.createRtcSession({ signaling: {} }); assert.equal(f.calls().length, 1); handle.dispose();
+});

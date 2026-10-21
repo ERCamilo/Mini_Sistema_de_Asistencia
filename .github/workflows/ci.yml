@@ -22,11 +22,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verify release version and notes
+        env:
+          RELEASE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -n "$RELEASE_BASE" ] && [ "$RELEASE_BASE" != 0000000000000000000000000000000000000000 ]; then
+            node scripts/release-manifest.cjs --check --release --base "$RELEASE_BASE" --head "$RELEASE_HEAD"
+          else
+            node scripts/release-manifest.cjs --check --release --head "$RELEASE_HEAD"
+          fi
+
       - name: Install isolated private TURN tool typings
         run: npm install --prefix "$RUNNER_TEMP/private-turn-types" --no-package-lock --ignore-scripts --no-audit --no-fund @types/node@22.10.2
       - name: Compile private TURN test tool

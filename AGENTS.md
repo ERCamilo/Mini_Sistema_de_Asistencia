@@ -50,3 +50,5 @@
 ## 7. Versiones y novedades
 - Cada entrega visible actualiza `APP_VERSION` y la entrada superior de `CHANGELOG` en `src/app-version.ts` juntos. Ejecuta `npm run build` y prepara los generados; no subas la versión de package.json por separado.
 - Flujo y verificación: [docs/sistema-de-novedades.md](docs/sistema-de-novedades.md). Respeta la decisión Actualizar ahora / Más tarde y el guardado previo a recargar.
+
+- Antes de publicar una entrega de runtime, la versión debe superar la base de main y tener novedades propias. Los hooks de commit/push y la CI ejecutan `scripts/release-manifest.cjs --check --release`; no se debe omitir este control ni reutilizar las notas anteriores. Documentos/tests y sellos de build están exentos.

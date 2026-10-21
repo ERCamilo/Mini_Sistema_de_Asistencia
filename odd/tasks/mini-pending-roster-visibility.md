@@ -1,6 +1,6 @@
 # Mini pending roster visibility
 
-## Current status — locally complete, not published
+## Current status — T1–T3 complete; T4 integration pending
 
 - [x] **T1** Roster visibility and pending refresh: source fix `c34db0b723fc95b5ae1ec045867d34b08120122e`; actual Playwright A–E passed.
 - [x] **T2** Merge latest pinned main `b9d4cf85ceec2e9f6a42568c435c27f0250816b2`: merge commit `840ca25251cf0e6556834089517bda24382d6990`, preserving T1 history.
@@ -10,9 +10,19 @@ Final frozen 2.17.6 checks: **1111/1111 unit tests, 31/31 browser CI tests, 50/5
 
 Native final integration review: approved without findings; exact acknowledgement burned for `review-8cbf84a73552f866`, target `sha256:3ab0727e2c71bead37b1f478636f9ff1f1e3b5e0e0538dd9bd8bf7acb6b4349d`, consumed `sha256:6f03579ccb3e886476d7b20bc05033e5cfd4b5b125973f2448551c05e04cbb1a`. The final reviewer input inspected lockfile content only; this is not a claim of an independent full-runtime inspection. Generator consistency and functional verification remain supported by the executor/parent evidence above. Earlier T1 approval/acknowledgement remains historical and terminal.
 
+
+## T4 authorized integration intent — pending
+- [ ] **T4** Merge pinned upstream main `586bb2c026f352db8b392e0736783e63039c2b28` (PR23/24/25) into this feature branch, preserving existing history and roster behavior. Import exactly the 36 upstream changed paths through Git; resolve the five metadata conflicts only. Retain upstream attendance profile fields, stalled-transfer fixes, optional production TURN code/tests and release guard logic unchanged.
+
+Main and this branch independently used 2.17.6. Prepare canonical 2.17.7 dated 2026-10-21 with our previously unpublished roster notes; preserve upstream 2.17.6 and older published entries, including new validation logic. Generate compiled/version/manifest/build/cache outputs through native build with one fixed current UTC timestamp. No functional behavior is authored in this merge/metadata task, so a fabricated TDD RED is inapplicable; focused semantic tests and exact-byte/guard checks apply. Preserve the upstream known TODO for worst-case attendance response size, rather than claiming zero TODOs.
+
+New upstream rules require version greater than main and release notes, checked against exact staged/committed content. Establish previously absent `origin/main` at the pinned SHA, stage only the controlled merge and nine allowed resolution/document paths, and verify native release guards plus generator convergence. Parent owns final normalization, full unit/browser verification, commit and native assessment/review before the authorized push.
+
+The user has now authorized updating and pushing only `fix/mini-pending-roster-visibility-20261020` to `ERCamilo/Mini_Sistema_de_Asistencia` using the configured GitHub session. This preparation stage performs no push. No PR creation/merge, deployment, production TURN activation, audit fix, SA/backend change or authentication reconfiguration is authorized here. The three earlier UI findings remain deferred. Confirmed SA origins are informational only: `https://asistencia.erlin.do` and Origin `https://ercamilo.github.io` with separate path `/-Sistema-de-asistencia/`. Recovery mirror remains pending without runtime identity.
+
 ## Delivery boundary and next owner
 
-Last confirmed deployed Mini source remains `a9e7e262591541105d0faeb0a0ea9a17368076c5` with the artifact-only OCR-disabled transformation. This local 2.17.6 candidate has **not** been published. The latest request authorized local update/PR preparation only: no GitHub push, PR creation, issue creation/approval or GitHub main merge was authorized or executed. Local merge T2 is not a remote main merge.
+Last confirmed deployed Mini source remains `a9e7e262591541105d0faeb0a0ea9a17368076c5` with the artifact-only OCR-disabled transformation. This local 2.17.6 candidate has **not** been published. At T3 closure, only local update/PR preparation was authorized and no GitHub operations occurred. T4 above supersedes the push-authorization boundary only: the exact feature-branch push is now authorized after checks; PR creation/remote merge remain prohibited. No push has occurred. Local merge T2 is not a remote main merge.
 
 The candidate footprint against pinned main is 445 lines including generated output. One slicing pass finds the restored UI behavior, matching regression tests and required release metadata cohesive; do not remove tests/docs or compress code to reduce the number. Existing `auto-chain` / `feature-branch-chain` delivery strategy remains cached. A single-PR delivery slightly over the approximately 400-line advisory budget needs an explicit maintainer size exception; otherwise plan a feature-branch chain before delivery. This is conditional PR planning, not a claim of Mini GitHub enforcement, and no PR exists yet. Parent/user own the next push/PR/publication authorization.
 
@@ -76,3 +86,17 @@ Prepared canonical version 2.17.6 with the top release dated 2026-10-20, titled 
 - Replayed the native hook's generator sequence (sync → manifest → stamp) at the same timestamp: byte-convergent. The staging hook itself was not invoked. All other compiled/tracked bytes and index entries were unchanged; only the seven allowed generated/canonical release files and these two recovery documents differ.
 
 T3 remains unchecked pending the parent's normalization, full verification, commit and applicable native assessment/review. No full suite, browser rerun, stage/commit, PR, push or publication ran for this metadata-only preparation. Private command proof: `/home/ubuntu/.cache/mini-turn-preview/release-prep-o1snc_n_/result.json`. Recovery mirror remains pending without authoritative runtime identity.
+
+## T4 observed integration evidence — staged, pending parent verification/commit
+Fetched only the pinned local analysis object into previously absent `origin/main` at `586bb2c026f352db8b392e0736783e63039c2b28`, then merged with `--no-commit --no-ff`. HEAD remains `aa82b6a30691b07818ccee91b553f7d083c28d04`; MERGE_HEAD is the pinned main. The five actual conflicts matched the map: canonical/compiled app version, release manifest, build info and SW cache marker. Canonical source retained upstream release-validator logic and history; generated conflict inputs came from upstream and were regenerated natively. SW differs from upstream only in its native cache stamp.
+
+Prepared **2.17.7**, release date 2026-10-21, with the previous unpublished “Personal recibido de SA” notes moved to the new top entry. Upstream published 2.17.6 and all prior entries remain exact as parsed release data. Fixed `MINI_BUILD_TIME=2026-10-21T12:01:52.742Z` produces build `20261021-120152-742` and cache `asistencia-v2.17.7-20261021-120152-742`.
+
+Byte checks: all 28 nonconflict upstream imports are exact; all eight private-TURN source/compiled files equal upstream. Five unaffected roster runtime/test files equal our HEAD; P2P roster UI differs only by upstream's two-line attendance-profile addition (`includeEmployeeProfile: true`). Production index and SW remain upstream-exact except cache stamp, with production TURN OFF/unwired. No manual authorship outside the nine allowed release/document paths; 36 upstream paths were imported by Git merge. The three prior UI audit issues and SA/backend remain untouched.
+
+- Native `npm run build`: passed, 4.228 s; no unexpected compiler changes.
+- Focused roster/version/release/attendance/transfer/private-TURN tests: **305 cases, 304 passed, 0 failed, 0 skipped, 1 known upstream TODO**, runner 8902.965995 ms. TODO: worst-case 31-day × 500-employee attendance response requires a future chunked protocol with SA support; it is not claimed fixed or passed.
+- `npm run test:release`, manifest consistency, `tsc --noEmit`, working/cached whitespace and exact staged guard `node scripts/release-manifest.cjs --check --staged --release --base 586bb2c026f352db8b392e0736783e63039c2b28`: passed.
+- Native pre-commit hook replay at the fixed timestamp was byte/index-entry convergent. Focused verification preserved frozen source/index entries. No conflict markers/unmerged entries or unstaged source changes remain.
+
+Proof: `/home/ubuntu/.cache/mini-turn-preview/integrate-pr24-90oolreo/result.json`. This is preparation, not a committed-head/pre-push verdict: the eventual committed SHA must be checked by the parent. No full unit/browser run, commit, push, PR, deployment, auth reconfiguration or remote operation occurred in T4. Parent owns final normalization/full verification/commit/native assessment and then the exact authorized feature-branch push. Recovery mirror remains pending without runtime identity.

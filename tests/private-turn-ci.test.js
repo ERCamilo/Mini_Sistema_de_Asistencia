@@ -8,7 +8,8 @@ const { spawnSync } = require('node:child_process');
 const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/ci.yml'), 'utf8');
 const unit = workflow.match(/^  unit:\n([\s\S]*?)(?=^  \w+:|$(?![\s\S]))/m)[1];
 const commands = [...unit.matchAll(/^      - run: (.+)$|^        run: (.+)$/gm)]
-  .map(match => match[1] || match[2]);
+  .map(match => match[1] || match[2])
+  .filter(command => command !== '|'); // Multiline release validation has its own executable regression tests.
 const expectedNames = ['Install isolated private TURN tool typings', 'Compile private TURN test tool', 'Export private TURN test tool output'];
 
 function requiredCommands() {

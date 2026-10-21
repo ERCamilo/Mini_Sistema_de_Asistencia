@@ -1672,6 +1672,8 @@
       get attendanceData() { return root.attendanceData; },
       get employees() { return root.users; },
       deviceId,
+      // SA can create or link unknown employees from the salary and day position.
+      includeEmployeeProfile: true,
       onResponseSent: wrappedSent
     });
   }
