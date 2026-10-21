@@ -29,7 +29,8 @@ test('unit checks, browser job identity, prerequisites, and hard failures remain
 });
 
 test('browser shell selects CI by default, full replay only for true, and propagates failure', () => {
-  const block = workflow.match(/        run: \|\n((?:          [^\n]*\n?)+)/);
+  const browserStep = workflow.slice(workflow.indexOf('      - name: Browser regressions'), workflow.indexOf('      - name: Connections browser regressions'));
+  const block = browserStep.match(/        run: \|\n((?:          [^\n]*\n?)+)/);
   assert.ok(block, 'browser routing must be an inspectable shell block');
   const shell = block[1].replace(/^          /gm, '');
   assert.doesNotMatch(shell, /\$\{\{/);

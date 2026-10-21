@@ -47,9 +47,10 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     const original = await page.evaluate(() => employeeRepository.getAll());
     const loaded = await page.evaluate(() => { window.__pageMarker = 'original'; return window.MiniAppVersion.APP_VERSION; });
     assert.equal(loaded, policy.APP_VERSION);
+    assert.equal(await page.textContent('#mini-version'), 'v' + policy.APP_VERSION);
     // The normal cached JSON is the old release. The incoming query must bypass it.
     published = true;
-    await page.evaluate(() => window.MiniUpdates.check()); await page.waitForSelector('#update-modal.active');
+    await page.evaluate(async () => { const reg = await navigator.serviceWorker.getRegistration(); await reg.update(); }); await page.waitForSelector('#update-modal.active');
     assert.match(await page.textContent('#update-modal'), /Actualización de prueba/);
     assert.equal(await page.locator('#update-modal img').count(), 0, 'release text is never HTML');
     assert.equal(await page.evaluate(() => window.__pageMarker), 'original');
@@ -68,6 +69,7 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     await page.evaluate(() => window.__finishWrite());
     await page.waitForFunction(v => window.MiniAppVersion?.APP_VERSION === v && !window.__pageMarker, nextVersion);
     await page.waitForFunction(() => localDbReady); await page.waitForSelector('#whats-new-modal.active');
+    assert.equal(await page.textContent('#mini-version'), 'v' + nextVersion);
     assert.deepEqual(await page.evaluate(() => employeeRepository.getAll()), original);
     await page.goBack(); await page.waitForSelector('#whats-new-modal.active', { state: 'hidden' });
     assert.equal(await page.evaluate(() => localStorage.getItem('mini:lastSeenVersion')), nextVersion);

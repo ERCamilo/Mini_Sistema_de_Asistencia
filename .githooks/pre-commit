@@ -8,3 +8,4 @@ node scripts/release-manifest.cjs
 node scripts/stamp-build.mjs
 git add package.json package-lock.json build-info.js sw.js
 git add app-release.json
+node scripts/release-manifest.cjs --check --staged --release
