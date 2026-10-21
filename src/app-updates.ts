@@ -37,13 +37,27 @@ interface Window {
     if (!('serviceWorker' in navigator)) return;
     const registration = await navigator.serviceWorker.getRegistration(); if (!registration) return;
     await registration.update();
-    const worker = registration.installing || registration.waiting;
-    if (!worker || worker.state === 'activated') return;
+    const pending = registration.installing || registration.waiting;
+    if (pending && pending.state !== 'activated') {
+      await new Promise<void>((resolve, reject) => {
+        const done = (error?: Error) => { clearTimeout(timer); pending.removeEventListener('statechange', check); error ? reject(error) : resolve(); };
+        const check = () => { if (pending.state === 'activated') done(); else if (pending.state === 'redundant') done(new Error('Update failed')); };
+        const timer = setTimeout(() => done(new Error('Update timeout')), 60000);
+        pending.addEventListener('statechange', check);
+        pending.postMessage('SKIP_WAITING'); check();
+      });
+    }
+    const active = registration.active || navigator.serviceWorker.controller;
+    if (!active) throw new Error('No active worker');
+    // An unchanged, already active worker can still contain stale cached bytes.
     await new Promise<void>((resolve, reject) => {
-      const done = (error?: Error) => { clearTimeout(timer); worker.removeEventListener('statechange', check); error ? reject(error) : resolve(); };
-      const check = () => { if (worker.state === 'activated') done(); else if (worker.state === 'redundant') done(new Error('Update failed')); };
-      const timer = setTimeout(() => done(new Error('Update timeout')), 20000);
-      worker.addEventListener('statechange', check); check();
+      const channel = new MessageChannel();
+      const done = (error?: Error) => { clearTimeout(timer); channel.port1.close(); channel.port2.close(); error ? reject(error) : resolve(); };
+      const timer = setTimeout(() => done(new Error('Shell refresh timeout')), 90000);
+      channel.port1.onmessage = event => { event.data?.ok === true ? done() : done(new Error('Shell refresh failed')); };
+      channel.port1.onmessageerror = () => done(new Error('Invalid worker response'));
+      try { active.postMessage({ type: 'REFRESH_APP_SHELL' }, [channel.port2]); }
+      catch (error) { done(error instanceof Error ? error : new Error('Worker unavailable')); }
     });
   }
   function show(kind: 'news' | 'update', releases: AppRelease[], version: string, onClose: () => void, apply: () => Promise<void>): boolean {
@@ -70,7 +84,7 @@ interface Window {
       read: key => localStorage.getItem(key), write: (key, value) => localStorage.setItem(key, value),
       now: () => Date.now(), online: () => navigator.onLine !== false,
       fetchRelease, canShow: () => !options.isBusy() && !document.querySelector('.modal.active, .mini-p2p-overlay, .mini-welcome-overlay'),
-      show, beforeReload: async () => { await options.beforeReload(); await refreshWorker(); }, reload: () => location.reload(), status
+      show, beforeReload: options.beforeReload, prepareUpdate: refreshWorker, reload: () => location.reload(), status
     });
     manager.boot();
     let hadController = !!navigator.serviceWorker?.controller;
