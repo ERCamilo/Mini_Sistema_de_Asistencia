@@ -27,14 +27,18 @@
         if (options.enabled !== true)
             return { active: false, dispose: () => { } };
         const origin = ((_a = root.location) === null || _a === void 0 ? void 0 : _a.origin) || '', identity = options.appIdentity, core = root.SaMiniP2P;
-        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test')
+        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test' && options.profile !== 'mini-production')
             fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         const publicPreview = options.profile === 'mini-pages-turn-test';
+        // Optional production profile: the only one that may fall back to STUN, never forces relay.
+        const production = options.profile === 'mini-production';
+        if (production && (origin !== 'https://miniasist.erlin.do' || identity !== 'mini' || options.forceRelay === true || options.diagnostics === true || options.previewRelease !== undefined || (options.allowedOrigins || []).length))
+            fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         if (publicPreview && (origin !== 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev' || identity !== 'mini' || options.forceRelay !== true || options.diagnostics !== true || (options.allowedOrigins || []).length))
             fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         try {
             const url = new URL(origin);
-            if (url.protocol !== 'https:' || (!publicPreview && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity))
+            if (url.protocol !== 'https:' || (!publicPreview && !production && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !(options.allowedOrigins || []).includes(origin)) || url.origin !== origin || !['mini', 'sa'].includes(identity))
                 fail('TURN_BOOTSTRAP_CONFIGURATION_INVALID');
         }
         catch {
@@ -87,7 +91,18 @@
         // may complete later; the label observer preserves this same identity.
         const readyVersion = () => { var _a; (_a = doc === null || doc === void 0 ? void 0 : doc.removeEventListener) === null || _a === void 0 ? void 0 : _a.call(doc, 'DOMContentLoaded', readyVersion); void Promise.resolve().then(decorateVersion); };
         let unsubscribe = () => { };
-        const provider = root.PrivateTurn.createProvider({ enabled: true, profile: options.profile, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: () => (auth === null || auth === void 0 ? void 0 : auth.currentUser) || null, fetcher, now: options.now });
+        // Anonymous users are treated as guests by the production profile (server policy must match).
+        const activeUser = () => { const user = (auth === null || auth === void 0 ? void 0 : auth.currentUser) || null; return production && (user === null || user === void 0 ? void 0 : user.isAnonymous) === true ? null : user; };
+        const provider = root.PrivateTurn.createProvider({ enabled: true, profile: options.profile, origin, forceRelay: options.forceRelay, allowedOrigins: options.allowedOrigins, contract: options.contract, getUser: activeUser, fetcher, now: options.now });
+        const notifyRelay = (status) => { var _a; try {
+            (_a = options.onRelayStatus) === null || _a === void 0 ? void 0 : _a.call(options, status);
+        }
+        catch { /* Observers cannot change connection creation. */ } };
+        // Only a credential-service outage may fall back; account, scope and disposal changes never do.
+        const isCredentialOutage = (error) => {
+            const failure = error;
+            return (failure === null || failure === void 0 ? void 0 : failure.name) === 'PrivateTurnError' && (failure.message === 'TURN_UNAVAILABLE' || failure.message === 'TURN_INVALID_RESPONSE');
+        };
         // Private observations are bounded and never become connection authority.
         const observations = new Map();
         const history = new Map();
@@ -526,21 +541,32 @@
                 bind(next);
                 captured = epoch;
                 authResolved = true;
-                append(record, { stage: 'auth', code: (auth === null || auth === void 0 ? void 0 : auth.currentUser) ? 'AUTH_SIGNED_IN' : 'AUTH_GUEST', elapsedMs: elapsed() });
-                const uid = ((_a = auth === null || auth === void 0 ? void 0 : auth.currentUser) === null || _a === void 0 ? void 0 : _a.uid) || null, bound = auth;
+                append(record, { stage: 'auth', code: activeUser() ? 'AUTH_SIGNED_IN' : 'AUTH_GUEST', elapsedMs: elapsed() });
+                const uid = ((_a = activeUser()) === null || _a === void 0 ? void 0 : _a.uid) || null, bound = auth;
                 const acquisitionOffset = elapsed();
-                const config = await provider.getConfiguration(options.diagnostics === true ? event => {
-                    try {
-                        guard(captured, capturedScope);
-                        append(record, { ...event, elapsedMs: Math.min(300000, acquisitionOffset + event.elapsedMs) });
-                    }
-                    catch { /* Ignore stale acquisition events. */ }
-                } : undefined);
+                let config, unavailable = false;
+                try {
+                    config = await provider.getConfiguration(options.diagnostics === true ? event => {
+                        try {
+                            guard(captured, capturedScope);
+                            append(record, { ...event, elapsedMs: Math.min(300000, acquisitionOffset + event.elapsedMs) });
+                        }
+                        catch { /* Ignore stale acquisition events. */ }
+                    } : undefined);
+                }
+                catch (error) {
+                    if (!production || !isCredentialOutage(error))
+                        throw error;
+                    config = null;
+                    unavailable = true;
+                }
+                // Also what keeps a fallback from outliving disposal, an account or a scope change.
                 guard(captured, capturedScope);
-                if (auth !== bound || (((_b = auth === null || auth === void 0 ? void 0 : auth.currentUser) === null || _b === void 0 ? void 0 : _b.uid) || null) !== uid || (identity === 'mini' && miniAuth() !== bound))
+                if (auth !== bound || (((_b = activeUser()) === null || _b === void 0 ? void 0 : _b.uid) || null) !== uid || (identity === 'mini' && miniAuth() !== bound))
                     fail('TURN_BOOTSTRAP_STALE');
-                record.credentials = config ? 'available' : 'guest';
+                record.credentials = unavailable ? 'failed' : config ? 'available' : 'guest';
                 publish(record);
+                notifyRelay(config ? 'available' : unavailable ? 'unavailable' : 'not-requested');
                 append(record, { stage: 'rtc', code: 'RTC_START', elapsedMs: elapsed() });
                 const observed = options.diagnostics === true ? { ...sessionOptions } : sessionOptions;
                 if (options.diagnostics === true) {

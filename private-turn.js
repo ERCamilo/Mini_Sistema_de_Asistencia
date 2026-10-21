@@ -117,17 +117,22 @@
         const contract = { ttlUnit: 'seconds', expiresAtFormat: supplied.expiresAtFormat, clockSource: supplied.clockSource || 'client' };
         if (options.forceRelay !== undefined && typeof options.forceRelay !== 'boolean')
             failure('TURN_CONFIGURATION_INVALID');
-        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test')
+        if (options.profile !== undefined && options.profile !== 'mini-pages-turn-test' && options.profile !== 'mini-production')
             failure('TURN_CONFIGURATION_INVALID');
         const publicPreview = options.profile === 'mini-pages-turn-test';
+        // Optional production profile: relay is never forced, so ICE may also use direct candidates.
+        const production = options.profile === 'mini-production';
         if (publicPreview && (options.origin !== 'https://mini-mini-review-20261009.mini-sistema-asistencia-preview.pages.dev' || options.forceRelay !== true || contract.clockSource !== 'issuer' || contract.expiresAtFormat !== 'unix-seconds' || (options.allowedOrigins || []).length))
             failure('TURN_CONFIGURATION_INVALID');
+        if (production && (options.origin !== 'https://miniasist.erlin.do' || options.forceRelay === true || contract.clockSource !== 'issuer' || contract.expiresAtFormat !== 'unix-seconds' || (options.allowedOrigins || []).length))
+            failure('TURN_CONFIGURATION_INVALID');
+        const hosted = publicPreview || production;
         const allowed = [...(options.allowedOrigins || [])], privateOrigins = ['https://a2.tail2a0a8e.ts.net:8443', 'https://a2.tail2a0a8e.ts.net:8444'];
         if (allowed.length > 2 || allowed.some(value => !privateOrigins.includes(value)))
             failure('TURN_CONFIGURATION_INVALID');
         const policy = options.forceRelay === true ? 'relay' : 'all';
         const enabled = options.enabled, getUser = options.getUser, fetcher = options.fetcher;
-        if (enabled && !publicPreview) {
+        if (enabled && !hosted) {
             try {
                 const page = new URL(options.origin);
                 if (page.protocol !== 'https:' || (!['127.0.0.1', 'localhost', '[::1]'].includes(page.hostname) && !allowed.includes(page.origin)) || page.username || page.password || page.search || page.hash || page.pathname !== '/')
@@ -213,7 +218,7 @@
                 const idToken = text(await boundary(user.getIdToken()), 16384);
                 stage = 'request';
                 emit();
-                const response = await boundary(fetcher(publicPreview ? 'https://turn-api.erlin.do/turn-creds' : '/api/turn-creds', {
+                const response = await boundary(fetcher(hosted ? 'https://turn-api.erlin.do/turn-creds' : '/api/turn-creds', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ idToken }),
                     credentials: 'omit', redirect: 'error', cache: 'no-store', signal: controller.signal
                 }));
@@ -265,7 +270,7 @@
                 detail = 'CONTRACT_INVALID';
                 let reference = time(), reserve = 0;
                 if (contract.clockSource === 'issuer') {
-                    const issuedDate = response.headers.get(publicPreview ? 'Date' : 'X-Turn-Issued-Date');
+                    const issuedDate = response.headers.get(hosted ? 'Date' : 'X-Turn-Issued-Date');
                     if (!issuedDate) {
                         detail = 'CLOCK_MISSING';
                         failure('TURN_INVALID_RESPONSE');
