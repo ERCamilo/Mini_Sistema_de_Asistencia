@@ -1,6 +1,16 @@
 {
-  "version": "2.17.5",
+  "version": "2.17.6",
   "changelog": [
+    {
+      "version": "2.17.6",
+      "date": "2026-10-21",
+      "title": "Actualizaciones y novedades confiables",
+      "items": [
+        "Vuelve a recibir avisos de actualización con las novedades de cada entrega.",
+        "Envía el salario diario y el puesto de cada día junto con la asistencia.",
+        "Las transferencias detenidas informan un error para que puedas reintentarlas."
+      ]
+    },
     {
       "version": "2.17.5",
       "date": "2026-10-20",
