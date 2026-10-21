@@ -41,7 +41,8 @@
         'rosterStatus',
         'saEmployeeId',
         'positionName',
-        'saPositionId'
+        'saPositionId',
+        'dailySalary'
     ];
     const ATTENDANCE_SUBMISSION_SCOPE_KEYS = ['ownerUid', 'siteId', 'sourceId'];
     const ATTENDANCE_SUBMISSION_ERROR_SUMMARY_KEYS = ['unparsedFragments', 'codes'];
@@ -58,6 +59,7 @@
         sourceId: 'mini-app'
     };
     const SA_ID_MAX_LENGTH = 128;
+    const MAX_DAILY_SALARY = 10000000;
     const SA_ID_FORBIDDEN_RE = /[\s\x00-\x1f\x7f]/;
     const WORKDATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -223,7 +225,39 @@
                 throw new TypeError(`rows[${index}].saPositionId requires positionName`);
             safe.saPositionId = requireCanonicalSaId(rec.saPositionId, `rows[${index}].saPositionId`);
         }
+        if (Object.prototype.hasOwnProperty.call(rec, 'dailySalary')) {
+            const salary = rec.dailySalary;
+            if (typeof salary !== 'number' || !Number.isFinite(salary) || salary <= 0 || salary > MAX_DAILY_SALARY) {
+                throw new TypeError(`rows[${index}].dailySalary must be a number greater than 0 and at most ${MAX_DAILY_SALARY}`);
+            }
+            safe.dailySalary = salary;
+        }
         return safe;
+    }
+    // Stored salaries are free text ("1500", "1800.50"); anything else is omitted, never guessed.
+    function parseDailySalary(value) {
+        if (typeof value !== 'number' && typeof value !== 'string')
+            return undefined;
+        const text = String(value).trim();
+        if (!/^\d+(?:\.\d{1,2})?$/.test(text))
+            return undefined;
+        const salary = Number(text);
+        return salary > 0 && salary <= MAX_DAILY_SALARY ? salary : undefined;
+    }
+    // Same day-position rule as the WhatsApp report, but a single position is sent too.
+    function profileFields(emp, rec) {
+        const fields = {};
+        const positions = globalThis.EmployeePositions;
+        const day = positions ? (positions.dayPosition(emp, rec) || positions.positionsOf(emp)[0]) : null;
+        if (day) {
+            fields.positionName = day.name;
+            if (day.saPositionId)
+                fields.saPositionId = day.saPositionId;
+        }
+        const salary = parseDailySalary(emp.sueldo);
+        if (salary !== undefined)
+            fields.dailySalary = salary;
+        return fields;
     }
     function validateAttendanceSubmission(value, expectedSaProjectId) {
         checkExactKeys(value, ATTENDANCE_SUBMISSION_ENVELOPE_KEYS, 'envelope');
@@ -481,6 +515,8 @@
                 const positions = globalThis.EmployeePositions;
                 if (positions)
                     Object.assign(row, positions.submissionFields(emp, rec));
+                if (options.includeEmployeeProfile === true)
+                    Object.assign(row, profileFields(emp, rec));
             }
             rows.push(row);
         }
@@ -626,7 +662,8 @@
             now: context.now,
             generateUuid: context.generateUuid,
             includeUnlinked: context.includeUnlinked,
-            includeRosterCoverage: true
+            includeRosterCoverage: true,
+            includeEmployeeProfile: context.includeEmployeeProfile
         });
         const response = {
             schema: ATTENDANCE_RESPONSE_SCHEMA,

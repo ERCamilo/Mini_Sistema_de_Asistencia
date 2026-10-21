@@ -39,6 +39,8 @@ La interfaz principal de Transferencias expone una franja compacta (`.mini-p2p-c
 1. **Solicitud**: SA envía una petición autenticada solicitando asistencia.
 2. **Generación**: Mini invoca `AttendanceExport.generateAttendanceSubmission()` para construir el payload sellado.
 3. **Envío**: Respuesta transmitida por el canal autenticado sin persistir datos intermedios en servidores externos.
+4. **Perfil del empleado (P2P)**: cada fila `present` incluye `dailySalary` (sueldo por día en DOP, sólo si el sueldo guardado es válido) y `positionName`/`saPositionId` con el puesto usado ese día, aunque el empleado tenga un solo puesto. Así SA puede crear el empleado desconocido o vincularlo y actualizarlo. Las filas `unmarked` no llevan estos datos. La ruta de la nube Firebase no los envía. SA debe aceptar la clave `dailySalary` en `attendance-submission/v1`.
+5. **Tamaño**: la respuesta viaja como un único mensaje del canal; un rango de 31 días con 500 empleados pesa varios MiB. Pendiente: enviarla por el protocolo de chunks (requiere soporte en SA).
 
 ### 2.4.1 Enviar personal nuevo a SA
 
