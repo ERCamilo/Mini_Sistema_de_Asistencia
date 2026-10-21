@@ -1,11 +1,22 @@
 # Mini pending roster visibility
 
-## Current status
-T1 committed `c34db0b723fc95b5ae1ec045867d34b08120122e`, full tests 1097/1097 and mapper Playwright A–E passed (`fixed-rtgoabpo`). Native terminal review approved without findings; acknowledgement burned: review52c7, target `5cc53a77f92ad14b4562b49c0aa11cf64f04c8df0840cb862d37e4a23eee5d94`, consumed `da39c0a2acced7a9006cf25be82261c21404db76e67e45d372078119f0763e3a`. Historical pending evidence below is superseded by this closure.
+## Current status — locally complete, not published
 
-- [x] **T2** Integrated pinned main `b9d4cf85ceec2e9f6a42568c435c27f0250816b2` by merge commit `840ca25251cf0e6556834089517bda24382d6990`, preserving T1 history and its six runtime/test files. Full checks: 1111/1111 unit tests, 31/31 browser CI tests, 50/50 Connections browser tests, and actual merged-source Playwright A–E passed. Native assessment against new main: medium, under budget at 395 lines; this assessment is not a new review approval. Three pre-existing UI audit findings remain deferred. Recovery mirror pending without runtime identity.
+- [x] **T1** Roster visibility and pending refresh: source fix `c34db0b723fc95b5ae1ec045867d34b08120122e`; actual Playwright A–E passed.
+- [x] **T2** Merge latest pinned main `b9d4cf85ceec2e9f6a42568c435c27f0250816b2`: merge commit `840ca25251cf0e6556834089517bda24382d6990`, preserving T1 history.
+- [x] **T3** Canonical 2.17.6 release metadata: commit `b508fc73367f87653d838b623c008005d858dba4`; build `20261020-234846-000` at `MINI_BUILD_TIME=2026-10-20T23:48:46.000Z`.
 
-- [ ] **T3** Prepare visible release 2.17.6 in canonical `src/app-version.ts` with a neutral Spanish changelog entry dated 2026-10-20; regenerate only native version/build outputs. No new runtime behavior. Run focused version/stamp/manifest checks and generator convergence; full tests, normalization, commit and release decisions remain parent-owned. TDD RED is inapplicable to this metadata-only change; existing semantic validators are the acceptance checks. No push, PR creation, deployment, audit fixes or memory writes.
+Final frozen 2.17.6 checks: **1111/1111 unit tests, 31/31 browser CI tests, 50/50 Connections browser tests**, no failures/skips; release-manifest consistency and whitespace passed. Parent release spot check: 18/18 in 0.093 s. Earlier actual merged-source Playwright A–E exercised receipt, durable pending review, Apply/Finalize with three synthetic employees, Discard, badge clearing and mobile dark/light geometry. Real service-worker update behavior passed. These are local synthetic proofs, not live Google/private TURN or physical-device acceptance.
+
+Native final integration review: approved without findings; exact acknowledgement burned for `review-8cbf84a73552f866`, target `sha256:3ab0727e2c71bead37b1f478636f9ff1f1e3b5e0e0538dd9bd8bf7acb6b4349d`, consumed `sha256:6f03579ccb3e886476d7b20bc05033e5cfd4b5b125973f2448551c05e04cbb1a`. The final reviewer input inspected lockfile content only; this is not a claim of an independent full-runtime inspection. Generator consistency and functional verification remain supported by the executor/parent evidence above. Earlier T1 approval/acknowledgement remains historical and terminal.
+
+## Delivery boundary and next owner
+
+Last confirmed deployed Mini source remains `a9e7e262591541105d0faeb0a0ea9a17368076c5` with the artifact-only OCR-disabled transformation. This local 2.17.6 candidate has **not** been published. The latest request authorized local update/PR preparation only: no GitHub push, PR creation, issue creation/approval or GitHub main merge was authorized or executed. Local merge T2 is not a remote main merge.
+
+The candidate footprint against pinned main is 445 lines including generated output. One slicing pass finds the restored UI behavior, matching regression tests and required release metadata cohesive; do not remove tests/docs or compress code to reduce the number. Existing `auto-chain` / `feature-branch-chain` delivery strategy remains cached. A single-PR delivery slightly over the approximately 400-line advisory budget needs an explicit maintainer size exception; otherwise plan a feature-branch chain before delivery. This is conditional PR planning, not a claim of Mini GitHub enforcement, and no PR exists yet. Parent/user own the next push/PR/publication authorization.
+
+Three pre-existing Playwright audit findings remain unfixed and outside this candidate: blank offline account-device settings, mobile header overlap, and background scrolling behind the overlay. No complete TURN fix or current backend availability is claimed; the previously bounded server window may expire on 2026-10-21 and was not rechecked. Recovery mirrors remain pending without authoritative runtime identity.
 
 ## Objective and boundary
 Expose durable SA roster staging as first-class actionable work in Connections and refresh it when reception completes in the background. Existing review/apply/finalize and explicit discard semantics remain native; receiving never imports employees. Do not expose obsolete hidden extras or rebuild the whole modal/transport. Preserve salary/work-context/history/auth/TURN behavior.
@@ -13,11 +24,14 @@ Expose durable SA roster staging as first-class actionable work in Connections a
 Route delegated direct, multi-file implementation; existing auto-chain/feature-branch-chain, parent-owned commit, no PR/push. Forecast 200–350 authored lines is advisory; generated connection-menu.js counted separately. Recovery mirror pending without runtime identity. Only this owned Mini checkout is writable; other Mini/SA and SSH keeper are protected. Read AGENTS/UI_DESIGN; CodeGraph reports uninitialized, bounded source fallback without index mutations.
 
 ## Task
-- [x] **T1** Typed pending roster projection, scoped payload-free refresh/lifecycle cleanup, neutral empty state and native review/discard delegation, with deterministic tests. Parent compile/stamp normalization/full checks/Playwright/review/commit required.
+- [x] **T1** Typed pending roster projection, scoped payload-free refresh/lifecycle cleanup, native review/discard delegation and deterministic/browser tests completed in `c34db0b723fc95b5ae1ec045867d34b08120122e`; final closure above supersedes the historical pending records.
 
 Acceptance: first-class review remains visible while extras remain hidden; incoming background staging updates an already-open home; reopen reads durable staging; cloud-only empty message cannot contradict P2P pending work. Repeated refresh must retain focused controls and avoid observer/render loops. Release removes listeners; stale async callbacks cannot mutate a replacement. Parent authorized tiny mechanical extraction/export of existing discard handler through MiniP2PActivityUi so projection preserves that action, without new storage/import logic. New logic stays in strict TS; handwritten P2P JS changes only mechanical event/delegation. UI uses existing tokens/vector icons/44px controls.
 
-## Verification and next owners
+## Historical verification and next owners
+
+The records below preserve the original RED/GREEN, correction and integration sequence. Their pending-check, pending-commit and publication-intent statements are historical, superseded by the current closure and authorization boundary above. They do not reopen completed tasks or grant delivery permission.
+
 Observed deterministic focused RED before production changes, compile with node_modules/.bin/tsc only (no stamp/build), then node --test tests/connection-menu.test.js tests/p2p-activity-auto.test.js and whitespace/generated consistency. No full suite until parent normalizes; no dependency installs, browser, staging/commit/deploy/auth/network/memory/subagents. Parent/mapper runs actual Playwright review→apply→finalize/reopen flow, parent full-verifies/reviews/publishes under authorization, user then checks the preview. Mirror remains pending.
 
 ## Observed implementation evidence

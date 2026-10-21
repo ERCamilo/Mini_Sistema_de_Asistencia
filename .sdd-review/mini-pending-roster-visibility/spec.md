@@ -1,5 +1,17 @@
 # Mini visible pending SA roster
 
+## Current closure and delivery boundary
+
+T1/T2/T3 are locally complete: roster fix `c34db0b723fc95b5ae1ec045867d34b08120122e`, merge `840ca25251cf0e6556834089517bda24382d6990` of pinned main `b9d4cf85ceec2e9f6a42568c435c27f0250816b2`, and 2.17.6 metadata commit `b508fc73367f87653d838b623c008005d858dba4`. Final verification passed 1111/1111 unit, 31/31 browser CI and 50/50 Connections tests, manifest consistency, and the parent's 18/18 release spot check (0.093 s). Actual merged-source roster Playwright A–E passed earlier. Native final integration review `review-8cbf84a73552f866` approved without findings; acknowledgement burned for target `sha256:3ab0727e2c71bead37b1f478636f9ff1f1e3b5e0e0538dd9bd8bf7acb6b4349d`, consumed `sha256:6f03579ccb3e886476d7b20bc05033e5cfd4b5b125973f2448551c05e04cbb1a`. Final reviewer input was lockfile-only; generator/unit/browser evidence is separately recorded, not inferred from that inspection.
+
+The last confirmed deployed OCR-disabled Mini artifact still derives from `a9e7e262591541105d0faeb0a0ea9a17368076c5`; no 2.17.6 preview publication occurred. Local update/PR preparation does not authorize push, PR creation, issue approval or remote main merge. No such GitHub operations occurred. The 445-line footprint against main includes generated output; behavior, tests and required release metadata form one coherent candidate. Keep the cached auto-chain/feature-branch strategy; a single PR above the approximately 400-line advisory budget needs maintainer size exception, otherwise plan a chain. No project-specific GitHub size/issue enforcement is asserted.
+
+Blank offline account-device settings, mobile header overlap and background scroll remain separate unfixed audit findings. No complete TURN/live-device fix or current server availability is claimed; the bounded backend window may expire on 2026-10-21 and was not checked. Recovery mirrors remain pending without runtime identity. Parent owns the passive closure commit, retaining `MINI_BUILD_TIME=2026-10-20T23:48:46.000Z`; user authorization is required for subsequent delivery.
+
+## Historical specification and acceptance record
+
+Earlier pending statements below preserve chronology and are superseded by this closure; they neither reopen local tasks nor authorize publication.
+
 Project the existing staged roster store into a first-class Connections review section, independent of hidden extras and cloud notices. Delegate Review and Discard to native staged-roster UI APIs; do not request a fresh roster or auto-apply anything. Background accepted staging emits only an empty change event. A scoped typed listener updates pending presentation/empty state without calling transport-cleaning renderHome, navigating away or rebuilding the whole modal. Preserve focused controls on unchanged refresh; cleanup closes listeners and suppresses stale async continuations.
 
 Reopening reads durable staging. Applied/cleared/discarded work updates the projection through native render or payload-free signals. Strict TS compiles to committed generated JS; CSS follows existing theme tokens/44px targets. Deterministic module tests precede implementation; parent full verification/Playwright/review/delivery remain pending. Recovery mirror pending without runtime identity.
