@@ -9,7 +9,7 @@
 .mini-p2p-shell [data-p2p-close] {order:3;flex:none;}
 .mini-connection-header-back:focus-visible,.mini-connection-header-account:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
 .mini-connection-icon {width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none;}
-.mini-p2p-shell[data-mini-connection-page=home] .mini-connection-header-back,.mini-p2p-shell[data-mini-connection-page=home] .mini-connection-header-account {display:none;}
+.mini-p2p-shell[data-mini-connection-page=home] .mini-connection-header-back {display:none;}
 .mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .connections-screen-title,.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) [data-connections-back],.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-step>.mini-p2p-back {display:none;}
 .mini-p2p-shell[data-mini-connection-page] .connections-task {padding:16px;gap:14px;min-height:0;overflow-y:auto;}
 .mini-p2p-shell[data-mini-connection-page] .connections-task-content {gap:14px;}
@@ -133,7 +133,8 @@
 .mini-p2p-shell .connections-empty>strong {font-size:18px;}
 .mini-p2p-shell .connections-empty>p {margin:0;font-size:14px;line-height:1.5;color:var(--text-muted);}
 .mini-p2p-shell .connections-home:not(:has([data-connection-card]))>h3,.mini-p2p-shell .connections-home:not(:has([data-connection-card])) .connections-clear {display:none;}
-.mini-p2p-shell .connections-home .connections-extras {display:none;}
+.mini-p2p-shell .connections-home .connections-extras {display:grid;gap:10px;}
+.mini-p2p-shell .connections-home .connections-extras>:not([data-connections-backups]) {display:none;}
 .mini-p2p-shell .connections-home .connections-action-card h3 {font-size:16px;}
 .mini-p2p-shell .connections-home .connections-action-card p {font-size:13px;}
 .mini-p2p-shell .connections-personal-action [data-primary-action=roster] {border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-color);font-weight:700;}
@@ -215,9 +216,6 @@
 .mini-p2p-shell #cloud-members-apply{background:var(--accent-color);color:var(--connection-on-accent);font-weight:700}
 
 /* Independent Mini backup association stays visible outside hidden extras. */
-.mini-p2p-shell .connections-home [data-connections-device] {display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:48px;padding:12px;border:1px solid var(--border-color);border-radius:var(--radius-md,12px);background:var(--card-bg);color:var(--text-color);font-size:15px;font-weight:700;}
-.mini-p2p-shell .connections-home [data-connections-device] svg {width:22px;height:22px;stroke:currentColor;}
-.mini-p2p-shell .connections-home [data-connections-device]:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
 
 /* One truthful Mini account card; existing Auth controls retain their handlers. */
 .mini-p2p-shell .mini-account-card {background:var(--card-bg);color:var(--text-color);min-width:0;}
@@ -242,3 +240,60 @@
 .mini-p2p-shell .connections-staged-card button:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
 
 .mini-p2p-shell [data-roster-pending-peer][hidden] {display:none;}
+/* Conexiones (Mini): una acción Vincular, una lista Vínculos, selector de un toque. */
+.mini-p2p-shell .connections-home {gap:14px;}
+.mini-p2p-shell .connections-home .connections-toolbar {order:-3;display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:8px;padding:0;justify-content:stretch;}
+.mini-p2p-shell .connections-home .connections-toolbar [data-connections-add] {flex:none;width:100%;min-height:56px;font-size:15px;font-weight:700;border:0;background:var(--accent-color);color:var(--connection-on-accent);text-align:center;}
+.mini-p2p-shell .connections-home .connections-toolbar [data-connections-refresh] {width:48px;min-height:48px;padding:0;display:grid;place-items:center;border:1px solid var(--border-color);background:var(--input-bg);color:var(--text-color);}
+.mini-p2p-shell .connections-home .connections-toolbar [data-connections-refresh] svg {width:22px;height:22px;stroke:currentColor;}
+.mini-p2p-shell .connections-home .connections-priorities {order:-2;}
+.mini-p2p-shell .connections-home .connections-mini-peers {order:0;margin:0;}
+.mini-p2p-shell .connections-home .connections-extras {order:1;}
+.mini-p2p-shell .connections-link-choices {display:grid;gap:10px;}
+.mini-p2p-shell .connections-link-choice {display:grid;grid-template-columns:32px minmax(0,1fr) 20px;align-items:center;gap:14px;width:100%;min-height:76px;padding:14px 16px;text-align:left;border:1px solid var(--border-color);border-radius:14px;background:var(--input-bg);color:var(--text-color);font:inherit;cursor:pointer;}
+.mini-p2p-shell .connections-link-choice>span {display:grid;gap:4px;min-width:0;}
+.mini-p2p-shell .connections-link-choice strong {font-size:15px;overflow-wrap:anywhere;}
+.mini-p2p-shell .connections-link-choice small {font-size:12px;line-height:1.4;color:var(--text-muted);}
+.mini-p2p-shell .connections-link-choice>.mini-connection-icon {width:28px;height:28px;color:var(--accent-color);}
+.mini-p2p-shell .connections-link-choice>.mini-connection-icon:last-child {width:18px;height:18px;color:var(--text-muted);}
+.mini-p2p-shell .connections-link-choice:hover:not(:disabled) {border-color:var(--accent-color);}
+.mini-p2p-shell .connections-link-choice:focus-visible {outline:2px solid var(--accent-color);outline-offset:2px;}
+.mini-p2p-shell .connections-link-choice:disabled {opacity:.6;cursor:not-allowed;}
+
+/* Una sola cuenta y un solo «volver» en la cabecera; las pantallas nativas no repiten título. */
+.mini-p2p-shell[data-mini-connection-page] .mini-p2p-topbar .connections-account {display:none!important;}
+.mini-connection-header-account {order:2;margin-left:auto;}
+.mini-connection-header-account .mini-connection-icon {width:22px;height:22px;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-header-line>.mini-p2p-back,.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-header-line h2 {display:none;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-header-line {display:block;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-header-line p {margin:0 0 4px;}
+/* Sin bloques vacíos que sumen espacio: «Por revisar», pares y lista sólo aparecen con contenido. */
+.mini-p2p-shell .connections-home .connections-priorities:not(:has(.connections-action-card)),.mini-p2p-shell .connections-home .connections-mini-peers:not(:has(.connections-mini-peer)),.mini-p2p-shell .connections-home .connections-list:not(:has([data-connection-card])) {display:none;}
+.mini-p2p-shell .connections-home .connections-clear {display:none;}
+/* La cuenta es discreta: icono neutro sin sesión, inicial con acento al iniciar sesión. */
+.mini-p2p-shell .mini-connection-header-account[hidden] {display:none!important;}
+.mini-connection-header-account {background:var(--input-bg);color:var(--text-color);border:1px solid var(--border-color);}
+.mini-connection-header-account[data-signed-in=true] {background:var(--accent-color);color:var(--connection-on-accent);border-color:var(--accent-color);}
+
+/* Tarjeta de vínculo: una acción principal según el estado; cerrar es discreto; nombres largos a dos líneas. */
+.connections-mini-peer > strong {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
+.connections-mini-peer-actions {align-items:stretch;}
+.connections-mini-peer-actions [data-mini-peer-connect] {flex:2 1 150px;font-weight:700;}
+.connections-mini-peer[data-state=available] [data-mini-peer-connect],.connections-mini-peer[data-state=error] [data-mini-peer-connect] {background:var(--accent-color);border-color:var(--accent-color);color:var(--connection-on-accent);}
+.connections-mini-peer-actions [data-mini-peer-close] {flex:1 1 110px;background:transparent;border-color:transparent;color:var(--text-muted);font-weight:600;}
+.connections-mini-peer[data-state=connected] [data-mini-peer-close],.connections-mini-peer[data-state=connecting] [data-mini-peer-close] {border-color:var(--border-color);color:var(--text-color);}
+.connections-mini-peer-actions [data-mini-peer-close]:disabled {display:none;}
+/* Filas de cuenta: mismo ritmo que el resto de acciones. */
+.mini-p2p-shell .connections-account-summary>button:not(.mini-connection-action-row):not(.mini-account-action):not(#firebase-link-logout) {text-align:left;}
+.mini-connection-header-account {position:relative;overflow:hidden;}
+.mini-connection-header-account>span {display:grid;place-items:center;}
+.mini-connection-header-photo {position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.mini-connection-header-photo[hidden] {display:none;}
+.mini-connection-header-account>span[hidden] {display:none;}
+/* Filas de acción alineadas a la izquierda y tipografía común en las pantallas nativas. */
+.mini-p2p-shell .mini-connection-action-row {justify-items:start;justify-content:stretch;text-align:left;}
+.mini-p2p-shell .mini-connection-action-row>span {justify-items:start;text-align:left;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-header-line p {font-size:13px;line-height:1.45;color:var(--text-muted);}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-section-head h3 {font-size:14px;margin:0;}
+.mini-p2p-shell[data-mini-connection-page]:not([data-mini-connection-page=home]) .mini-p2p-devices {display:grid;gap:10px;}
+.mini-p2p-shell .connections-task button.mini-connection-action-row,.mini-p2p-shell .connections-home button.mini-connection-action-row {display:grid!important;justify-content:stretch!important;}

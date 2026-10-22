@@ -96,12 +96,12 @@
         const directList = node('div', 'connections-source-list'), cloudList = node('div', 'connections-source-list');
         list.append(directList, cloudList);
         const heading = node('h3');
-        heading.textContent = app === 'sa' ? 'Vínculos' : 'Obra asociada';
+        heading.textContent = 'Vínculos';
         const empty = node('section', 'connections-empty');
         const emptyTitle = node('strong'), emptyHint = node('p');
-        emptyTitle.textContent = app === 'sa' ? 'Todavía no hay vínculos' : 'Asocia tu obra cuando lo necesites';
-        emptyHint.textContent = app === 'sa' ? 'Usa Vincular Mini para compartir personal y recibir asistencia.' : 'Recibe personal y comparte asistencia con una obra.';
-        empty.append(icon('building'), emptyTitle, emptyHint);
+        emptyTitle.textContent = app === 'sa' ? 'Todavía no hay vínculos' : 'Aún no hay vínculos';
+        emptyHint.textContent = app === 'sa' ? 'Usa Vincular Mini para compartir personal y recibir asistencia.' : 'Toca Vincular para conectar con SA, tu obra u otro Mini.';
+        empty.append(icon(app === 'sa' ? 'building' : 'link'), emptyTitle, emptyHint);
         const staged = node('section', 'connections-staged-rosters');
         staged.dataset.stagedRosters = '';
         staged.hidden = true;
@@ -109,6 +109,7 @@
         staged.setAttribute('aria-live', 'polite');
         const stagedCards = new Map();
         const extras = node('div', 'connections-extras');
+        let backupRow = null;
         const taskHost = node('div', directBody.className + ' connections-task');
         taskHost.dataset.connectionsTask = '';
         taskHost.hidden = true;
@@ -121,30 +122,15 @@
         const store = node('div');
         store.hidden = true;
         store.dataset.connectionsStore = '';
-        const add = button(app === 'mini' ? 'Asociar a una obra' : 'Vincular', () => { task('link'); });
+        const add = button('Vincular', () => { task('link'); });
         add.dataset.connectionsAdd = '';
-        if (app === 'mini') {
-            const device = button('Vincular dispositivo', () => {
-                if (!guard())
-                    return;
-                const backup = extras.querySelector('[data-open-backup-hub-btn]') || directBody.querySelector('[data-open-backup-hub-btn]');
-                if (!backup) {
-                    options.notify('No se pudo abrir la asociación de dispositivos. Vuelve a abrir Compartir.');
-                    return;
-                }
-                showDirect();
-                backup.click();
-            });
-            device.dataset.connectionsDevice = '';
-            device.prepend(icon('phone'));
-            toolbar.prepend(device);
-            toolbar.classList.add('connections-device-toolbar');
-        }
         const refresh = button('Actualizar conexiones', () => { if (!guard())
             return; void refreshCloud(); });
         toolbar.append(add, refresh);
         if (app === 'mini') {
-            refresh.prepend(icon('refresh'));
+            refresh.replaceChildren(icon('refresh'));
+            refresh.setAttribute('aria-label', 'Actualizar conexiones');
+            refresh.title = 'Actualizar conexiones';
             add.prepend(icon('link'));
             refresh.dataset.connectionsRefresh = '';
         }
@@ -157,12 +143,11 @@
         if (header)
             move(account, header);
         if (app === 'mini' && options.getMiniPeers && options.subscribeMiniPeers && options.connectMiniPeer && options.closeMiniPeer && typeof MiniConnectionPresentation !== 'undefined') {
-            const peerSection = node('section', 'connections-mini-peers'), peerHeading = node('h3'), peerList = node('div');
-            peerHeading.textContent = 'Dispositivos vinculados';
-            peerSection.append(peerHeading, peerList);
-            home.insertBefore(peerSection, heading);
+            const peerSection = node('section', 'connections-mini-peers'), peerList = node('div');
+            peerSection.append(peerList);
+            home.insertBefore(peerSection, list);
             const actions = createPeerActions({ connect: options.connectMiniPeer, close: options.closeMiniPeer });
-            const peers = MiniConnectionPresentation.mountPeers({ container: peerList, getPeers: options.getMiniPeers, subscribe: options.subscribeMiniPeers, connect: id => actions.connect(id), close: id => actions.close(id), notify: options.notify });
+            const peers = MiniConnectionPresentation.mountPeers({ container: peerList, getPeers: options.getMiniPeers, subscribe: callback => options.subscribeMiniPeers(() => { callback(); updateEmpty(); }), connect: id => actions.connect(id), close: id => actions.close(id), notify: options.notify });
             cleanupCallbacks.push(() => { peers.dispose(); actions.dispose(); });
         }
         const parts = new Map();
@@ -208,7 +193,8 @@
                 options.notify(e instanceof Error ? e.message : 'No se pudieron actualizar las conexiones.');
             }
         }
-        function updateEmpty() { empty.hidden = !!list.querySelector('[data-connection-card]'); }
+        function updateEmpty() { const has = !!home.querySelector('[data-connection-card],.connections-mini-peer'); empty.hidden = has; if (app === 'mini')
+            heading.hidden = !has; }
         function decorate(n, method) {
             n.dataset.connectionCard = '';
             n.dataset.connectionTransport = method;
@@ -520,7 +506,7 @@
                 if (select === null || select === void 0 ? void 0 : select.options.length) {
                     const card = node('article', 'connections-action-card connections-daily');
                     const title = node('h3');
-                    title.textContent = 'Compartir asistencia';
+                    title.textContent = 'Asistencia';
                     const description = node('p');
                     description.textContent = ((_b = select.options[index]) === null || _b === void 0 ? void 0 : _b.textContent) || 'Selecciona una obra';
                     const send = bindCloudAction('Preparar envío', 'send', index);
@@ -529,16 +515,16 @@
                     card.append(icon('send'), title, description, send);
                     primaryActions.append(card);
                     const personnel = node('article', 'connections-action-card connections-personal-action'), personnelTitle = node('h3'), personnelHint = node('p');
-                    personnelTitle.textContent = 'Personal de mi obra';
+                    personnelTitle.textContent = 'Personal';
                     personnelHint.textContent = ((_c = select.options[index]) === null || _c === void 0 ? void 0 : _c.textContent) || '';
                     const update = bindCloudAction('Actualizar personal', 'roster', index);
                     update.dataset.primaryAction = 'roster';
                     personnel.append(icon('people'), personnelTitle, personnelHint, update);
                     primaryActions.append(personnel);
-                    const peers = node('article', 'connections-action-card connections-members-action'), peerTitle = node('h3'), peerHint = node('p'), share = bindCloudAction('Compartir con otro equipo', 'members', index);
+                    const peers = node('article', 'connections-action-card connections-members-action'), peerTitle = node('h3'), peerHint = node('p'), share = bindCloudAction('Miembros y asistencia', 'members', index);
                     share.dataset.primaryAction = 'members';
-                    peerTitle.textContent = 'Equipo de mi obra';
-                    peerHint.textContent = 'Compartir o revisar asistencia de varios días';
+                    peerTitle.textContent = 'Equipo';
+                    peerHint.textContent = 'Comparte o revisa la asistencia de varios días';
                     peers.append(icon('share'), peerTitle, peerHint, share);
                     primaryActions.append(peers);
                 }
@@ -730,9 +716,6 @@
                 state.textContent = connected ? 'Conectada' : available ? 'Sin iniciar sesión' : 'No disponible';
                 if (state.parentElement !== identity)
                     identity.append(state);
-                const unavailable = identity.querySelector('[data-account-unavailable]');
-                if (unavailable)
-                    unavailable.hidden = available;
                 if (available) {
                     if (account.parentElement !== identity)
                         identity.append(account);
@@ -745,20 +728,6 @@
                 else {
                     if (account.parentElement !== store)
                         store.append(account);
-                    if (!unavailable) {
-                        const disabled = button('Iniciar sesión con Google', () => { });
-                        disabled.disabled = true;
-                        disabled.dataset.accountUnavailable = '';
-                        disabled.classList.add('mini-account-action');
-                        disabled.setAttribute('aria-describedby', description.id);
-                        const logo = d.createElement('img');
-                        logo.src = './vendor/google-g.png';
-                        logo.width = 20;
-                        logo.height = 20;
-                        logo.alt = '';
-                        disabled.prepend(logo);
-                        identity.append(disabled);
-                    }
                 }
             }
             else if (account.parentElement !== summary)
@@ -771,14 +740,12 @@
                     linked.dataset.accountWorks = '';
                     device.dataset.accountDevice = '';
                     decorateActionRow(device, 'Este dispositivo', '', 'phone');
-                    decorateActionRow(linked, 'Mis obras vinculadas', '', 'building');
+                    decorateActionRow(linked, 'Mis vínculos', '', 'building');
                     summary.append(device, linked);
                 }
-                const backup = extras.querySelector('[data-open-backup-hub-btn]');
-                if (backup)
-                    summary.append(button('Respaldos y transferencia directa', () => { backup.click(); }));
                 const pendingButton = button('', () => { show(); });
                 pendingButton.dataset.accountPending = '';
+                decorateActionRow(pendingButton, 'Por revisar', '', 'document');
                 summary.append(pendingButton);
                 const hint = node('p', 'connections-hint');
                 hint.textContent = 'Cerrar sesión conserva los datos guardados en este dispositivo.';
@@ -787,13 +754,15 @@
             }
             const works = summary.querySelector('[data-account-works] small'), device = summary.querySelector('[data-account-device] small');
             const select = el('cloud-field-binding');
-            if (works)
-                works.textContent = new Set([...((select === null || select === void 0 ? void 0 : select.options) || [])].map(o => o.dataset.orgId + '|' + o.dataset.projectId)).size + ' obra(s) autorizada(s)';
+            if (works) {
+                const total = new Set([...((select === null || select === void 0 ? void 0 : select.options) || [])].map(o => o.dataset.orgId + '|' + o.dataset.projectId)).size;
+                works.textContent = total === 1 ? '1 obra autorizada' : total + ' obras autorizadas';
+            }
             if (device)
                 device.textContent = ((_a = el('cloud-field-device-name')) === null || _a === void 0 ? void 0 : _a.dataset.resolvedName) || 'Mini';
-            const pendingButton = summary.querySelector('[data-account-pending]');
-            if (pendingButton)
-                pendingButton.textContent = 'Pendientes por revisar · ' + currentEvents().reduce((total, event) => total + event.count, 0);
+            const pendingHint = summary.querySelector('[data-account-pending] small'), pendingTotal = currentEvents().reduce((total, event) => total + event.count, 0);
+            if (pendingHint)
+                pendingHint.textContent = pendingTotal ? pendingTotal + (pendingTotal === 1 ? ' pendiente' : ' pendientes') : 'Nada pendiente';
         }
         function renderInvitation() {
             if (app !== 'mini')
@@ -1124,15 +1093,35 @@
                     directList.append(card);
                 }
                 extras.replaceChildren();
+                if (app === 'mini') {
+                    if (!backupRow) {
+                        backupRow = button('', () => {
+                            if (!guard())
+                                return;
+                            const backup = directBody.querySelector('[data-open-backup-hub-btn]');
+                            if (!backup) {
+                                options.notify('No se pudieron abrir los respaldos. Vuelve a abrir Conexiones.');
+                                return;
+                            }
+                            showDirect();
+                            backup.click();
+                        });
+                        backupRow.dataset.connectionsBackups = '';
+                        decorateActionRow(backupRow, 'Respaldos', 'Copias de seguridad entre Minis', 'backup');
+                    }
+                    extras.append(backupRow);
+                }
                 const pending = directBody.querySelector('.mini-p2p-activity');
                 if (pending)
                     extras.append(pending);
                 const self = directBody.querySelector('.mini-p2p-self,.sa-p2p-self');
                 if (self)
                     extras.append(self);
-                const backup = directBody.querySelector('[data-open-backup-hub-btn]');
-                if (backup)
-                    extras.append(backup);
+                if (app !== 'mini') {
+                    const backup = directBody.querySelector('[data-open-backup-hub-btn]');
+                    if (backup)
+                        extras.append(backup);
+                }
             }
             initializeInternet();
             renderCloud();
@@ -1183,9 +1172,46 @@
             directBody.hidden = false;
             feedback.hidden = true;
         }
+        /** One tap per link: each route enters an existing native flow, never a new protocol. */
+        function openLinkRoute(key) {
+            var _a;
+            if (!guard())
+                return;
+            if (key === 'internet') {
+                taskHost.insertBefore(account, taskTitle);
+                taskHost.dataset.screen = 'invitation';
+                currentTask = 'invitation';
+                shell.dataset.connectionScreen = 'invitation';
+                openForm('link', 'Vincular con mi obra');
+                (_a = el('firebase-link-add')) === null || _a === void 0 ? void 0 : _a.click();
+                return;
+            }
+            showDirect();
+            const adapter = directBody.querySelector(key === 'direct' ? '[data-scan-pair]' : '[data-open-mini-pairing]');
+            if (!adapter) {
+                options.notify('No se pudo abrir el vínculo. Vuelve a abrir Conexiones.');
+                return;
+            }
+            adapter.click();
+        }
+        function linkChoices() {
+            const choices = node('div', 'connections-link-choices');
+            for (const choice of MiniConnectionPresentation.describeLinkChoices({ internetAvailable: options.internetAvailable })) {
+                const card = d.createElement('button'), copy = node('span'), title = node('strong'), hint = node('small');
+                card.type = 'button';
+                card.className = 'connections-link-choice';
+                card.dataset.linkChoice = choice.key;
+                card.disabled = choice.disabled;
+                title.textContent = choice.title;
+                hint.textContent = choice.disabled ? choice.reason : choice.hint;
+                copy.append(title, hint);
+                card.append(MiniConnectionPresentation.icon(d, choice.key === 'internet' ? 'cloud' : choice.key === 'direct' ? 'qr' : 'phone'), copy, MiniConnectionPresentation.icon(d, 'chevron'));
+                card.onclick = () => openLinkRoute(choice.key);
+                choices.append(card);
+            }
+            taskContent.append(choices);
+        }
         function pairingChoices() {
-            if (app === 'mini')
-                taskContent.append(identityCard());
             const choices = node('fieldset', 'connections-route-choices'), legend = node('legend');
             legend.textContent = 'Elige cómo conectar';
             choices.append(legend);
@@ -1232,11 +1258,6 @@
             });
             continueButton.dataset.screenPrimary = '';
             taskContent.append(choices, continueButton);
-            if (app === 'mini') {
-                const scan = button('Escanear QR de SA', () => { var _a; if (!guard())
-                    return; showDirect(); (_a = directBody.querySelector('[data-scan-pair]')) === null || _a === void 0 ? void 0 : _a.click(); });
-                taskContent.append(scan);
-            }
         }
         function openForm(name, title) {
             for (const part of parts.values())
@@ -1259,7 +1280,7 @@
             if (released || !guard())
                 return false;
             initializeInternet();
-            if (name === 'link' || name === 'invitation' || name === 'account')
+            if ((name === 'link' && app === 'sa') || name === 'invitation' || name === 'account')
                 taskHost.insertBefore(account, taskTitle);
             else
                 store.append(account);
@@ -1272,8 +1293,11 @@
             feedback.hidden = false;
             openForm(name === 'link' ? 'route' : name === 'invitation' ? 'link' : name, name === 'send' ? 'Enviar asistencia' : name === 'leave' ? 'Desvincular de la obra' : name === 'settings' ? 'Nombre de este Mini' : name === 'members' ? 'Miembros y asistencia' : 'Compartir personal');
             if (name === 'link') {
-                taskTitle.textContent = 'Vincular una obra';
-                pairingChoices();
+                taskTitle.textContent = 'Vincular';
+                if (app === 'mini' && typeof MiniConnectionPresentation !== 'undefined')
+                    linkChoices();
+                else
+                    pairingChoices();
             }
             if (name === 'invite')
                 taskTitle.textContent = 'Invitar un Mini';
@@ -1340,7 +1364,7 @@
         }
         shell.addEventListener('keydown', keydown);
         if (app === 'mini' && typeof MiniConnectionPresentation !== 'undefined')
-            presentation = MiniConnectionPresentation.mount({ shell, body: directBody, task: taskHost, title: taskTitle, back: taskBack, account: accountOpen });
+            presentation = MiniConnectionPresentation.mount({ shell, body: directBody, task: taskHost, title: taskTitle, back: taskBack, account: accountOpen, photo: () => { const status = el('firebase-link-status'); return (status === null || status === void 0 ? void 0 : status.dataset.accountEmail) ? safeAccountPhoto(status.dataset.accountPhoto) : ''; } });
         return {
             show, task, activate, canNavigate: guard,
             review(_method) { showDirect(); },

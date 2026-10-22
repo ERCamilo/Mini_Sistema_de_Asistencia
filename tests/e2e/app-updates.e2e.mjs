@@ -9,10 +9,12 @@ import { loadPlaywright, ROOT, PHONE } from '../tutorials/lib.mjs';
 const require = createRequire(import.meta.url), policy = require('../../app-version.js');
 const nextVersion = policy.APP_VERSION.replace(/\d+$/, n => String(Number(n) + 1));
 const release = { version: nextVersion, date: '2026-10-20', title: 'Actualización de prueba', items: ['Mejora de prueba <img src=x onerror=alert(1)>'] };
-let browser, server, base, published = false, invalid = false, incomingRequests = 0;
+let browser, server, base, published = false, invalid = false, unavailable = false, staleNavigation = false, incomingRequests = 0;
 before(async () => {
   server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://test'), rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+    if(unavailable&&rel==='app-updates.css'&&url.searchParams.has('__v')){res.writeHead(503).end();return;}
+    if(staleNavigation&&rel==='index.html'&&!url.search){res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Stale application</title>');return;}
     let body;
     try { body = fs.readFileSync(path.join(ROOT, rel)); } catch { res.writeHead(404).end(); return; }
     if (rel === 'sw.js') body = body.toString().replace(/const CACHE_VERSION = '[^']*'/, `const CACHE_VERSION = 'mini-update-test-${published ? 2 : 1}'`);
@@ -63,14 +65,29 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     await page.click('[data-release-apply]');
     await page.waitForFunction(() => document.querySelector('#update-modal [data-release-status]').textContent.includes('No se pudo actualizar'));
     assert.equal(await page.evaluate(() => window.__pageMarker), 'original', 'failed persistence cannot reload');
+    unavailable = true;
+    await page.evaluate(() => { localDb.writeState = window.__realWrite; }); await page.click('[data-release-apply]');
+    await page.waitForFunction(() => document.querySelector('#update-modal [data-release-status]').textContent.includes('Revisa tu conexión'));
+    assert.equal(await page.evaluate(() => window.__pageMarker), 'original', 'download failure cannot reload'); unavailable = false;
     await page.evaluate(() => { const gate = new Promise(resolve => window.__finishWrite = resolve); localDb.writeState = async snapshot => { window.__saving = true; await gate; return window.__realWrite(snapshot); }; });
     await page.click('[data-release-apply]'); await page.waitForFunction(() => window.__saving);
     assert.equal(await page.evaluate(() => window.__pageMarker), 'original', 'pending real snapshot write cannot reload');
+    await page.evaluate(async oldSource => {
+      const name=(await caches.keys()).find(name=>name==='mini-update-test-2');
+      const cache=await caches.open(name);
+      await cache.put(new URL('./app-version.js',location.href).href,new Response(oldSource,{headers:{'Content-Type':'text/javascript'}}));
+      await cache.put(new URL('./stale-shell-entry',location.href).href,new Response('obsolete'));
+      const tutorials=await caches.open('mini-tutorials-saved');
+      await tutorials.put(new URL('./saved-video',location.href).href,new Response('preserved'));
+    },fs.readFileSync(path.join(ROOT,'app-version.js'),'utf8'));
+    staleNavigation = true;
     await page.evaluate(() => window.__finishWrite());
-    await page.waitForFunction(v => window.MiniAppVersion?.APP_VERSION === v && !window.__pageMarker, nextVersion);
+    await page.waitForFunction(v => window.MiniAppVersion?.APP_VERSION === v && !window.__pageMarker, nextVersion).catch(async error=>{console.error('Update state',await page.evaluate(async()=>({version:MiniAppVersion.APP_VERSION,status:document.querySelector('#update-modal [data-release-status]')?.textContent,caches:await caches.keys(),worker:navigator.serviceWorker.controller?.scriptURL})));throw error;});
     await page.waitForFunction(() => localDbReady); await page.waitForSelector('#whats-new-modal.active');
     assert.equal(await page.textContent('#mini-version'), 'v' + nextVersion);
     assert.deepEqual(await page.evaluate(() => employeeRepository.getAll()), original);
+    assert.equal(await page.evaluate(async()=>!!(await (await caches.open('mini-tutorials-saved')).match(new URL('./saved-video',location.href).href))),true);
+    assert.equal(await page.evaluate(async()=>!!(await caches.match(new URL('./stale-shell-entry',location.href).href))),false);
     await page.goBack(); await page.waitForSelector('#whats-new-modal.active', { state: 'hidden' });
     assert.equal(await page.evaluate(() => localStorage.getItem('mini:lastSeenVersion')), nextVersion);
     assert.equal(await page.evaluate(() => currentView), 'attendance');
@@ -86,9 +103,12 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
       await page.click('#whats-new-modal button'); await page.waitForSelector('#whats-new-modal.active', { state: 'hidden' });
     }
     await context.setOffline(true); await page.evaluate(() => window.MiniUpdates.check());
-    assert.match(await page.textContent('#app-update-status'), /Sin conexión/); await context.setOffline(false);
+    assert.match(await page.textContent('#app-update-status'), /Sin conexión/);
+    await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForFunction(() => localDbReady);
+    assert.equal(await page.textContent('#mini-version'), 'v' + nextVersion);
+    assert.deepEqual(await page.evaluate(() => employeeRepository.getAll()), original); await context.setOffline(false);
     invalid = true; await page.evaluate(() => window.MiniUpdates.check());
     await page.waitForFunction(() => document.getElementById('app-update-status').textContent.includes('No se pudo consultar'));
     assert.ok(incomingRequests >= 3); assert.deepEqual(errors, []);
-  } finally { await context.close(); published = false; invalid = false; }
+  } finally { await context.close(); published = false; invalid = false; unavailable = false; staleNavigation = false; }
 });

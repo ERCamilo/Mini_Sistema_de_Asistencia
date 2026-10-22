@@ -890,15 +890,16 @@ test('confirm dialogs stack above the P2P overlay, notices and welcome gate', ()
   assert.ok(confirmZ > overlayZ, `confirm ${confirmZ} must be above P2P overlay ${overlayZ}`);
 });
 
-test('independent Mini device association preserves backup adapter and touch target',()=>{
+test('Vincular chooser routes each link through the existing native adapters',()=>{
   const menu=read('src/connection-menu.ts'),css=read('connection-screens.css'),ui=read('p2p-roster-ui.js');
-  assert.ok(menu.includes("app==='mini'?'Asociar a una obra':'Vincular'"));
-  const action=menu.slice(menu.indexOf("const device=button('Vincular dispositivo'"),menu.indexOf("device.dataset.connectionsDevice"));
-  assert.ok(action.includes('if(!guard())return;'));
-  assert.ok(action.includes('[data-open-backup-hub-btn]'));
-  assert.ok(action.includes('showDirect();backup.click();'));
-  assert.ok(!action.includes('cloud-field-binding'));
-  assert.ok(/\[data-connections-device\][^{]*\{[^}]*min-height:48px/.test(css));
+  const route=menu.slice(menu.indexOf("function openLinkRoute"),menu.indexOf("function openForm"));
+  assert.ok(route.includes('if(!guard())return;'));
+  assert.ok(route.includes("[data-scan-pair]"));
+  assert.ok(route.includes("[data-open-mini-pairing]"));
+  assert.ok(route.includes("firebase-link-add"));
+  assert.ok(!route.includes('cloud-field-binding'));
+  assert.ok(/\.connections-link-choice[^{]*\{[^}]*min-height:\s*7\dpx/.test(css));
+  assert.ok(ui.includes("data-open-mini-pairing"));
   assert.ok(ui.includes("renderQrScanner({ allowSameApp: true })"));
   assert.ok(ui.includes("renderManualPair({ allowSameApp: true })"));
 });
@@ -906,8 +907,8 @@ test('independent Mini device association preserves backup adapter and touch tar
 
 test('sharing shell uses neutral home labels and fullscreen mobile safe-area geometry',()=>{
  const ui=read('p2p-roster-ui.js'),css=read('p2p-transfer.css');
- assert.match(ui,/class="mini-p2p-title">Compartir</);
- assert.match(ui,/class="mini-p2p-subtitle">Colabora con tu equipo</);
+ assert.match(ui,/class="mini-p2p-title">Conexiones</);
+ assert.match(ui,/class="mini-p2p-subtitle">SA, obras y otros Minis</);
  assert.match(css,/@media \(max-width: 600px\)[\s\S]*height: 100dvh/);
  assert.ok(css.includes('env(safe-area-inset-top'));
  assert.ok(css.includes('env(safe-area-inset-bottom'));

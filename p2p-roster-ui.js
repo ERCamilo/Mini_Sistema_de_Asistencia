@@ -803,7 +803,7 @@
       <section class="mini-p2p-shell" role="dialog" aria-modal="true" aria-labelledby="mini-p2p-title">
         <header class="mini-p2p-topbar">
           <span class="mini-p2p-topbar-icon">${vectorIcon('link', 20)}</span>
-          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Compartir</strong><div class="mini-p2p-subtitle">Colabora con tu equipo</div></div>
+          <div class="mini-p2p-title-wrap"><strong id="mini-p2p-title" class="mini-p2p-title">Conexiones</strong><div class="mini-p2p-subtitle">SA, obras y otros Minis</div></div>
           <button type="button" class="mini-p2p-icon-btn" data-p2p-close aria-label="Cerrar" title="Cerrar">${vectorIcon('close', 17)}</button>
         </header>
         <div class="mini-p2p-body" data-p2p-body></div>
@@ -1057,7 +1057,7 @@
         <div class="mini-p2p-capabilities">
           ${capability('users', 'Personal', 'Enviar y recibir', 'is-ready')}
           ${capability('attendance', 'Asistencia', 'Responder a SA', 'is-ready')}
-          ${capability('backup', 'Backup', 'Respaldos P2P', 'is-ready', 'data-open-backup-hub')}
+          ${capability('backup', 'Backup', 'Respaldos', 'is-ready', 'data-open-backup-hub')}
           ${capability('restore', 'Archivos', 'Próximamente', 'is-disabled')}
         </div>
       </section>
@@ -1071,13 +1071,15 @@
       <div class="mini-p2p-actions">
         ${uiButton('Escanear QR de SA', 'data-scan-pair', 'primary', 'camera')}
         ${uiButton('Usar código + clave', 'data-manual-pair', 'secondary', 'hash')}
-        ${uiButton('Respaldos P2P', 'data-open-backup-hub-btn', 'secondary', 'backup')}
+        ${uiButton('Respaldos', 'data-open-backup-hub-btn', 'secondary', 'backup')}
+        <button type="button" data-open-mini-pairing hidden aria-hidden="true" tabindex="-1"></button>
       </div>
       <p class="mini-p2p-footnote">El QR evita escribir código y clave. Vincular sólo crea una relación segura; recibir datos nunca los incorpora automáticamente.</p>`; });
     body().querySelector('[data-scan-pair]').addEventListener('click', () => renderQrScanner());
     body().querySelector('[data-manual-pair]').addEventListener('click', () => renderManualPair());
     body().querySelectorAll('[data-open-backup-hub]').forEach(el => el.addEventListener('click', () => renderBackupHub()));
     body().querySelector('[data-open-backup-hub-btn]')?.addEventListener('click', () => renderBackupHub());
+    body().querySelector('[data-open-mini-pairing]')?.addEventListener('click', () => renderBackupPairing());
     body().querySelector('[data-rename-self]')?.addEventListener('click', renderSelfNameEditor);
     body().querySelectorAll('[data-rename-peer]').forEach(btn => btn.addEventListener('click', () => renderPeerAliasEditor(btn.dataset.renamePeer)));
     body().querySelectorAll('[data-wait-peer]').forEach(btn => btn.addEventListener('click', () => waitTrustedTransfer(btn.dataset.waitPeer, 'roster')));
@@ -2719,19 +2721,19 @@
             <button type="button" class="mini-p2p-icon-btn is-danger" data-unlink-backup="${esc(peer.peerId)}" aria-label="Desvincular ${esc(peerName(peer))}" title="Desvincular">${vectorIcon('unlink', 16)}</button>
           </div>
         </div>`;
-    }).join('') : '<div class="mini-p2p-empty">Aún no hay dispositivos vinculados. Vincula otro Mini para respaldos o usa un SA ya vinculado.</div>';
+    }).join('') : '<div class="mini-p2p-empty">Aún no hay vínculos para respaldos. Vincula otro Mini para empezar.</div>';
 
     morphShell(() => {
       body().innerHTML = `
         <div class="mini-p2p-home">
-          <div class="mini-p2p-header-line">
+          <div class="mini-p2p-header-line" data-mini-title="Respaldos">
             ${backButton('Inicio')}
-            <div><h2>Respaldos P2P</h2><p>Transfiere copias de seguridad de forma directa y segura.</p></div>
+            <div><h2>Respaldos</h2><p>Transfiere copias de seguridad de forma directa y segura.</p></div>
           </div>
           ${pendingSection}
           <section class="mini-p2p-devices" aria-labelledby="mini-backup-devices-title">
             <div class="mini-p2p-section-head">
-              <div><h3 id="mini-backup-devices-title">Dispositivos vinculados</h3><div class="mini-p2p-subtitle">Envía o espera respaldos con estos dispositivos</div></div>
+              <div><h3 id="mini-backup-devices-title">Vínculos</h3><div class="mini-p2p-subtitle">Envía o espera respaldos</div></div>
               ${countBadge(allPeers.length, 'dispositivos')}
             </div>
             <div class="mini-p2p-peer-list">${peerRows}</div>

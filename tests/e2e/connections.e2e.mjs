@@ -17,7 +17,7 @@ before(async () => {
     <button id="fixture-trigger">Compartir</button>
     <div class="mini-p2p-overlay"><section class="mini-p2p-shell" role="dialog" aria-modal="true" aria-labelledby="fixture-title">
       <header class="mini-p2p-topbar"><div class="mini-p2p-title-wrap"><strong class="mini-p2p-title" id="fixture-title">Compartir</strong><div class="mini-p2p-subtitle">Colabora con tu equipo</div></div><button type="button" class="mini-p2p-icon-btn" data-p2p-close aria-label="Cerrar"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor"/></svg></button></header>
-      <div class="mini-p2p-body" data-p2p-body><div class="mini-p2p-peer-list"></div><button data-open-backup-hub-btn>Vincular dispositivo</button></div>
+      <div class="mini-p2p-body" data-p2p-body><div class="mini-p2p-peer-list"></div><button data-open-backup-hub-btn>Respaldos</button><button data-open-mini-pairing hidden></button><button data-scan-pair hidden></button></div>
     </section></div>
     <section id="fixture-internet" hidden><button id="firebase-link-login">Google</button><button id="firebase-link-logout" hidden>Salir</button><p id="firebase-link-status"></p><p id="firebase-link-error"></p><p id="cloud-field-status"></p><select id="cloud-field-binding"><option value="0" data-org-id="org" data-project-id="project" data-group-id="group">Obra Norte · Equipo A</option></select></section></html>`;
   server = await serve(ROOT);
@@ -46,7 +46,9 @@ async function openFixture(width, theme, withSaPeer = false) {
     ];
     const shell = document.querySelector('.mini-p2p-shell'), directBody = document.querySelector('[data-p2p-body]');
     const refresh = () => { for (const listener of listeners) listener(); };
-    directBody.querySelector('[data-open-backup-hub-btn]').onclick = () => calls.push('device-link');
+    directBody.querySelector('[data-open-backup-hub-btn]').onclick = () => calls.push('backups');
+    directBody.querySelector('[data-open-mini-pairing]').onclick = () => calls.push('device-link');
+    directBody.querySelector('[data-scan-pair]').onclick = () => calls.push('scan-pair');
     document.getElementById('firebase-link-login').onclick = () => calls.push('account-login');
     if (withSaPeer) {
       const row = document.createElement('div');
@@ -77,11 +79,11 @@ async function geometry(page, width) {
   const result = await page.evaluate(() => {
     const shell = document.querySelector('.mini-p2p-shell'), home = document.querySelector('[data-connections-home]'), r = shell.getBoundingClientRect();
     const touch = [...shell.querySelectorAll('button,summary')].filter(node => node.getClientRects().length && !node.disabled).map(node => ({ label: node.getAttribute('aria-label') || node.textContent, width: node.getBoundingClientRect().width, height: node.getBoundingClientRect().height }));
-    return { x: r.x, y: r.y, width: r.width, height: r.height, pageOverflow: document.documentElement.scrollWidth > innerWidth, homeOverflow: home.scrollWidth > home.clientWidth, scrolls: home.scrollHeight > home.clientHeight, touch, primary: getComputedStyle(document.querySelector('[data-connections-device]')).backgroundColor, primaryY: document.querySelector('[data-connections-device]').getBoundingClientRect().y, cardsY: document.querySelector('.connections-mini-peers').getBoundingClientRect().y };
+    return { x: r.x, y: r.y, width: r.width, height: r.height, pageOverflow: document.documentElement.scrollWidth > innerWidth, homeOverflow: home.scrollWidth > home.clientWidth, scrolls: home.scrollHeight > home.clientHeight, touch, primary: getComputedStyle(document.querySelector('[data-connections-add]')).backgroundColor, primaryY: document.querySelector('[data-connections-add]').getBoundingClientRect().y, cardsY: document.querySelector('.connections-mini-peers').getBoundingClientRect().y };
   });
   assert.equal(result.pageOverflow, false, 'page does not overflow horizontally');
   assert.equal(result.homeOverflow, false, 'home does not overflow horizontally');
-  assert.ok(result.primaryY < result.cardsY, 'link device comes before the cards');
+  assert.ok(result.primaryY < result.cardsY, 'Vincular comes before the cards');
   for (const control of result.touch) {
     assert.ok(control.height >= 44 && control.width >= 44, `44px touch target: ${JSON.stringify(control)}`);
   }
@@ -95,16 +97,19 @@ async function geometry(page, width) {
   assert.equal(result.primary, await page.evaluate(() => {
     const n = document.createElement('span'); n.style.color = 'var(--accent-color)'; document.querySelector('.mini-p2p-shell').append(n);
     const color = getComputedStyle(n).color; n.remove(); return color;
-  }), 'device linking is the primary accent action');
+  }), 'Vincular is the primary accent action');
 }
 
 for (const width of [320, 390, 1024]) for (const theme of ['light', 'dark']) {
   test(`sharing home ${width}px ${theme}: fullscreen, truthful cards, disclosure and preserved hooks`, async () => {
     const { context, page, errors } = await openFixture(width, theme);
     try {
-      assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Compartir');
-      assert.equal(await page.locator('[data-connections-device]').textContent(), 'Vincular dispositivo');
-      assert.equal(await page.locator('.connections-mini-peers h3').textContent(), 'Dispositivos vinculados');
+      assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Conexiones');
+      assert.equal(await page.locator('[data-connections-add]').textContent(), 'Vincular');
+      assert.equal(await page.locator('[data-connections-device]').count(), 0);
+      assert.equal(await page.locator('.connections-home > h3').textContent(), 'Vínculos');
+      assert.equal(await page.locator('[data-mini-header-account]').getAttribute('aria-label'), 'Mi cuenta');
+      assert.equal(await page.locator('.mini-p2p-topbar .connections-account').isVisible(), false, 'one account control in the header');
       assert.equal(await page.locator('[data-connection-account-open]').textContent(), 'Iniciar sesión');
       assert.equal(await page.locator('[data-mini-peer="first"] .connections-peer-avatar').textContent(), 'AP');
       assert.equal(await page.locator('[data-mini-peer="first"] > strong').textContent(), 'Ana Pérez');
@@ -144,12 +149,18 @@ for (const width of [320, 390, 1024]) for (const theme of ['light', 'dark']) {
       await page.waitForFunction(() => !document.querySelector('[data-mini-peer-connect="first"]').disabled);
       assert.deepEqual(await page.evaluate(() => sharingFixture.calls.slice(0, 3)), ['connect:first', 'close:first', 'connect:first']);
 
-      await page.locator('[data-connections-device]').click();
+      await page.locator('[data-connections-add]').click();
+      assert.equal(await page.locator('[data-connections-task]').isVisible(), true);
+      assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Vincular');
+      assert.deepEqual(await page.locator('[data-link-choice]').evaluateAll(nodes => nodes.map(node => node.dataset.linkChoice)), ['internet', 'direct', 'mini']);
+      await page.locator('[data-link-choice=mini]').click();
       assert.ok((await page.evaluate(() => sharingFixture.calls)).includes('device-link'));
       await page.evaluate(() => sharingFixture.menu.show());
       await page.locator('[data-connections-add]').click();
-      assert.equal(await page.locator('[data-connections-task]').isVisible(), true);
-      assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Vincular una obra');
+      await page.locator('[data-link-choice=direct]').click();
+      assert.ok((await page.evaluate(() => sharingFixture.calls)).includes('scan-pair'));
+      await page.evaluate(() => sharingFixture.menu.show());
+      await page.locator('[data-connections-add]').click();
       await page.locator('[data-mini-header-back]').click();
       assert.equal(await page.locator('[data-connections-home]').isVisible(), true);
       // Native personal review and employee-send overlays share mobile geometry.
@@ -168,7 +179,7 @@ for (const width of [320, 390, 1024]) for (const theme of ['light', 'dark']) {
       }
       await page.locator('.employee-send-overlay').evaluate(node => node.remove());
       await page.evaluate(() => sharingFixture.menu.show());
-      await page.locator('[data-connection-account-open]').click();
+      await page.locator('[data-mini-header-account]').click();
       assert.equal(await page.locator('[data-mini-page-title]').textContent(), 'Mi cuenta');
       await page.locator('#firebase-link-login').click();
       assert.ok((await page.evaluate(() => sharingFixture.calls)).includes('account-login'));
@@ -199,13 +210,13 @@ for(const width of [320,390,1024])for(const theme of ['light','dark']){
     const {context,page,errors}=await openFixture(width,theme);
     try{
       await page.route('https://lh3.googleusercontent.com/a/**',route=>route.request().url().includes('/ok')?route.fulfill({status:200,contentType:'image/png',body:photoPng}):route.abort());
-      const label=page.locator('[data-connections-account] > strong');
-      const image=page.locator('[data-connections-account] > img.connections-account-photo');
+      const label=page.locator('[data-mini-header-account] > span');
+      const image=page.locator('[data-mini-header-account] > img');
       await page.evaluate(()=>{const s=document.querySelector('#firebase-link-status');s.dataset.accountEmail='ana@example.test';s.dataset.accountName='Ana Gómez';s.dataset.accountPhoto='https://lh3.googleusercontent.com/a/ok';});
-      await page.waitForFunction(()=>{const n=document.querySelector('[data-connections-account] img');return !!n&&!n.hidden&&n.naturalWidth>0;});
+      await page.waitForFunction(()=>{const n=document.querySelector('[data-mini-header-account] img');return !!n&&!n.hidden&&n.naturalWidth>0;});
       assert.equal(await image.isVisible(),true);
       assert.equal(await label.isVisible(),false);
-      await page.locator('[data-connection-account-open]').click();
+      await page.locator('[data-mini-header-account]').click();
       const profile=page.locator('[data-account-summary]');
       await page.waitForFunction(()=>{const n=document.querySelector('.connections-profile-photo');return !!n&&!n.hidden&&n.naturalWidth>0;});
       assert.equal(await profile.locator('.connections-profile-photo').isVisible(),true);
@@ -214,12 +225,12 @@ for(const width of [320,390,1024])for(const theme of ['light','dark']){
       assert.equal(await profile.locator('.connections-avatar').textContent(),'B');
       assert.equal(await profile.locator('.connections-avatar').isVisible(),true);
       await page.locator('[data-mini-header-back]').click();
-      await page.waitForFunction(()=>{const n=document.querySelector('[data-connections-account] > strong');return !!n&&n.textContent==='B'&&getComputedStyle(n).display!=='none';});
+      await page.waitForFunction(()=>{const n=document.querySelector('[data-mini-header-account] > span');return !!n&&n.textContent==='B'&&!n.hidden;});
       assert.equal(await image.isVisible(),false);
       assert.equal(await label.isVisible(),true);
       await page.evaluate(()=>{const s=document.querySelector('#firebase-link-status');s.dataset.accountEmail='';s.dataset.accountName='';s.dataset.accountPhoto='';});
-      await page.waitForFunction(()=>document.querySelector('[data-connection-account-open]')?.textContent==='Iniciar sesión');
-      assert.equal(await label.textContent(),'G');
+      await page.waitForFunction(()=>document.querySelector('[data-mini-header-account]')?.getAttribute('aria-label')==='Mi cuenta');
+      assert.equal(await label.locator('svg').count(),1,'signed out shows the person icon');
       assert.equal(await label.isVisible(),true);
       assert.equal(await image.isVisible(),false);
       assert.deepEqual(errors,[]);
@@ -250,7 +261,7 @@ for(const width of [320,390,1024]) for(const theme of ['light','dark']){
         assert.ok((await page.evaluate(()=>sharingFixture.calls)).includes('sa-action:'+callback),name+' preserves its native click handler');
         await page.evaluate(()=>sharingFixture.menu.show());
       }
-      await page.locator('[data-connection-account-open]').click();
+      await page.locator('[data-mini-header-account]').click();
       await page.locator('[data-mini-header-back]').click();
       assert.equal(await sa.locator('[data-send-employees="sa-test"]').isVisible(),true,'returning to Compartir retains Send Personal');
       await sa.locator('[data-send-employees="sa-test"]').click();
@@ -264,7 +275,7 @@ for (const changeProfile of [false, true]) {
   test(`account ${changeProfile ? 'changed identity' : 'duplicate metadata'} preserves native and secondary focus`, async () => {
     const { context, page, errors } = await openFixture(390, 'light');
     try {
-      await page.locator('[data-connection-account-open]').click();
+      await page.locator('[data-mini-header-account]').click();
       for (const selector of ['#firebase-link-login', '[data-account-summary] > button']) {
         await page.locator(selector).first().focus();
         await page.evaluate(({ changeProfile }) => {
@@ -395,7 +406,7 @@ for (const width of [390, 1280]) test(`full app custom domain ${width}px: enable
     const account = page.locator('[data-connection-account-open]');
     assert.equal(await account.textContent(), 'Iniciar sesión');
     assert.equal(await account.isDisabled(), false);
-    await account.click();
+    await page.locator('[data-mini-header-account]').click();
     const login = page.locator('#firebase-link-login');
     assert.equal(await login.isVisible(), true);
     assert.equal(await login.isDisabled(), false);
@@ -486,8 +497,9 @@ for (const width of [320, 390, 1280]) for (const theme of ['light', 'dark']) {
       await page.locator('#btn-attendance-link').click();
       await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
       assert.equal(await page.locator('[data-connection-account-open]').textContent(), 'Mi cuenta');
-      await page.locator('[data-connection-account-open]').click();
-      assert.equal(await page.locator('[data-account-unavailable]').isDisabled(), true);
+      await page.locator('[data-mini-header-account]').click();
+      assert.equal(await page.locator('[data-account-unavailable]').count(), 0);
+      assert.equal(await page.locator('#firebase-link-login:visible').count(), 0);
       assert.match(await page.locator('[data-account-summary]').textContent(), /El acceso con Google no está habilitado/);
       await page.locator('[data-mini-header-back]').click();
       await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
@@ -524,8 +536,8 @@ test('full app sharing: device pairing cancel and native back return to sharing'
   try {
     await page.locator('#btn-attendance-link').click();
     await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
-    await page.locator('[data-connections-device]').click();
-    await page.locator('[data-backup-pair-mini]').click();
+    await page.locator('[data-connections-add]').click();
+    await page.locator('[data-link-choice=mini]').click();
     await page.locator('[data-share-backup-pair]').click();
     // Pairing remains offline; cancel without copying or recording the generated code.
     await page.locator('[data-cancel-share]').click();
@@ -543,8 +555,8 @@ test('full app sharing: device pairing cancel and native back return to sharing'
 async function openManualPair(page) {
   await page.locator('#btn-attendance-link').click();
   await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
-  await page.locator('[data-connections-device]').click();
-  await page.locator('[data-backup-pair-mini]').click();
+  await page.locator('[data-connections-add]').click();
+  await page.locator('[data-link-choice=mini]').click();
   await page.locator('[data-manual-backup-pair]').click();
   await page.locator('[data-code]').waitFor({ state: 'visible' });
 }
@@ -630,7 +642,7 @@ test('full app restore confirmation: accessible name and description, Cancel pre
     });
     await page.locator('#btn-attendance-link').click();
     await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
-    await page.locator('[data-connections-device]').click();
+    await page.locator('[data-connections-backups]').click();
     await page.locator('[data-review-backup]:visible').click();
     await page.locator('[data-apply-backup]').click();
     const dialog = page.getByRole('dialog', { name: '¿Restaurar respaldo?', exact: true });
@@ -691,7 +703,7 @@ for (const theme of ['light', 'dark']) test(`full app restore contrast ${theme}:
     });
     await page.locator('#btn-attendance-link').click();
     await page.locator('[data-connection-screen=home] [data-connections-home]').waitFor({ state: 'visible' });
-    await page.locator('[data-connections-device]').click();
+    await page.locator('[data-connections-backups]').click();
     await page.locator('[data-review-backup]:visible').click();
     await page.locator('[data-apply-backup]').click();
     const dialog = page.getByRole('dialog', { name: '¿Restaurar respaldo?', exact: true });
