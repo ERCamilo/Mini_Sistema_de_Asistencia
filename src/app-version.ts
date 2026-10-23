@@ -16,8 +16,9 @@ interface AppVersionPolicy {
   if (root) root.MiniAppVersion = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   // BEGIN VERSION POLICY
-  const APP_VERSION = '2.17.8';
+  const APP_VERSION = '2.17.9';
   const CHANGELOG: AppRelease[] = [
+    { version: '2.17.9', date: '2026-10-22', title: 'Personal recibido de SA', items: ['Revisa en Conexiones el personal recibido de SA antes de aplicarlo.', 'Descarta pendientes sin cambiar el personal ya guardado.', 'Consulta los pendientes actualizados con controles legibles en pantallas móviles.'] },
     { version: '2.17.8', date: '2026-10-21', title: 'Actualizar ahora renueva la aplicación', items: ['El botón Actualizar ahora descarga los archivos nuevos y reinicia la aplicación conservando tus datos.', 'La actualización muestra su progreso y permite reintentar si falla la conexión.'] },
     { version: '2.17.7', date: '2026-10-21', title: 'Conexiones más claras', items: ['Un solo botón Vincular: eliges SA por internet, SA directo u otro Mini.', 'La cabecera tiene un solo acceso a tu cuenta y los títulos son los mismos en todas las pantallas.', 'Respaldos, vínculos y cuenta usan los mismos nombres y el mismo estilo.', 'Si Google no está disponible, la cuenta lo explica sin un botón inactivo.'] },
     {"version": "2.17.6", "date": "2026-10-21", "title": "Actualizaciones y novedades confiables", "items": ["Vuelve a recibir avisos de actualización con las novedades de cada entrega.", "Envía el salario diario y el puesto de cada día junto con la asistencia.", "Las transferencias detenidas informan un error para que puedas reintentarlas."]},

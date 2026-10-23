@@ -102,6 +102,12 @@
         emptyTitle.textContent = app === 'sa' ? 'Todavía no hay vínculos' : 'Aún no hay vínculos';
         emptyHint.textContent = app === 'sa' ? 'Usa Vincular Mini para compartir personal y recibir asistencia.' : 'Toca Vincular para conectar con SA, tu obra u otro Mini.';
         empty.append(icon(app === 'sa' ? 'building' : 'link'), emptyTitle, emptyHint);
+        const staged = node('section', 'connections-staged-rosters');
+        staged.dataset.stagedRosters = '';
+        staged.hidden = true;
+        staged.setAttribute('aria-label', 'Personal recibido de SA');
+        staged.setAttribute('aria-live', 'polite');
+        const stagedCards = new Map();
         const extras = node('div', 'connections-extras');
         let backupRow = null;
         const taskHost = node('div', directBody.className + ' connections-task');
@@ -128,7 +134,7 @@
             add.prepend(icon('link'));
             refresh.dataset.connectionsRefresh = '';
         }
-        home.append(priorities, toolbar, heading, list, empty, extras, account);
+        home.append(staged, priorities, toolbar, heading, list, empty, extras, account);
         shell.insertBefore(home, directBody);
         shell.insertBefore(feedback, directBody);
         shell.insertBefore(taskHost, directBody);
@@ -356,6 +362,94 @@
                 return [];
             }
         }
+        function rosterActions() { var _a; return (_a = d.defaultView) === null || _a === void 0 ? void 0 : _a.MiniP2PActivityUi; }
+        async function stagedAction(action, peerId, control) {
+            var _a;
+            if (released || !guard())
+                return;
+            control.disabled = true;
+            try {
+                const run = (_a = rosterActions()) === null || _a === void 0 ? void 0 : _a[action];
+                if (!run)
+                    throw new Error('La revisión no está disponible.');
+                await run(peerId);
+            }
+            catch (error) {
+                if (!released)
+                    options.notify(error instanceof Error ? error.message : 'No se pudo actualizar el pendiente.');
+            }
+            finally {
+                if (!released) {
+                    control.disabled = false;
+                    renderStaged();
+                    renderPriorities();
+                }
+            }
+        }
+        function renderStaged() {
+            var _a, _b;
+            if (released || app !== 'mini')
+                return;
+            let rows = [];
+            try {
+                const value = (_b = (_a = rosterActions()) === null || _a === void 0 ? void 0 : _a.stagedList) === null || _b === void 0 ? void 0 : _b.call(_a);
+                if (Array.isArray(value))
+                    rows = value;
+            }
+            catch { /* Keep the menu usable when local metadata is unavailable. */ }
+            const live = new Set();
+            for (const row of rows) {
+                const id = typeof row.peerId === 'string' ? row.peerId.trim() : '';
+                if (!id || live.has(id))
+                    continue;
+                live.add(id);
+                let view = stagedCards.get(id);
+                if (!view) {
+                    const card = node('article', 'connections-action-card connections-staged-card'), title = node('strong'), description = node('p'), actions = node('div', 'connections-card-actions');
+                    const review = button('Revisar', () => { void stagedAction('reviewStaged', id, review); }), discard = button('Descartar', () => { void stagedAction('discardStaged', id, discard); });
+                    review.dataset.reviewStaged = id;
+                    discard.dataset.discardStaged = id;
+                    actions.append(review, discard);
+                    card.append(icon('people'), title, description, actions);
+                    staged.append(card);
+                    view = { card, title, description };
+                    stagedCards.set(id, view);
+                }
+                const name = typeof row.peerName === 'string' ? row.peerName.trim().slice(0, 160) : 'SA';
+                const count = typeof row.employeeCount === 'number' && Number.isSafeInteger(row.employeeCount) && row.employeeCount >= 0 ? row.employeeCount : 0;
+                const title = 'Personal de ' + (name || 'SA') + ' listo para revisar', description = count + ' empleado(s). Aún no se ha aplicado nada.';
+                if (view.title.textContent !== title)
+                    view.title.textContent = title;
+                if (view.description.textContent !== description)
+                    view.description.textContent = description;
+            }
+            for (const [id, view] of stagedCards)
+                if (!live.has(id)) {
+                    view.card.remove();
+                    stagedCards.delete(id);
+                }
+            // These native badges are views of staging, never independent pending state.
+            for (const badge of shell.querySelectorAll('[data-roster-pending-peer]')) {
+                const count = live.has(badge.dataset.rosterPendingPeer || '') ? 1 : 0;
+                const text = count ? '1' : '';
+                if (badge.textContent !== text)
+                    badge.textContent = text;
+                badge.hidden = !count;
+                badge.setAttribute('aria-label', count ? '1 pendiente' : 'Sin pendientes');
+            }
+            staged.hidden = stagedCards.size === 0;
+        }
+        let stagedRefreshQueued = false;
+        function stagedChanged() {
+            if (released || app !== 'mini' || stagedRefreshQueued)
+                return;
+            stagedRefreshQueued = true;
+            // Coalesce signals and read after native apply clears its in-memory staging.
+            queueMicrotask(() => { stagedRefreshQueued = false; if (released)
+                return; renderStaged(); renderPriorities(); });
+        }
+        d.addEventListener('p2p-staged-roster-change', stagedChanged);
+        d.addEventListener('connection-data-applied', stagedChanged);
         function renderPriorities() {
             var _a, _b, _c, _d;
             pending.replaceChildren();
@@ -367,7 +461,9 @@
             priorities.dataset.app = app;
             if (app === 'mini')
                 priorities.append(primaryActions, pending);
-            if (!events.length && !local) {
+            const directPending = app === 'mini' ? stagedCards.size : 0;
+            pending.hidden = !!directPending && !events.length && !local;
+            if (!events.length && !local && !directPending) {
                 const text = node('p', 'connections-clear');
                 text.textContent = app === 'sa' ? 'No hay envíos por revisar' : 'No hay cambios por revisar';
                 pending.append(text);
@@ -987,6 +1083,7 @@
             }
         }
         function renderOverview() {
+            renderStaged();
             const source = directBody.querySelector('.mini-p2p-peer-list,.sa-p2p-peer-list');
             if (source && !source.hasAttribute('data-connections-harvested')) {
                 source.setAttribute('data-connections-harvested', '');
@@ -1279,6 +1376,9 @@
                 presentation === null || presentation === void 0 ? void 0 : presentation.dispose();
                 cleanupCallbacks.forEach(fn => fn());
                 released = true;
+                stagedCards.clear();
+                d.removeEventListener('p2p-staged-roster-change', stagedChanged);
+                d.removeEventListener('connection-data-applied', stagedChanged);
                 d.removeEventListener('connection-send-preview', sendPreviewChanged);
                 d.body.classList.remove('connections-open');
                 d.removeEventListener('connection-updates', updates);

@@ -6,6 +6,12 @@ interface ConnectionMenuOptions {
  getInternet():HTMLElement;beforeLeaveInternet():boolean;canChange():boolean;
  notify(message:string):void;close():void;scanInvitation?():void;refreshInternet?():void|Promise<void>;prepareSend?():Promise<void>;prepareMembers?():Promise<void>;
 }
+interface ConnectionMenuStagedRoster {peerId?:unknown;peerName?:unknown;employeeCount?:unknown;}
+interface ConnectionMenuRosterActions {
+ stagedList?():ConnectionMenuStagedRoster[];
+ reviewStaged?(peerId:string):unknown;
+ discardStaged?(peerId:string):unknown;
+}
 (function exposeConnectionMenu(root:any,factory:()=>unknown){const api=factory();if(typeof module==='object'&&module&&module.exports)module.exports=api;if(root)root.ConnectionMenu=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
  function createModeState(options:{internetAvailable:boolean;canChange():boolean}){
   let mode:ConnectionMenuMethod='direct';
@@ -63,6 +69,8 @@ interface ConnectionMenuOptions {
   list.append(directList,cloudList);
   const heading=node('h3');heading.textContent='Vínculos';
   const empty=node('section','connections-empty');const emptyTitle=node('strong'),emptyHint=node('p');emptyTitle.textContent=app==='sa'?'Todavía no hay vínculos':'Aún no hay vínculos';emptyHint.textContent=app==='sa'?'Usa Vincular Mini para compartir personal y recibir asistencia.':'Toca Vincular para conectar con SA, tu obra u otro Mini.';empty.append(icon(app==='sa'?'building':'link'),emptyTitle,emptyHint);
+  const staged=node('section','connections-staged-rosters');staged.dataset.stagedRosters='';staged.hidden=true;staged.setAttribute('aria-label','Personal recibido de SA');staged.setAttribute('aria-live','polite');
+  const stagedCards=new Map<string,{card:HTMLElement;title:HTMLElement;description:HTMLElement}>();
   const extras=node('div','connections-extras');let backupRow:HTMLButtonElement|null=null;
   const taskHost=node('div',directBody.className+' connections-task');taskHost.dataset.connectionsTask='';taskHost.hidden=true;
   const taskTitle=node('h3');taskTitle.className='connections-screen-title';const taskBack=button('Volver a compartir',()=>{show();});
@@ -71,7 +79,7 @@ interface ConnectionMenuOptions {
   const store=node('div');store.hidden=true;store.dataset.connectionsStore='';
   const add=button('Vincular',()=>{task('link');});add.dataset.connectionsAdd='';
   const refresh=button('Actualizar conexiones',()=>{if(!guard())return;void refreshCloud();});
-  toolbar.append(add,refresh);if(app==='mini'){refresh.replaceChildren(icon('refresh'));refresh.setAttribute('aria-label','Actualizar conexiones');refresh.title='Actualizar conexiones';add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(priorities,toolbar,heading,list,empty,extras,account);
+  toolbar.append(add,refresh);if(app==='mini'){refresh.replaceChildren(icon('refresh'));refresh.setAttribute('aria-label','Actualizar conexiones');refresh.title='Actualizar conexiones';add.prepend(icon('link'));refresh.dataset.connectionsRefresh='';}home.append(staged,priorities,toolbar,heading,list,empty,extras,account);
   shell.insertBefore(home,directBody);shell.insertBefore(feedback,directBody);shell.insertBefore(taskHost,directBody);shell.append(store);
   const header=shell.querySelector('header');if(header)move(account,header);
   if(app==='mini'&&options.getMiniPeers&&options.subscribeMiniPeers&&options.connectMiniPeer&&options.closeMiniPeer&&typeof MiniConnectionPresentation!=='undefined'){
@@ -170,10 +178,56 @@ interface ConnectionMenuOptions {
   function currentEvents():ConnectionNoticeEvent[]{
    try{const raw=el(app==='mini'?'cloud-field-updates':'sa-field-updates')?.dataset.events;return raw?JSON.parse(raw) as ConnectionNoticeEvent[]:[];}catch{return [];}
   }
+  function rosterActions(){return (d.defaultView as (Window&{MiniP2PActivityUi?:ConnectionMenuRosterActions})|null)?.MiniP2PActivityUi;}
+  async function stagedAction(action:'reviewStaged'|'discardStaged',peerId:string,control:HTMLButtonElement){
+   if(released||!guard())return;
+   control.disabled=true;
+   try{const run=rosterActions()?.[action];if(!run)throw new Error('La revisión no está disponible.');await run(peerId);}
+   catch(error){if(!released)options.notify(error instanceof Error?error.message:'No se pudo actualizar el pendiente.');}
+   finally{if(!released){control.disabled=false;renderStaged();renderPriorities();}}
+  }
+  function renderStaged(){
+   if(released||app!=='mini')return;
+   let rows:ConnectionMenuStagedRoster[]=[];
+   try{const value=rosterActions()?.stagedList?.();if(Array.isArray(value))rows=value;}catch{ /* Keep the menu usable when local metadata is unavailable. */ }
+   const live=new Set<string>();
+   for(const row of rows){
+    const id=typeof row.peerId==='string'?row.peerId.trim():'';if(!id||live.has(id))continue;live.add(id);
+    let view=stagedCards.get(id);
+    if(!view){
+     const card=node('article','connections-action-card connections-staged-card'),title=node('strong'),description=node('p'),actions=node('div','connections-card-actions');
+     const review=button('Revisar',()=>{void stagedAction('reviewStaged',id,review);}),discard=button('Descartar',()=>{void stagedAction('discardStaged',id,discard);});
+     review.dataset.reviewStaged=id;discard.dataset.discardStaged=id;
+     actions.append(review,discard);card.append(icon('people'),title,description,actions);staged.append(card);
+     view={card,title,description};stagedCards.set(id,view);
+    }
+    const name=typeof row.peerName==='string'?row.peerName.trim().slice(0,160):'SA';
+    const count=typeof row.employeeCount==='number'&&Number.isSafeInteger(row.employeeCount)&&row.employeeCount>=0?row.employeeCount:0;
+    const title='Personal de '+(name||'SA')+' listo para revisar',description=count+' empleado(s). Aún no se ha aplicado nada.';
+    if(view.title.textContent!==title)view.title.textContent=title;
+    if(view.description.textContent!==description)view.description.textContent=description;
+   }
+   for(const [id,view] of stagedCards)if(!live.has(id)){view.card.remove();stagedCards.delete(id);}
+   // These native badges are views of staging, never independent pending state.
+   for(const badge of shell.querySelectorAll<HTMLElement>('[data-roster-pending-peer]')){
+    const count=live.has(badge.dataset.rosterPendingPeer||'')?1:0;
+    const text=count?'1':'';if(badge.textContent!==text)badge.textContent=text;
+    badge.hidden=!count;badge.setAttribute('aria-label',count?'1 pendiente':'Sin pendientes');
+   }
+   staged.hidden=stagedCards.size===0;
+  }
+  let stagedRefreshQueued=false;
+  function stagedChanged(){
+   if(released||app!=='mini'||stagedRefreshQueued)return;stagedRefreshQueued=true;
+   // Coalesce signals and read after native apply clears its in-memory staging.
+   queueMicrotask(()=>{stagedRefreshQueued=false;if(released)return;renderStaged();renderPriorities();});
+  }
+  d.addEventListener('p2p-staged-roster-change',stagedChanged);d.addEventListener('connection-data-applied',stagedChanged);
   function renderPriorities(){
    pending.replaceChildren();primaryActions.replaceChildren();
    const events=currentEvents(),local=app==='sa'?Number(el('sa-field-updates')?.dataset.localPending||0):0,pendingTitle=node('h3');pendingTitle.textContent='Por revisar';pendingTitle.className='connections-pending-heading';pending.append(pendingTitle);priorities.dataset.app=app;if(app==='mini')priorities.append(primaryActions,pending);
-   if(!events.length&&!local){const text=node('p','connections-clear');text.textContent=app==='sa'?'No hay envíos por revisar':'No hay cambios por revisar';pending.append(text);}
+   const directPending=app==='mini'?stagedCards.size:0;pending.hidden=!!directPending&&!events.length&&!local;
+   if(!events.length&&!local&&!directPending){const text=node('p','connections-clear');text.textContent=app==='sa'?'No hay envíos por revisar':'No hay cambios por revisar';pending.append(text);}
    for(const event of events){
     const card=node('article','connections-action-card');card.dataset.noticeKind=event.kind;
     const title=node('strong');title.textContent=event.title;
@@ -421,6 +475,7 @@ interface ConnectionMenuOptions {
    }catch(e){options.notify(e instanceof Error?e.message:'No se pudo preparar la cuenta.');}
   }
   function renderOverview(){
+   renderStaged();
    const source=directBody.querySelector('.mini-p2p-peer-list,.sa-p2p-peer-list');
    if(source&&!source.hasAttribute('data-connections-harvested')){
     source.setAttribute('data-connections-harvested','');
@@ -547,7 +602,7 @@ interface ConnectionMenuOptions {
    release(){
     if(!options.beforeLeaveInternet())return false;
     if(app==='sa')restoreSaDetails();
-    presentation?.dispose();cleanupCallbacks.forEach(fn=>fn());released=true;d.removeEventListener('connection-send-preview',sendPreviewChanged);d.body.classList.remove('connections-open');d.removeEventListener('connection-updates',updates);observers.forEach(o=>o.disconnect());
+    presentation?.dispose();cleanupCallbacks.forEach(fn=>fn());released=true;stagedCards.clear();d.removeEventListener('p2p-staged-roster-change',stagedChanged);d.removeEventListener('connection-data-applied',stagedChanged);d.removeEventListener('connection-send-preview',sendPreviewChanged);d.body.classList.remove('connections-open');d.removeEventListener('connection-updates',updates);observers.forEach(o=>o.disconnect());
     for(const {node,parent,next} of [...origins].reverse()){
      if(next?.parentNode===parent)parent.insertBefore(node,next);else parent.append(node);
     }

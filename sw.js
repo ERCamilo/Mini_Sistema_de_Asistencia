@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.17.8-20261021-193124-725';
+const CACHE_VERSION = 'asistencia-v2.17.9-20261022-052414-801';
 
 importScripts(`./app-shell-refresh.js?__v=${CACHE_VERSION}`);
 
@@ -65,6 +65,9 @@ const PRECACHE_ASSETS = [
   './sheet-import.js',
   './sa-roster-import.js',
   './p2p-core.js',
+  './private-turn.js',
+  './private-turn-bootstrap.js',
+  './private-turn-production.js',
   './p2p-pairing.js',
   './p2p-peer-alias-store.js',
   './p2p-activity-store.js',

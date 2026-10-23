@@ -3,7 +3,9 @@ import { resolve, join, relative, isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
-const extras = ['private-turn.js', 'private-turn-bootstrap.js', 'private-turn-public-preview.js'];
+const extras = ['private-turn-public-preview.js'];
+// Production wiring (disabled marker + TURN scripts) already ships in index.html and the precache list.
+const turnTags = ['private-turn.js', 'private-turn-bootstrap.js', 'private-turn-production.js'].map(name => '<script src="./' + name + '"></script>');
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
 async function packagePreview() {
     const args = process.argv.slice(2), values: Record<string, string> = {};
@@ -30,7 +32,7 @@ async function packagePreview() {
     const list = /const PRECACHE_ASSETS = \[([\s\S]*?)\];/.exec(sw);
     if (!list) throw new Error('PACKAGE_PRECACHE_INVALID');
     const paths = [...list[1].matchAll(/'([^']+)'/g)].map(match => match[1]).filter(value => value !== './').map(value => value.replace(/^\.\//, ''));
-    const assets = [...new Set([...paths, 'sw.js', ...extras])];
+    const assets = [...new Set([...paths, 'sw.js', ...extras, 'private-turn.js', 'private-turn-bootstrap.js', 'private-turn-production.js'])];
     const content = new Map<string, Buffer>();
     for (const name of assets) {
         if (!/^(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:html|js|css|json|webmanifest|svg|png|ico|webp|woff2)$/.test(name)
@@ -46,11 +48,12 @@ async function packagePreview() {
         content.set(name, bytes);
     }
     const html = content.get('index.html')!.toString('utf8'), anchor = '<script src="./p2p-core.js"></script>';
-    if (html.split(anchor).length !== 2 || html.includes('window.MiniPublicTurnPreview=') || /private-turn(?:-bootstrap|-public-preview)?\.js/.test(html)) throw new Error('PACKAGE_HTML_INVALID');
+    if (html.split(anchor).length !== 2 || html.includes('window.MiniPublicTurnPreview=') || html.includes('private-turn-public-preview.js')
+        || !html.includes('<script>window.MiniProductionTurn={enabled:false};</script>') || turnTags.some(tag => html.split(tag).length !== 2)) throw new Error('PACKAGE_HTML_INVALID');
     const release = { label: 'beta 1.9', revision };
     const injected = '<script>window.MiniPublicTurnPreview=' + JSON.stringify({ enabled: true, ...release }) + ';</script>'
         + extras.map(name => '<script src="./' + name + '"></script>').join('');
-    content.set('index.html', Buffer.from(html.replace(anchor, anchor + injected)));
+    content.set('index.html', Buffer.from(html.replace(turnTags[2], turnTags[2] + injected)));
     content.set('sw.js', Buffer.from(sw.replace(list[0], list[0].replace(/\s*\];$/, ',\n' + extras.map(name => "  './" + name + "',\n").join('') + '];'))
         .replace(/^const CACHE_VERSION = '[^']*';/m, `const CACHE_VERSION = 'mini-turn-${candidate ? 'candidate' : 'commit'}-${revision}';`)));
     // All input validation precedes the exclusive output-directory creation.
