@@ -7,8 +7,9 @@
         root.MiniAppVersion = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     // BEGIN VERSION POLICY
-    const APP_VERSION = '2.17.9';
+    const APP_VERSION = '2.17.10';
     const CHANGELOG = [
+        { version: '2.17.10', date: '2026-10-23', title: 'Actualiza y vuelve a tu trabajo', items: ['Al terminar de actualizar verás una confirmación y podrás seguir trabajando sin aceptar otro aviso.', 'Las novedades explican de forma sencilla qué puedes hacer y qué ha mejorado.'] },
         { version: '2.17.9', date: '2026-10-22', title: 'Personal recibido de SA', items: ['Revisa en Conexiones el personal recibido de SA antes de aplicarlo.', 'Descarta pendientes sin cambiar el personal ya guardado.', 'Consulta los pendientes actualizados con controles legibles en pantallas móviles.'] },
         { version: '2.17.8', date: '2026-10-21', title: 'Actualizar ahora renueva la aplicación', items: ['El botón Actualizar ahora descarga los archivos nuevos y reinicia la aplicación conservando tus datos.', 'La actualización muestra su progreso y permite reintentar si falla la conexión.'] },
         { version: '2.17.7', date: '2026-10-21', title: 'Conexiones más claras', items: ['Un solo botón Vincular: eliges SA por internet, SA directo u otro Mini.', 'La cabecera tiene un solo acceso a tu cuenta y los títulos son los mismos en todas las pantallas.', 'Respaldos, vínculos y cuenta usan los mismos nombres y el mismo estilo.', 'Si Google no está disponible, la cuenta lo explica sin un botón inactivo.'] },
@@ -16,6 +17,14 @@
         { version: '2.17.5', date: '2026-10-20', title: 'Novedades y actualizaciones a tu ritmo', items: ['Consulta las mejoras de cada versión desde Ajustes.', 'Elige cuándo actualizar sin interrumpir tu trabajo.', 'Busca actualizaciones y revisa sus novedades antes de instalarlas.'] },
         { version: '2.17.4', date: '2026-10-19', title: 'Conexiones y acceso', items: ['Mejoras al conectar dispositivos y acceder con Google.'] }
     ];
+    // Published history stays immutable; these labels clarify older user-facing notes.
+    function getDisplayRelease(release) {
+        if (release.version === '2.17.9')
+            return { ...release, title: 'Lista de empleados recibida', items: ['Revisa y agrega la lista de empleados que recibes de otro equipo.', 'Descarta listas pendientes sin cambiar los empleados ya guardados.', 'Consulta las listas pendientes con botones claros en el celular.'] };
+        if (release.version === '2.17.7')
+            return { ...release, title: 'Conexiones más claras', items: ['Un solo botón para conectar con la aplicación de la oficina o con otro compañero.', 'Encuentra tu cuenta en un solo lugar y reconoce las mismas opciones en cada pantalla.', 'Respaldos, conexiones y cuenta ahora tienen nombres y estilos más claros.', 'Si no puedes iniciar sesión con Google, la aplicación te explica qué ocurre.'] };
+        return release;
+    }
     const CHECK_INTERVAL_MS = 30 * 60 * 1000;
     function validVersion(value) {
         return typeof value === 'string' && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value)
@@ -72,6 +81,6 @@
             errors.push('Conserva el historial publicado y añade las novedades arriba.');
         return errors;
     }
-    return { APP_VERSION, CHANGELOG, CHECK_INTERVAL_MS, getReleaseErrors, compareVersions, getUnseenReleases, shouldPromptForUpdate, shouldCheckForUpdate, isReleaseManifest };
+    return { APP_VERSION, CHANGELOG, CHECK_INTERVAL_MS, getDisplayRelease, getReleaseErrors, compareVersions, getUnseenReleases, shouldPromptForUpdate, shouldCheckForUpdate, isReleaseManifest };
     // END VERSION POLICY
 });

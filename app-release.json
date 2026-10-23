@@ -1,6 +1,15 @@
 {
-  "version": "2.17.9",
+  "version": "2.17.10",
   "changelog": [
+    {
+      "version": "2.17.10",
+      "date": "2026-10-23",
+      "title": "Actualiza y vuelve a tu trabajo",
+      "items": [
+        "Al terminar de actualizar verás una confirmación y podrás seguir trabajando sin aceptar otro aviso.",
+        "Las novedades explican de forma sencilla qué puedes hacer y qué ha mejorado."
+      ]
+    },
     {
       "version": "2.17.9",
       "date": "2026-10-22",

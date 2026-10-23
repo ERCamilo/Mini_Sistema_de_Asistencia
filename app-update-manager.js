@@ -29,6 +29,7 @@
         let manualCheck = false;
         let deferred = read('deferredVersion');
         let pendingNews = [];
+        let pendingSuccess = false;
         let lastCheckedAt = Number(read('lastUpdateCheck')) || 0;
         function closeNews() {
             dialogOpen = false;
@@ -49,6 +50,7 @@
                 return;
             applying = true;
             const generation = ++applyGeneration;
+            const target = incoming.version;
             let saved = false;
             try {
                 options.status('Guardando datos…');
@@ -59,7 +61,8 @@
                 options.status('Descargando actualización…');
                 await ((_a = options.prepareUpdate) === null || _a === void 0 ? void 0 : _a.call(options));
                 if (generation === applyGeneration) {
-                    options.status('Reiniciando aplicación…');
+                    write('updateReceipt', JSON.stringify({ from: policy.APP_VERSION, target }));
+                    options.status('Abriendo la aplicación…');
                     options.reload();
                 }
             }
@@ -87,15 +90,45 @@
             const offered = incoming;
             dialogOpen = options.show('update', policy.getUnseenReleases(policy.APP_VERSION, offered.changelog), offered.version, () => closeUpdate(offered.version), apply);
         }
-        function flush() { if (pendingNews.length)
-            showNews();
-        else
-            showUpdate(); }
+        function flush() {
+            var _a;
+            if (pendingSuccess) {
+                if (!dialogOpen && options.canShow()) {
+                    dialogOpen = ((_a = options.showSuccess) === null || _a === void 0 ? void 0 : _a.call(options, () => { dialogOpen = false; })) || false;
+                    pendingSuccess = false;
+                }
+            }
+            else if (pendingNews.length)
+                showNews();
+            else
+                showUpdate();
+        }
+        function consumeUpdateReceipt() {
+            const value = read('updateReceipt');
+            if (!value || !write('updateReceipt', ''))
+                return false;
+            try {
+                const receipt = JSON.parse(value);
+                return !!receipt && typeof receipt.from === 'string' && receipt.target === policy.APP_VERSION
+                    && policy.compareVersions(receipt.target, receipt.from) > 0;
+            }
+            catch (_) {
+                return false;
+            }
+        }
         function boot() {
             if (booted)
                 return;
             booted = true;
             const seen = read('lastSeenVersion');
+            if (consumeUpdateReceipt()) {
+                pendingSuccess = !!seen && policy.compareVersions(seen, policy.APP_VERSION) >= 0
+                    || write('lastSeenVersion', policy.APP_VERSION);
+                if (pendingSuccess) {
+                    flush();
+                    return;
+                }
+            }
             if (!seen || !/^\d+\.\d+\.\d+$/.test(seen))
                 write('lastSeenVersion', policy.APP_VERSION);
             else

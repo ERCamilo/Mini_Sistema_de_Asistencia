@@ -3,6 +3,7 @@ interface AppUpdateManagerOptions {
   read(key: string): string | null; write(key: string, value: string): void;
   now(): number; online(): boolean; fetchRelease(): Promise<unknown>; canShow(): boolean;
   show(kind: 'news' | 'update', releases: AppRelease[], version: string, close: () => void, apply: () => Promise<void>): boolean;
+  showSuccess?(close: () => void): boolean;
   beforeReload(): Promise<void>; prepareUpdate?(): Promise<void>; reload(): void; status(message: string): void;
 }
 
@@ -23,6 +24,7 @@ interface AppUpdateManagerOptions {
     let manualCheck = false;
     let deferred = read('deferredVersion');
     let pendingNews: AppRelease[] = [];
+    let pendingSuccess = false;
     let lastCheckedAt = Number(read('lastUpdateCheck')) || 0;
     function closeNews() {
       dialogOpen = false;
@@ -39,6 +41,7 @@ interface AppUpdateManagerOptions {
       if (applying || !incoming) return;
       applying = true;
       const generation = ++applyGeneration;
+      const target = incoming.version;
       let saved = false;
       try {
         options.status('Guardando datos…');
@@ -47,7 +50,10 @@ interface AppUpdateManagerOptions {
         saved = true;
         options.status('Descargando actualización…');
         await options.prepareUpdate?.();
-        if (generation === applyGeneration) { options.status('Reiniciando aplicación…'); options.reload(); }
+        if (generation === applyGeneration) {
+          write('updateReceipt', JSON.stringify({ from: policy.APP_VERSION, target }));
+          options.status('Abriendo la aplicación…'); options.reload();
+        }
       }
       catch (_) {
         options.status(saved ? 'No se pudo actualizar. Revisa tu conexión y vuelve a intentarlo; tus datos se conservan.'
@@ -67,11 +73,32 @@ interface AppUpdateManagerOptions {
       const offered = incoming;
       dialogOpen = options.show('update', policy.getUnseenReleases(policy.APP_VERSION, offered.changelog), offered.version, () => closeUpdate(offered.version), apply);
     }
-    function flush() { if (pendingNews.length) showNews(); else showUpdate(); }
+    function flush() {
+      if (pendingSuccess) {
+        if (!dialogOpen && options.canShow()) {
+          dialogOpen = options.showSuccess?.(() => { dialogOpen = false; }) || false;
+          pendingSuccess = false;
+        }
+      } else if (pendingNews.length) showNews(); else showUpdate();
+    }
+    function consumeUpdateReceipt(): boolean {
+      const value = read('updateReceipt');
+      if (!value || !write('updateReceipt', '')) return false;
+      try {
+        const receipt = JSON.parse(value) as { from?: string; target?: string };
+        return !!receipt && typeof receipt.from === 'string' && receipt.target === policy.APP_VERSION
+          && policy.compareVersions(receipt.target, receipt.from) > 0;
+      } catch (_) { return false; }
+    }
     function boot() {
       if (booted) return;
       booted = true;
       const seen = read('lastSeenVersion');
+      if (consumeUpdateReceipt()) {
+        pendingSuccess = !!seen && policy.compareVersions(seen, policy.APP_VERSION) >= 0
+          || write('lastSeenVersion', policy.APP_VERSION);
+        if (pendingSuccess) { flush(); return; }
+      }
       if (!seen || !/^\d+\.\d+\.\d+$/.test(seen)) write('lastSeenVersion', policy.APP_VERSION);
       else pendingNews = policy.getUnseenReleases(seen, policy.CHANGELOG);
       flush();
