@@ -83,12 +83,17 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     staleNavigation = true;
     await page.evaluate(() => window.__finishWrite());
     await page.waitForFunction(v => window.MiniAppVersion?.APP_VERSION === v && !window.__pageMarker, nextVersion).catch(async error=>{console.error('Update state',await page.evaluate(async()=>({version:MiniAppVersion.APP_VERSION,status:document.querySelector('#update-modal [data-release-status]')?.textContent,caches:await caches.keys(),worker:navigator.serviceWorker.controller?.scriptURL})));throw error;});
-    await page.waitForFunction(() => localDbReady); await page.waitForSelector('#whats-new-modal.active');
+    await page.waitForFunction(() => localDbReady); await page.waitForSelector('#update-success:not([hidden])');
+    staleNavigation = false; // Only the immediate update must resist the stale canonical page.
+    assert.equal(await page.locator('#update-success svg circle').count(), 1);
+    assert.equal(await page.locator('.release-modal.active').count(), 0);
+    if (process.env.UPDATE_SUCCESS_EVIDENCE) await page.screenshot({ path: path.join(process.env.UPDATE_SUCCESS_EVIDENCE, 'success-real-worker.png') });
     assert.equal(await page.textContent('#mini-version'), 'v' + nextVersion);
     assert.deepEqual(await page.evaluate(() => employeeRepository.getAll()), original);
     assert.equal(await page.evaluate(async()=>!!(await (await caches.open('mini-tutorials-saved')).match(new URL('./saved-video',location.href).href))),true);
     assert.equal(await page.evaluate(async()=>!!(await caches.match(new URL('./stale-shell-entry',location.href).href))),false);
-    await page.goBack(); await page.waitForSelector('#whats-new-modal.active', { state: 'hidden' });
+    await page.waitForSelector('#update-success', { state: 'hidden' });
+    assert.equal(await page.locator('.release-modal.active').count(), 0, 'successful update needs no second acceptance');
     assert.equal(await page.evaluate(() => localStorage.getItem('mini:lastSeenVersion')), nextVersion);
     assert.equal(await page.evaluate(() => currentView), 'attendance');
     if (process.env.AXE_PATH) await page.addScriptTag({ path: process.env.AXE_PATH });
@@ -100,12 +105,32 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
       const heights = await page.locator('#whats-new-modal button').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().height));
       assert.ok(heights.every(h => h >= 44));
       if (process.env.AXE_PATH) assert.deepEqual(await page.evaluate(async () => (await axe.run('#whats-new-modal', { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } })).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) }))), []);
+      assert.doesNotMatch(await page.textContent('#whats-new-modal'), /\b(?:SA|TURN|STUN|roster|IndexedDB)\b/);
       await page.click('#whats-new-modal button'); await page.waitForSelector('#whats-new-modal.active', { state: 'hidden' });
+      if (['dark', 'light'].includes(theme)) {
+        await page.evaluate(async t => { setTheme(t); await localDbWriteQueue; }, theme);
+        await page.emulateMedia({ reducedMotion: theme === 'light' ? 'reduce' : 'no-preference' });
+        await page.evaluate(({ from, target }) => sessionStorage.setItem('mini:updateReceipt', JSON.stringify({ from, target })), { from: policy.APP_VERSION, target: nextVersion });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#update-success:not([hidden])');
+        assert.equal(await page.getAttribute('html', 'data-theme'), theme, 'success uses the persisted theme after reload');
+        const success = page.locator('#update-success');
+        await success.evaluate(el => Promise.all(el.getAnimations({ subtree: true }).map(animation => animation.finished)));
+        const size = await page.locator('.update-success-check').boundingBox();
+        assert.ok(size.width >= 144 && size.x >= 0 && size.x + size.width <= 320);
+        assert.equal(await success.getAttribute('role'), 'status');
+        if (theme === 'light') assert.equal(await page.locator('.update-success-check path').evaluate(el => getComputedStyle(el).animationName), 'none');
+        if (process.env.UPDATE_SUCCESS_EVIDENCE) await page.screenshot({ path: path.join(process.env.UPDATE_SUCCESS_EVIDENCE, `success-${theme}.png`) });
+        await page.waitForSelector('#update-success', { state: 'hidden' });
+        assert.equal(await page.locator('.release-modal.active').count(), 0);
+      }
     }
+    await page.waitForFunction(() => localDbReady && !!navigator.serviceWorker.controller);
     await context.setOffline(true); await page.evaluate(() => window.MiniUpdates.check());
     assert.match(await page.textContent('#app-update-status'), /Sin conexión/);
     await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForFunction(() => localDbReady);
     assert.equal(await page.textContent('#mini-version'), 'v' + nextVersion);
+    assert.equal(await page.locator('#update-success:not([hidden]), .release-modal.active').count(), 0, 'ordinary reload does not repeat success or news');
     assert.deepEqual(await page.evaluate(() => employeeRepository.getAll()), original); await context.setOffline(false);
     invalid = true; await page.evaluate(() => window.MiniUpdates.check());
     await page.waitForFunction(() => document.getElementById('app-update-status').textContent.includes('No se pudo consultar'));

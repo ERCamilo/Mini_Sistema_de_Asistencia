@@ -64,3 +64,13 @@ test('cada entrega de la app aumenta versión, añade novedades propias y conser
   assert.deepEqual(policy.getReleaseErrors(old, old, false), []);
   assert.deepEqual(policy.getReleaseErrors(null, current, true), []);
 });
+
+test('release presentation uses everyday language without changing published history', () => {
+  const before = JSON.stringify(policy.CHANGELOG);
+  for (const entry of policy.CHANGELOG) {
+    const display = policy.getDisplayRelease(entry);
+    assert.doesNotMatch([display.title, ...display.items].join(' '), /\b(?:SA|TURN|STUN|roster|IndexedDB|service worker)\b/i);
+    assert.equal(display.version, entry.version); assert.equal(display.date, entry.date);
+  }
+  assert.equal(JSON.stringify(policy.CHANGELOG), before);
+});

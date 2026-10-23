@@ -78,7 +78,8 @@
         modal.querySelector('[data-release-title]').textContent = kind === 'news' ? `Novedades · v${version}` : `Actualización disponible · v${version}`;
         const list = modal.querySelector('[data-release-list]');
         list.replaceChildren();
-        for (const release of releases) {
+        for (const entry of releases) {
+            const release = window.MiniAppVersion.getDisplayRelease(entry);
             const section = document.createElement('section'), title = document.createElement('h3'), date = document.createElement('p'), items = document.createElement('ul');
             title.textContent = `${release.title} · v${release.version}`;
             date.textContent = release.date.split('-').reverse().join('/');
@@ -98,6 +99,14 @@
         config.openModal(id);
         return true;
     }
+    function showSuccess(onClose) {
+        const element = document.getElementById('update-success');
+        if (!element)
+            return false;
+        element.hidden = false;
+        setTimeout(() => { element.hidden = true; onClose(); }, 1800);
+        return true;
+    }
     function init(options) {
         var _a;
         if (manager)
@@ -105,10 +114,12 @@
         config = options;
         manager = window.AppUpdateManager.createReleaseManager({
             policy: window.MiniAppVersion, prefix: 'mini',
-            read: key => localStorage.getItem(key), write: (key, value) => localStorage.setItem(key, value),
+            // A receipt belongs to this tab, not another open installation.
+            read: key => (key === 'mini:updateReceipt' ? sessionStorage : localStorage).getItem(key),
+            write: (key, value) => (key === 'mini:updateReceipt' ? sessionStorage : localStorage).setItem(key, value),
             now: () => Date.now(), online: () => navigator.onLine !== false,
             fetchRelease, canShow: () => !options.isBusy() && !document.querySelector('.modal.active, .mini-p2p-overlay, .mini-welcome-overlay'),
-            show, beforeReload: options.beforeReload, prepareUpdate: refreshWorker, reload: () => location.reload(), status
+            show, showSuccess, beforeReload: options.beforeReload, prepareUpdate: refreshWorker, reload: () => location.reload(), status
         });
         manager.boot();
         let hadController = !!((_a = navigator.serviceWorker) === null || _a === void 0 ? void 0 : _a.controller);
