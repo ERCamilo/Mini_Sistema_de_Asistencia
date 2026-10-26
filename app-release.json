@@ -1,6 +1,15 @@
 {
-  "version": "2.17.10",
+  "version": "2.17.11",
   "changelog": [
+    {
+      "version": "2.17.11",
+      "date": "2026-10-26",
+      "title": "Confirmación de actualización más confiable",
+      "items": [
+        "Si el navegador abre una copia anterior durante la actualización, conservamos la confirmación para cuando se abra la versión nueva.",
+        "Tus datos se conservan y puedes seguir trabajando después de la confirmación."
+      ]
+    },
     {
       "version": "2.17.10",
       "date": "2026-10-23",

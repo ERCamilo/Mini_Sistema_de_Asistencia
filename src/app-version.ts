@@ -17,8 +17,9 @@ interface AppVersionPolicy {
   if (root) root.MiniAppVersion = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   // BEGIN VERSION POLICY
-  const APP_VERSION = '2.17.10';
+  const APP_VERSION = '2.17.11';
   const CHANGELOG: AppRelease[] = [
+    { version: '2.17.11', date: '2026-10-26', title: 'Confirmación de actualización más confiable', items: ['Si el navegador abre una copia anterior durante la actualización, conservamos la confirmación para cuando se abra la versión nueva.', 'Tus datos se conservan y puedes seguir trabajando después de la confirmación.'] },
     { version: '2.17.10', date: '2026-10-23', title: 'Actualiza y vuelve a tu trabajo', items: ['Al terminar de actualizar verás una confirmación y podrás seguir trabajando sin aceptar otro aviso.', 'Las novedades explican de forma sencilla qué puedes hacer y qué ha mejorado.'] },
     { version: '2.17.9', date: '2026-10-22', title: 'Personal recibido de SA', items: ['Revisa en Conexiones el personal recibido de SA antes de aplicarlo.', 'Descarta pendientes sin cambiar el personal ya guardado.', 'Consulta los pendientes actualizados con controles legibles en pantallas móviles.'] },
     { version: '2.17.8', date: '2026-10-21', title: 'Actualizar ahora renueva la aplicación', items: ['El botón Actualizar ahora descarga los archivos nuevos y reinicia la aplicación conservando tus datos.', 'La actualización muestra su progreso y permite reintentar si falla la conexión.'] },

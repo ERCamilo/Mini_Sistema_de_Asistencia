@@ -105,16 +105,23 @@
         }
         function consumeUpdateReceipt() {
             const value = read('updateReceipt');
-            if (!value || !write('updateReceipt', ''))
+            if (!value)
                 return false;
             try {
                 const receipt = JSON.parse(value);
-                return !!receipt && typeof receipt.from === 'string' && receipt.target === policy.APP_VERSION
-                    && policy.compareVersions(receipt.target, receipt.from) > 0;
+                if (receipt && typeof receipt.from === 'string' && typeof receipt.target === 'string'
+                    && policy.compareVersions(receipt.target, receipt.from) > 0) {
+                    // A stale shell must not consume proof intended for a later boot.
+                    if (policy.compareVersions(policy.APP_VERSION, receipt.from) >= 0
+                        && policy.compareVersions(policy.APP_VERSION, receipt.target) < 0)
+                        return false;
+                    if (receipt.target === policy.APP_VERSION)
+                        return write('updateReceipt', '');
+                }
             }
-            catch (_) {
-                return false;
-            }
+            catch (_) { /* Invalid receipts cannot confirm an update. */ }
+            write('updateReceipt', '');
+            return false;
         }
         function boot() {
             if (booted)

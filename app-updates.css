@@ -14,7 +14,7 @@
 .update-success[hidden] { display: none; }
 .update-success-card { text-align: center; max-width: 28rem; animation: update-success-enter 240ms ease-out both; }
 .update-success-card h2 { font-size: 1.3rem; }
-.update-success-card p { color: var(--text-muted); line-height: 1.5; }
+.update-success-card p { color: var(--text-color); line-height: 1.5; }
 .update-success-check { width: clamp(144px, 40vw, 220px); height: auto; }
 .update-success-check circle { fill: var(--success-color); }
 .update-success-check path { fill: none; stroke: var(--bg-color); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 80; stroke-dashoffset: 0; animation: update-success-draw 450ms ease-out both; }
