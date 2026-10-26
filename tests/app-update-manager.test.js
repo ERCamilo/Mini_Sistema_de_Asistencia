@@ -141,8 +141,8 @@ test('failed save, failed preparation and receipt storage never report a complet
     assert.equal(f.calls.includes('reload'), !options.save && !options.prepare);
   }
 });
-test('unmatched, invalid and already consumed update receipts do not announce success', () => {
-  for (const receipt of [{ from: '1.8.0', target: '1.10.0' }, { from: '1.9.0', target: '1.9.0' }, { from: 'invalid', target: '1.9.0' }, {}]) {
+test('invalid and non-increasing update receipts do not announce success', () => {
+  for (const receipt of [ { from: '1.9.0', target: '1.9.0' }, { from: 'invalid', target: '1.9.0' }, {}]) {
     const f = updateReceiptFixture(); f.storage.set('receipt:lastSeenVersion', '1.9.0');
     f.storage.set('receipt:updateReceipt', JSON.stringify(receipt)); f.manager.boot();
     assert.equal(f.shown.length, 0); assert.equal(f.storage.get('receipt:updateReceipt'), '');
@@ -178,4 +178,35 @@ test('unavailable receipt storage cannot repeatedly announce success', () => {
   const storage = new Map([['receipt:lastSeenVersion', '1.9.0'], ['receipt:updateReceipt', JSON.stringify({ from: '1.9.0', target: '1.10.0' })]]);
   const f = updateReceiptFixture({ version: '1.10.0', storage, failWrite: true }); f.manager.boot();
   assert.equal(f.shown.some(s => s.kind === 'success'), false);
+});
+
+
+test('stale and intermediate boots retain a genuine receipt until the exact target runs once', async () => {
+  const old = updateReceiptFixture(); old.storage.set('receipt:lastSeenVersion', '1.9.0');
+  await old.manager.check(true); await old.manager.apply();
+  const receipt = old.storage.get('receipt:updateReceipt');
+  for (const version of ['1.9.0', '1.9.1']) {
+    const stale = updateReceiptFixture({ version, storage: old.storage }); stale.manager.boot();
+    assert.equal(stale.shown.some(s => s.kind === 'success'), false);
+    assert.equal(stale.storage.get('receipt:updateReceipt'), receipt, `retain at ${version}`);
+  }
+  const fresh = updateReceiptFixture({ version: '1.10.0', storage: old.storage }); fresh.manager.boot();
+  assert.deepEqual(fresh.shown.map(s => s.kind), ['success']);
+  assert.equal(fresh.storage.get('receipt:updateReceipt'), '');
+  const repeated = updateReceiptFixture({ version: '1.10.0', storage: old.storage }); repeated.manager.boot();
+  assert.equal(repeated.shown.length, 0);
+});
+test('before-source, overshot and malformed receipts are discarded without success', () => {
+  for (const [version, raw] of [
+    ['1.8.0', JSON.stringify({ from: '1.9.0', target: '1.10.0' })],
+    ['1.11.0', JSON.stringify({ from: '1.9.0', target: '1.10.0' })],
+    ['1.9.0', '{'], ['1.9.0', 'null'],
+    ['1.9.0', JSON.stringify({ from: '1.8.0', target: 'invalid' })],
+    ['1.9.0', JSON.stringify({ from: '1.10.0', target: '1.9.0' })]
+  ]) {
+    const f = updateReceiptFixture({ version }); f.storage.set('receipt:lastSeenVersion', version);
+    f.storage.set('receipt:updateReceipt', raw); f.manager.boot();
+    assert.equal(f.shown.some(s => s.kind === 'success'), false);
+    assert.equal(f.storage.get('receipt:updateReceipt'), '');
+  }
 });
