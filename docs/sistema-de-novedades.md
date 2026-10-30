@@ -6,7 +6,7 @@
 2. **Novedades** permite consultar el historial en cualquier momento, incluso sin conexión.
 3. Una versión publicada más reciente muestra sus mejoras y ofrece **Actualizar ahora** o **Más tarde**. Al posponerla puedes seguir trabajando; no se vuelve a ofrecer automáticamente esa misma versión. El botón de búsqueda permite recuperarla.
 4. Al pulsar **Actualizar ahora**, la aplicación comprueba el guardado local y la activación del service worker y la renovación de los archivos de la aplicación antes de recargar. Si falla, permanece abierta y permite reintentar. Cierra/guarda las ediciones abiertas antes de actualizar.
-5. Tras recargar se muestran las novedades que aún no habías visto. Cerrar ese diálogo las marca como vistas. Atrás cierra el diálogo mediante el gestor de navegación existente.
+5. Tras una actualización confirmada aparece una sola vez la animación de éxito. Las novedades siguen disponibles desde Ajustes. Atrás cierra el diálogo mediante el gestor de navegación existente.
 
 La primera instalación no muestra un aviso de actualización ni novedades pendientes. La búsqueda automática consulta como máximo cada 30 minutos mientras la página está visible, además de comprobar cuando un nuevo worker toma el control o vuelve la conexión. La búsqueda manual omite el intervalo. Sin conexión o con un catálogo inválido nunca se afirma que la app esté actualizada.
 
@@ -30,7 +30,7 @@ Los JS compilados se incluyen en el commit y nunca se editan manualmente. script
 
 Las claves locales `mini:lastSeenVersion`, `deferredVersion` y `lastUpdateCheck` (con el mismo prefijo) pertenecen a cada dispositivo. No alteran empleados, nóminas, asistencia, respaldos ni datos compartidos. Una pestaña antigua no puede rebajar la versión marcada como vista por otra. Sin localStorage se conserva el funcionamiento de la aplicación, aunque los avisos podrían repetirse al volver a abrirla.
 
-El service worker mantiene `skipWaiting()`/`clients.claim()`. `controllerchange` recuerda si ya había controlador para distinguir instalación y actualización. El cambio de controlador **no recarga** la página; solo la acción explícita del usuario lo hace. Los diálogos automáticos esperan a que no haya otro diálogo ni una edición activa. Una consulta en curso se comparte entre disparadores para evitar peticiones duplicadas.
+El service worker espera confirmación antes de activar una actualización; conserva `clients.claim()` al activar. `controllerchange` recuerda si ya había controlador para distinguir instalación y actualización. El cambio de controlador **no recarga** la página; solo la acción explícita del usuario lo hace. Los diálogos automáticos esperan a que no haya otro diálogo ni una edición activa. Una consulta en curso se comparte entre disparadores para evitar peticiones duplicadas.
 
 ## Verificación
 
@@ -56,22 +56,14 @@ node scripts/release-manifest.cjs --check --release --base origin/main --head HE
 `npm run test:release` revisa el estado local contra `origin/main`. No cambia versiones ni inventa novedades automáticamente. Si falla, corrige la fuente de versión/historial, ejecuta `npm run build`, prepara los archivos generados y vuelve a intentar. El hook sella el caché al commitear.
 
 
-## Renovación al pulsar Actualizar ahora
+## Preparación, instalación y reparación
 
-El guardado local termina antes de empezar la descarga. El worker activo recibe
-`REFRESH_APP_SHELL` por `MessageChannel`, descarga todos los recursos precacheados
-con una URL única (`__v`) y `cache: reload`, y solo entonces reemplaza su caché
-de aplicación y elimina las entradas obsoletas de ese mismo caché. Si falla una
-descarga o llega HTML en lugar de JavaScript/CSS, conserva el caché anterior y
-permite reintentar. No borra IndexedDB, localStorage ni cachés ajenos (fotos o
-tutoriales guardados). La página espera la confirmación del worker para recargar,
-aunque este ya estuviera activo y `registration.update()` no detecte cambios.
+La nueva versión se prepara en segundo plano en un caché aislado. Se verifica el catálogo, cada recurso y el tipo de JavaScript/CSS antes de seleccionar esa copia. La consulta y preparación tienen un límite global de 45 segundos, también si registration.update() queda pendiente.
 
-Las pruebas de navegador contaminan el caché del worker activo con la versión
-anterior y comprueban la recuperación, la aparición de novedades y la
-conservación de datos. Las pruebas unitarias verifican el orden guardar/renovar/
-recargar, los errores de descarga y la cancelación mientras se guarda.
+Actualizar ahora comprueba el guardado local, activa la copia preparada y recarga después de recibir confirmación. La actividad muestra descarga, guardado, instalación y reinicio mediante SVG, con conteo real por archivos cuando está disponible y animación indeterminada en las otras fases. Movimiento reducido desactiva las animaciones.
 
-La recarga inmediata usa durante un minuto el shell recién renovado. Esto evita
-que una URL canónica todavía antigua del CDN sobrescriba los archivos verificados
-antes de completar el arranque. Después se recupera la estrategia de red habitual.
+Reparar interfaz usa el mismo mecanismo con una nueva copia de la versión actual; no desregistra el worker ni borra todo CacheStorage. Los clientes antiguos conservan su copia mientras la necesitan. La limpieza se limita a archivos conocidos de la interfaz y conserva fotos, comprobantes y tutoriales, además de IndexedDB y localStorage.
+
+El protocolo anterior REFRESH_APP_SHELL también prepara una copia aislada antes de confirmar. Los clientes antiguos reciben únicamente la respuesta final, para conservar compatibilidad. El arranque confirma la versión y consume una sola vez el recibo de actualización en sessionStorage; no se muestra éxito si la versión esperada todavía no arrancó.
+
+Ver [validación de esta entrega](validation/UPDATE_MOTION_20261030.md).

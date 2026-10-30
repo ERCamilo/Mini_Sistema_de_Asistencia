@@ -1,0 +1,4 @@
+# Actualizaciones preparadas y animadas
+Propuesta: preparar archivos en una caché aislada, dejar el worker esperando la confirmación y guardar antes de activar y recargar. Límites de espera, cancelación, compatibilidad con workers anteriores y respuesta tardía segura. La limpieza conserva medios y otros ámbitos.
+Diseño: SVG animado durante descarga e instalación; archivos completados/total cuando son conocidos, instalación indeterminada. El check existente confirma la versión realmente cargada y desaparece sin una segunda aceptación. Movimiento reducido y estados accesibles.
+Tareas: pruebas de regresión primero; coordinador y shell preparado en TypeScript; cableado del worker y UI; reparación de interfaz; compilados/versiones/novedades; recorridos Chromium y pruebas completas; PR sin merge.
