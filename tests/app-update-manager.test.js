@@ -210,3 +210,85 @@ test('before-source, overshot and malformed receipts are discarded without succe
     assert.equal(f.storage.get('receipt:updateReceipt'), '');
   }
 });
+
+function gate() { let resolve, reject; const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject}; }
+function backgroundFixture() {
+    const preparing=gate(),activating=gate(),calls=[],shown=[],states=[];
+    let dirty=false;
+    const manager=createReleaseManager({
+        prefix:'background',policy:{...base,APP_VERSION:'1.9.0',CHANGELOG:releases.slice(1)},read:()=>null,write(){},
+        now:()=>1000,online:()=>true,canShow:()=>true,canReload:()=>!dirty,
+        fetchRelease:async()=>({version:'1.10.0',changelog:releases}),
+        prepareRelease:require('node:test').mock.fn(async(version,opts)=>{calls.push(opts.force?'repair-prepare':'prepare');return preparing.promise;}),
+        activateRelease:require('node:test').mock.fn(async()=>{calls.push('activate');return activating.promise;}),
+        beforeReload:require('node:test').mock.fn(async()=>{calls.push('save');if(dirty)throw Error('dirty');}),
+        reload:()=>calls.push('reload'),status:message=>states.push(message),updateState:()=>{},
+        show:(kind,entries,version,close,apply)=>{shown.push({kind,close,apply});return true;}
+    });
+    return {manager,preparing,activating,calls,shown,states,dirty:()=>{dirty=true;}};
+}
+test('background readiness never saves or reloads, and only a ready automatic update prompts',async()=>{
+    const f=backgroundFixture();await f.manager.check(false);
+    assert.equal(f.manager.getState().phase,'preparing');assert.equal(f.shown.length,0);
+    assert.deepEqual(f.calls,['prepare']);
+    f.preparing.resolve({version:'1.10.0',cacheName:'ready'});await f.manager.retry();
+    assert.equal(f.manager.getState().phase,'ready');assert.equal(f.shown.length,1);
+    assert.equal(f.calls.includes('save'),false);assert.equal(f.calls.includes('activate'),false);
+});
+test('prepared update saves before activating, and reloads only after activation succeeds',async()=>{
+    const f=backgroundFixture();await f.manager.check(true);
+    f.preparing.resolve({version:'1.10.0',cacheName:'ready'});await f.manager.retry();
+    const pending=f.manager.apply();for(let i=0;i<8;i++)await Promise.resolve();
+    assert.deepEqual(f.calls.slice(-2),['save','activate']);assert.equal(f.calls.includes('reload'),false);
+    f.activating.resolve();await pending;assert.equal(f.calls.at(-1),'reload');
+});
+test('closing during activation prevents a late reload',async()=>{
+    const f=backgroundFixture();await f.manager.check(true);
+    f.preparing.resolve({version:'1.10.0',cacheName:'ready'});await f.manager.retry();
+    const pending=f.manager.apply();for(let i=0;i<8;i++)await Promise.resolve();
+    f.shown[0].close();f.activating.resolve();await pending;
+    assert.equal(f.calls.includes('reload'),false);
+});
+test('dirty changes block activation and explicit fallback reload',async()=>{
+    const f=backgroundFixture();await f.manager.check(true);
+    f.preparing.resolve({version:'1.10.0',cacheName:'ready'});await f.manager.retry();f.dirty();
+    await f.manager.apply();await f.manager.reloadSafely();
+    assert.equal(f.calls.includes('activate'),false);assert.equal(f.calls.includes('reload'),false);
+});
+test('repair saves first, forces a fresh snapshot and does not reload before activation',async()=>{
+    const f=backgroundFixture();const pending=f.manager.repair();
+    for(let i=0;i<8;i++)await Promise.resolve();
+    assert.deepEqual(f.calls,['save','repair-prepare']);
+    f.preparing.resolve({version:'1.10.0',cacheName:'fresh'});for(let i=0;i<8;i++)await Promise.resolve();
+    assert.equal(f.calls.at(-1),'activate');assert.equal(f.calls.includes('reload'),false);
+    f.activating.resolve();await pending;assert.equal(f.calls.at(-1),'reload');
+});
+
+
+
+const deferredMotion=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return{promise,resolve};};
+test('visual stages follow real work and never reuse download counts during installation',async()=>{
+ const storage=new Map(),save=deferredMotion(),install=deferredMotion(),download=deferredMotion();
+ let onProgress,reloads=0;
+ const manager=createReleaseManager({
+  policy:{...base,APP_VERSION:'1.0.0'},prefix:'motion',read:key=>storage.get(key)||null,write:(key,value)=>storage.set(key,value),
+  now:()=>1000,online:()=>true,canShow:()=>true,canReload:()=>true,show:()=>true,status(){},
+  fetchRelease:async()=>({version:'1.1.0',changelog:[{version:'1.1.0',date:'2026-10-27',title:'Test',items:['Test']}]}),
+  prepareRelease:(version,options)=>{onProgress=options.onProgress;return download.promise;},
+  beforeReload:()=>save.promise,activateRelease:()=>install.promise,reload:()=>reloads++
+ });
+ await manager.check(true);await Promise.resolve();
+ onProgress({completed:12,total:40,message:'12 de 40 archivos'});
+ assert.equal(manager.getState().activity,'download');assert.deepEqual(manager.getState().progress.completed,12);
+ download.resolve({version:'1.1.0',cacheName:'prepared',worker:{},previousCacheName:'old'});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(manager.getState().phase,'ready');
+ const applying=manager.apply();assert.equal(manager.getState().activity,'save');assert.equal(manager.getState().progress,null);
+ save.resolve();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(manager.getState().activity,'install');assert.equal(manager.getState().progress,null);
+ onProgress({completed:999,total:40,message:'late progress'});
+ assert.equal(manager.getState().activity,'install');assert.equal(manager.getState().progress,null);
+ assert.equal(reloads,0);assert.equal(storage.has('motion:updateReceipt'),false);
+ install.resolve();await applying;
+ assert.equal(reloads,1);assert.deepEqual(JSON.parse(storage.get('motion:updateReceipt')),{from:'1.0.0',target:'1.1.0'});
+});
