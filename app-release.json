@@ -1,6 +1,16 @@
 {
-  "version": "2.17.11",
+  "version": "2.17.12",
   "changelog": [
+    {
+      "version": "2.17.12",
+      "date": "2026-10-27",
+      "title": "Actualizaciones a tu ritmo",
+      "items": [
+        "La nueva versión se prepara en segundo plano y espera tu confirmación para guardar y reiniciar.",
+        "Sigue la descarga y la instalación con animaciones; puedes reintentar si la conexión falla.",
+        "Reparar interfaz renueva la aplicación y conserva tus datos y archivos."
+      ]
+    },
     {
       "version": "2.17.11",
       "date": "2026-10-26",

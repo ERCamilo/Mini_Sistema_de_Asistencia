@@ -2685,9 +2685,12 @@
       <div class="modal-content"><h2 id="whats-new-title" data-release-title>Novedades</h2><div class="release-list" data-release-list></div><p data-release-status role="status"></p><button type="button" class="btn-full btn-primary" onclick="window.MiniUpdates.close('whats-new-modal')">Entendido</button></div>
     </div>
     <div class="modal release-modal" id="update-modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
-      <div class="modal-content"><h2 id="update-title" data-release-title>Actualización disponible</h2><p>Actualiza cuando termines tu trabajo. Tus datos guardados se conservan.</p><div class="release-list" data-release-list></div><p data-release-status role="status" aria-live="polite"></p><button type="button" class="btn-full btn-primary" data-release-apply>Actualizar ahora</button><button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.close('update-modal')">Más tarde</button></div>
+      <div class="modal-content"><h2 id="update-title" data-release-title>Actualización disponible</h2><p>Actualiza cuando termines tu trabajo. Tus datos guardados se conservan.</p><div class="release-list" data-release-list></div><p data-release-status role="status" aria-live="polite"></p><button type="button" class="btn-full btn-primary" data-release-apply>Actualizar ahora</button><button type="button" class="btn-full btn-secondary" data-release-reload hidden>Recargar</button><button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.close('update-modal')" data-release-defer>Más tarde</button></div>
     </div>
 
+    <div class="modal release-modal" id="interface-repair-modal" role="dialog" aria-modal="true" aria-labelledby="interface-repair-title">
+      <div class="modal-content"><h2 id="interface-repair-title">Reparar interfaz</h2><p>Renueva la aplicación y conserva tus datos, fotos y comprobantes.</p><p data-release-status role="status" aria-live="polite"></p><button type="button" class="btn-full btn-primary" data-repair-apply>Reparar y recargar</button><button type="button" class="btn-full btn-secondary" data-release-reload hidden>Recargar</button><button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.close('interface-repair-modal')">Cancelar</button></div>
+    </div>
     <!-- MODAL DE TEMAS (NUEVO) -->
     <div class="modal big" id="theme-menu">
         <div class="modal-content">
@@ -3013,6 +3016,7 @@
                         </button>
                     </div>
                     <button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.showNews()">Novedades</button>
+                    <button type="button" class="btn-full btn-secondary" onclick="window.MiniUpdates.repair()">Reparar interfaz</button>
                     <p id="app-update-status" role="status" aria-live="polite"></p>
                     <div class="app-version" style="margin-top:12px;font-size:12px;color:var(--text-muted);line-height:1.6;">
                         <div>Mini versión <span id="mini-version" data-app-version>—</span></div>
@@ -3779,6 +3783,8 @@
     <script src="./employee-report-ui.js"></script>
     <script src="./app-version.js"></script>
     <script src="./app-update-manager.js"></script>
+    <script src="./app-update-worker.js"></script>
+    <script src="./update-feedback.js"></script>
     <script src="./app-shell-refresh.js"></script>
     <script src="./app-updates.js"></script>
     <script src="./build-info.js"></script>
@@ -4096,36 +4102,8 @@
             }
         }
 
-        async function clearCacheAndReload() {
-            if (!await showConfirm('Esto busca la última versión publicada y la instala. Tus empleados y asistencia NO se borran. ¿Continuar?', { title: 'Buscar actualización', confirmText: 'Buscar', danger: false })) return;
-            const current = window.MINI_BUILD_INFO || {};
-            const published = await fetchPublishedBuild();
-            if (!published) {
-                showToast('Sin conexión: no se pudo consultar la versión publicada.');
-                return;
-            }
-            if (published.buildId === current.buildId) {
-                showToast('Ya tenés la última versión (v' + (current.version || published.version) + ').');
-                return;
-            }
-            showToast('Instalando la versión v' + published.version + '…');
-            try {
-                if ('serviceWorker' in navigator) {
-                    const regs = await navigator.serviceWorker.getRegistrations();
-                    await Promise.all(regs.map(r => r.unregister()));
-                }
-                if (window.caches) {
-                    const keys = await caches.keys();
-                    await Promise.all(keys.map(k => caches.delete(k)));
-                }
-                // Refresh the HTTP cache of every loaded script/style so the next load is fresh.
-                const assets = [...document.querySelectorAll('script[src], link[rel="stylesheet"][href]')]
-                    .map(el => el.getAttribute('src') || el.getAttribute('href'))
-                    .filter(url => url && url.startsWith('./'));
-                await Promise.all(assets.map(url => fetch(url, { cache: 'reload' }).catch(() => null)));
-            } catch (e) { /* sin caché disponible, igual recargamos */ }
-            location.replace('./?__v=' + encodeURIComponent(published.buildId));
-        }
+        // Compatibility entry point; all UI updates now use the safe repair dialog.
+        async function clearCacheAndReload() { window.MiniUpdates.repair(); }
 
         function installPWA() {
             if (!deferredInstallPrompt) return;
@@ -4916,7 +4894,7 @@
                     openModal, closeModal,
                     isBusy: () => !localPersistenceReady || !!window.MiniWelcome?.isOpen() || !!document.querySelector('input:focus, textarea:focus'),
                     beforeReload: async () => {
-                        if (!localPersistenceReady || document.querySelector('.modal.active:not(#update-modal), .mini-p2p-overlay') || window.MiniWelcome?.isOpen()) throw new Error('Hay una edición abierta.');
+                        if (!localPersistenceReady || document.querySelector('.modal.active:not(#update-modal):not(#interface-repair-modal), .mini-p2p-overlay') || window.MiniWelcome?.isOpen()) throw new Error('Hay una edición abierta.');
                         await localPersistenceReady;
                         await localDbWriteQueue;
                         const dayStore = attendanceStorage.current();

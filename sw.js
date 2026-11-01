@@ -1,6 +1,6 @@
-const CACHE_VERSION = 'asistencia-v2.17.11-20261026-120000-000';
+const CACHE_VERSION = 'asistencia-v2.17.12-20261030-172515-458';
 
-importScripts(`./app-shell-refresh.js?__v=${CACHE_VERSION}`);
+importScripts('./app-shell-refresh.js?__v=' + CACHE_VERSION, './prepared-app-shell.js?__v=' + CACHE_VERSION);
 
 // Todos los archivos que necesita la app para funcionar offline
 const PRECACHE_ASSETS = [
@@ -11,6 +11,9 @@ const PRECACHE_ASSETS = [
   './app-update-manager.js',
   './app-updates.js',
   './app-shell-refresh.js',
+  './prepared-app-shell.js',
+  './app-update-worker.js',
+  './update-feedback.js',
   './app-updates.css',
   './app-release.json',
   './employee-number-rules.js',
@@ -97,6 +100,12 @@ const PRECACHE_ASSETS = [
   './icon-192.png',
   './icon-512.png'
 ];
+const preparedShell = MiniPreparedShell.createPreparedShell({
+  build: CACHE_VERSION, cacheName: CACHE_VERSION, assets: PRECACHE_ASSETS, scope: self.registration.scope,
+  storage: caches, fetcher: fetch, refresh: AppShellRefresh.refreshAppShell,
+  clients: self.clients, skipWaiting: () => self.skipWaiting()
+});
+
 
 // Fresh copy of an asset: skips the browser HTTP cache (GitHub Pages sends
 // max-age=600) and the CDN edge (unique query per version), so a new version
@@ -112,31 +121,24 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then(cache => Promise.all(PRECACHE_ASSETS.map(async asset => {
       const response = await fetch(freshRequest(asset));
-      if (!response.ok) throw new Error('Precache failed: ' + asset + ' ' + response.status);
+      if (!response.ok || !preparedShell.hasValidContent(asset, response)) throw new Error('Precache failed: ' + asset + ' ' + response.status);
       await cache.put(new Request(new URL(asset, self.location.href).toString()), response);
     })))
   );
-  self.skipWaiting();
 });
 
-// Tutorial videos the user saved for offline use survive app updates.
-const KEEP_CACHE_PREFIXES = ['mini-tutorials-'];
-
-// Activar: limpiar caches de versiones anteriores
+// Keep previous shells until the new page confirms its verified version.
+// Tutorial media and caches belonging to other scopes are preserved.
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(k => k !== CACHE_VERSION && !KEEP_CACHE_PREFIXES.some(p => k.startsWith(p))).map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil(preparedShell.initialize().then(() => self.clients.claim()));
 });
 
 // HTML: network-first so an online user always gets the latest version;
 // falls back to the cached page when offline or when the network is too slow.
 const NAVIGATION_TIMEOUT_MS = 4000;
-async function networkFirstNavigation(request) {
+async function networkFirstNavigation(request, event) {
+  const selected = await preparedShell.getResponse(request, event);
+  if (selected) return selected;
   const fresh = await AppShellRefresh.getFreshShellResponse(request, caches, CACHE_VERSION);
   if (fresh) return fresh;
   const fromCache = () => caches.open(CACHE_VERSION)
@@ -173,13 +175,13 @@ self.addEventListener('fetch', event => {
 
   // Para navegacion (HTML): network-first con respaldo offline
   if (event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/')) {
-    event.respondWith(networkFirstNavigation(event.request));
+    event.respondWith(networkFirstNavigation(event.request, event));
     return;
   }
 
   // Para assets estaticos (iconos, manifest): cache-first
   event.respondWith(
-    caches.match(event.request).then(cached => {
+    preparedShell.getResponse(event.request, event).then(selected => selected || caches.match(event.request)).then(cached => {
       if (cached) return cached;
 
       return fetch(event.request).then(response => {
@@ -198,13 +200,7 @@ self.addEventListener('fetch', event => {
 
 // Renew only application files and acknowledge completion before the page reloads.
 self.addEventListener('message', event => {
+  if (preparedShell.handleMessage(event)) return;
   if (event.data === 'SKIP_WAITING') event.waitUntil(self.skipWaiting());
-  if (event.data?.type !== 'REFRESH_APP_SHELL' || !event.ports[0]) return;
-  const port = event.ports[0];
-  event.waitUntil(AppShellRefresh.refreshAppShell({
-    assets: PRECACHE_ASSETS, scope: self.registration.scope, cacheName: CACHE_VERSION, storage: caches, fetcher: fetch
-  }).then(updated => port.postMessage({ ok: true, updated })).catch(error => {
-    console.error('[SW] No se pudo renovar la aplicación', error);
-    port.postMessage({ ok: false });
-  }));
+
 });

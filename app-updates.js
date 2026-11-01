@@ -8,80 +8,86 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     let manager = null, config = null;
     const callbacks = new Map();
+    function hasOtherDialog() {
+        return !!document.querySelector('.modal.active:not(#update-modal):not(#interface-repair-modal), .mini-p2p-overlay, .mini-welcome-overlay');
+    }
     function status(message) {
-        const active = document.querySelector('#update-modal.active [data-release-status]');
-        if (active)
-            active.textContent = message;
+        const target = document.querySelector('#interface-repair-modal.active [data-release-status], #update-modal.active [data-release-status]');
+        if (target)
+            target.textContent = message;
         const inline = document.getElementById('app-update-status');
         if (inline)
             inline.textContent = message;
+    }
+    function updateControls(state) {
+        var _a;
+        document.querySelectorAll('[data-update-feedback]').forEach(el => window.MiniUpdateFeedback.updateUpdateFeedback(el, state));
+        const modal = document.getElementById('update-modal');
+        if (modal) {
+            const primary = modal.querySelector('[data-release-apply]');
+            if (primary) {
+                primary.disabled = state.busy || state.phase === 'preparing';
+                primary.textContent = state.busy ? 'Actualizando…' : state.phase === 'preparing' ? 'Preparando…' : state.phase === 'error' ? 'Reintentar' : 'Actualizar ahora';
+            }
+            const reload = modal.querySelector('[data-release-reload]');
+            if (reload) {
+                reload.hidden = state.phase !== 'error';
+                reload.disabled = state.busy;
+            }
+            modal.setAttribute('aria-busy', String(state.busy || state.phase === 'preparing'));
+        }
+        const repair = document.getElementById('interface-repair-modal');
+        if (repair) {
+            const primary = repair.querySelector('[data-repair-apply]');
+            if (primary) {
+                primary.disabled = state.busy;
+                primary.textContent = state.busy ? 'Reparando…' : 'Reparar y recargar';
+            }
+            const reload = repair.querySelector('[data-release-reload]');
+            const message = ((_a = repair.querySelector('[data-release-status]')) === null || _a === void 0 ? void 0 : _a.textContent) || '';
+            if (reload) {
+                reload.hidden = state.busy || !/^No se pudo|tardó demasiado/.test(message);
+                reload.disabled = state.busy;
+            }
+            repair.setAttribute('aria-busy', String(state.busy));
+        }
     }
     async function fetchRelease() {
         const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 8000);
         try {
             const response = await fetch('./app-release.json?__incoming=' + Date.now(), { cache: 'no-store', signal: controller.signal });
             if (!response.ok)
-                throw new Error('Release unavailable');
+                throw Error('Release unavailable');
             const content = await response.text();
             if (content.length > 150000)
-                throw new Error('Release too large');
+                throw Error('Release too large');
             return JSON.parse(content);
         }
         finally {
             clearTimeout(timer);
         }
     }
-    async function refreshWorker() {
-        if (!('serviceWorker' in navigator))
+    function addFeedback(modal) {
+        if (modal.querySelector('[data-update-feedback]'))
             return;
-        const registration = await navigator.serviceWorker.getRegistration();
-        if (!registration)
-            return;
-        await registration.update();
-        const pending = registration.installing || registration.waiting;
-        if (pending && pending.state !== 'activated') {
-            await new Promise((resolve, reject) => {
-                const done = (error) => { clearTimeout(timer); pending.removeEventListener('statechange', check); error ? reject(error) : resolve(); };
-                const check = () => { if (pending.state === 'activated')
-                    done();
-                else if (pending.state === 'redundant')
-                    done(new Error('Update failed')); };
-                const timer = setTimeout(() => done(new Error('Update timeout')), 60000);
-                pending.addEventListener('statechange', check);
-                pending.postMessage('SKIP_WAITING');
-                check();
-            });
-        }
-        const active = registration.active || navigator.serviceWorker.controller;
-        if (!active)
-            throw new Error('No active worker');
-        // An unchanged, already active worker can still contain stale cached bytes.
-        await new Promise((resolve, reject) => {
-            const channel = new MessageChannel();
-            const done = (error) => { clearTimeout(timer); channel.port1.close(); channel.port2.close(); error ? reject(error) : resolve(); };
-            const timer = setTimeout(() => done(new Error('Shell refresh timeout')), 90000);
-            channel.port1.onmessage = event => { var _a; ((_a = event.data) === null || _a === void 0 ? void 0 : _a.ok) === true ? done() : done(new Error('Shell refresh failed')); };
-            channel.port1.onmessageerror = () => done(new Error('Invalid worker response'));
-            try {
-                active.postMessage({ type: 'REFRESH_APP_SHELL' }, [channel.port2]);
-            }
-            catch (error) {
-                done(error instanceof Error ? error : new Error('Worker unavailable'));
-            }
-        });
+        const target = modal.querySelector('[data-release-status]');
+        const feedback = window.MiniUpdateFeedback.createUpdateFeedback();
+        const title = modal.querySelector('h2');
+        title === null || title === void 0 ? void 0 : title.after(feedback);
+        if (target)
+            feedback.after(target);
     }
     function show(kind, releases, version, onClose, apply) {
-        const id = kind === 'news' ? 'whats-new-modal' : 'update-modal';
-        const modal = document.getElementById(id);
+        const id = kind === 'news' ? 'whats-new-modal' : 'update-modal', modal = document.getElementById(id);
         if (!modal || !config)
             return false;
-        modal.querySelector('[data-release-title]').textContent = kind === 'news' ? `Novedades · v${version}` : `Actualización disponible · v${version}`;
+        modal.querySelector('[data-release-title]').textContent = (kind === 'news' ? 'Novedades · v' : 'Actualización disponible · v') + version;
         const list = modal.querySelector('[data-release-list]');
         list.replaceChildren();
         for (const entry of releases) {
             const release = window.MiniAppVersion.getDisplayRelease(entry);
             const section = document.createElement('section'), title = document.createElement('h3'), date = document.createElement('p'), items = document.createElement('ul');
-            title.textContent = `${release.title} · v${release.version}`;
+            title.textContent = release.title + ' · v' + release.version;
             date.textContent = release.date.split('-').reverse().join('/');
             for (const text of release.items) {
                 const item = document.createElement('li');
@@ -91,12 +97,16 @@
             section.append(title, date, items);
             list.appendChild(section);
         }
-        modal.querySelector('[data-release-status]').textContent = '';
-        const button = modal.querySelector('[data-release-apply]');
-        if (button)
-            button.onclick = () => { button.disabled = true; void apply().finally(() => { button.disabled = false; }); };
+        modal.querySelector('[data-release-status]').textContent = kind === 'update' ? (manager === null || manager === void 0 ? void 0 : manager.getState().message) || '' : '';
+        if (kind === 'update') {
+            addFeedback(modal);
+            modal.querySelector('[data-release-apply]').onclick = () => { void apply(); };
+            modal.querySelector('[data-release-reload]').onclick = () => { void (manager === null || manager === void 0 ? void 0 : manager.reloadSafely()); };
+        }
         callbacks.set(id, onClose);
         config.openModal(id);
+        if (manager)
+            updateControls(manager.getState());
         return true;
     }
     function showSuccess(onClose) {
@@ -107,28 +117,60 @@
         setTimeout(() => { element.hidden = true; onClose(); }, 1800);
         return true;
     }
+    function repair() {
+        if (!manager || !config || document.querySelector('#interface-repair-modal.active, #update-modal.active, #whats-new-modal.active'))
+            return;
+        if (config.isBusy() || hasOtherDialog()) {
+            status('Guarda o cierra los cambios pendientes antes de reparar la interfaz.');
+            return;
+        }
+        const modal = document.getElementById('interface-repair-modal');
+        if (!modal)
+            return;
+        modal.querySelector('[data-release-status]').textContent = '';
+        addFeedback(modal);
+        modal.querySelector('[data-repair-apply]').onclick = () => { void (manager === null || manager === void 0 ? void 0 : manager.repair()); };
+        modal.querySelector('[data-release-reload]').onclick = () => { void (manager === null || manager === void 0 ? void 0 : manager.reloadSafely()); };
+        callbacks.set('interface-repair-modal', () => manager === null || manager === void 0 ? void 0 : manager.cancelOperation());
+        config.openModal('interface-repair-modal');
+        updateControls(manager.getState());
+    }
     function init(options) {
         var _a;
         if (manager)
             return;
         config = options;
+        const worker = window.MiniAppUpdateWorker.createAppUpdateWorker({ legacyCacheName: () => {
+                const info = window.MINI_BUILD_INFO;
+                return (info === null || info === void 0 ? void 0 : info.version) && info.buildId ? 'asistencia-v' + info.version + '-' + info.buildId : null;
+            } });
         manager = window.AppUpdateManager.createReleaseManager({
             policy: window.MiniAppVersion, prefix: 'mini',
-            // A receipt belongs to this tab, not another open installation.
             read: key => (key === 'mini:updateReceipt' ? sessionStorage : localStorage).getItem(key),
             write: (key, value) => (key === 'mini:updateReceipt' ? sessionStorage : localStorage).setItem(key, value),
-            now: () => Date.now(), online: () => navigator.onLine !== false,
-            fetchRelease, canShow: () => !options.isBusy() && !document.querySelector('.modal.active, .mini-p2p-overlay, .mini-welcome-overlay'),
-            show, showSuccess, beforeReload: options.beforeReload, prepareUpdate: refreshWorker, reload: () => location.reload(), status
+            now: () => Date.now(), online: () => navigator.onLine !== false, fetchRelease,
+            canShow: () => !options.isBusy() && !document.querySelector('.modal.active, .mini-p2p-overlay, .mini-welcome-overlay'),
+            canReload: () => !options.isBusy() && !hasOtherDialog(),
+            show, showSuccess, status, updateState: updateControls,
+            beforeReload: () => window.MiniAppUpdateWorker.withUpdateDeadline(() => options.beforeReload(), { timeoutMs: 15000 }),
+            prepareRelease: worker.prepare, activateRelease: worker.activate, reload: () => location.reload(),
+            reportError: (error, context) => console.warn('Mini: ' + context, error)
         });
         manager.boot();
+        void worker.confirmRunningVersion(window.MiniAppVersion.APP_VERSION);
         let hadController = !!((_a = navigator.serviceWorker) === null || _a === void 0 ? void 0 : _a.controller);
-        if ('serviceWorker' in navigator)
-            navigator.serviceWorker.addEventListener('controllerchange', () => {
-                const previous = hadController;
-                hadController = true;
-                void manager.controllerChanged(previous);
-            });
+        const watched = new WeakSet();
+        const watch = (registration) => {
+            if (!registration || watched.has(registration))
+                return;
+            watched.add(registration);
+            registration.addEventListener('updatefound', () => { void manager.check(false, true); });
+        };
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('controllerchange', () => { const previous = hadController; hadController = true; void manager.controllerChanged(previous); });
+            navigator.serviceWorker.ready.then(watch).catch(() => { });
+            navigator.serviceWorker.getRegistration().then(watch).catch(() => { });
+        }
         const check = () => { if (document.visibilityState !== 'hidden')
             void manager.check(); };
         window.addEventListener('online', () => { void manager.check(false, true); });
@@ -140,8 +182,6 @@
         document.querySelectorAll('[data-app-version]').forEach(el => { el.textContent = 'v' + window.MiniAppVersion.APP_VERSION; });
     }
     function onModalClosed(id) { const callback = callbacks.get(id); callbacks.delete(id); callback === null || callback === void 0 ? void 0 : callback(); }
-    return {
-        init, showNews: () => manager === null || manager === void 0 ? void 0 : manager.showNews(true), check: () => (manager === null || manager === void 0 ? void 0 : manager.check(true)) || Promise.resolve(),
-        close: (id) => config === null || config === void 0 ? void 0 : config.closeModal(id), onModalClosed
-    };
+    return { init, showNews: () => manager === null || manager === void 0 ? void 0 : manager.showNews(true), check: () => (manager === null || manager === void 0 ? void 0 : manager.check(true)) || Promise.resolve(), repair,
+        close: (id) => config === null || config === void 0 ? void 0 : config.closeModal(id), onModalClosed };
 });

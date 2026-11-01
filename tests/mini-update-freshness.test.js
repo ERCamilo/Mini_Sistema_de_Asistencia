@@ -22,14 +22,14 @@ test('navigation is network-first with an offline/slow fallback to the cache', (
   assert.match(nav, /caches\.match/);
 });
 
-test('"Buscar actualización" checks the published build before forcing an update', () => {
+test('Buscar actualizaciones uses the release manager and the old fallback opens safe repair', () => {
   const body = html.slice(html.indexOf('async function clearCacheAndReload()'), html.indexOf('function installPWA()'));
-  assert.match(body, /fetchPublishedBuild\(/);
-  assert.match(body, /Ya tenés la última versión/);
-  assert.match(body, /location\.replace\(/);
-  const fetcher = html.slice(html.indexOf('async function fetchPublishedBuild'), html.indexOf('async function clearCacheAndReload()'));
-  assert.match(fetcher, /cache:\s*'no-store'/);
-  assert.match(fetcher, /build-info\.js\?__v=/);
+  assert.match(body, /MiniUpdates\.repair\(/);
+  assert.doesNotMatch(body, /caches\.delete|unregister\(/);
+  assert.match(html, /onclick="window\.MiniUpdates\.check\(\)"/);
+  const ui = readFileSync(require.resolve('../app-updates.js'), 'utf8');
+  assert.match(ui, /app-release\.json\?__incoming=/);
+  assert.match(ui, /cache:\s*'no-store'/);
 });
 
 test('update-check requests (?__v=) are never answered from the service-worker cache', () => {

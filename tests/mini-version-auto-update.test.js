@@ -88,8 +88,8 @@ test('manual clearCacheAndReload remains as fallback and keeps app data', () => 
   const start = html.indexOf('async function clearCacheAndReload()');
   assert.ok(start > 0, 'clearCacheAndReload must still exist');
   const body = html.slice(start, html.indexOf('function installPWA()', start));
-  assert.match(body, /location\.(reload|replace)\(/);
-  assert.match(body, /caches\.delete/);
+  assert.match(body, /MiniUpdates\.repair\(/);
+  assert.doesNotMatch(body, /caches\.delete|unregister\(/);
   assert.doesNotMatch(body, /localStorage\.clear/);
   assert.doesNotMatch(body, /localStorage\.removeItem\('users'\)/);
   assert.doesNotMatch(body, /localStorage\.removeItem\('attendance'\)/);

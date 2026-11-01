@@ -105,11 +105,12 @@ test('wiring: modules load in index.html and are precached; captions precached, 
   assert.doesNotMatch(sw, /'\.\/[^']*\.webm'/);
 });
 
-test('app updates keep the videos saved for offline use', () => {
-  assert.match(sw, /const KEEP_CACHE_PREFIXES = \['mini-tutorials-'\];/);
-  assert.ok(Tutorials.OFFLINE_CACHE.startsWith('mini-tutorials-'));
-  const activate = sw.slice(sw.indexOf("addEventListener('activate'"), sw.indexOf('NAVIGATION_TIMEOUT_MS'));
-  assert.match(activate, /KEEP_CACHE_PREFIXES\.some/);
+test('app updates delegate cleanup to the scoped shell and retain saved videos', () => {
+  const worker = require('node:fs').readFileSync(require.resolve('../sw.js'),'utf8');
+  const shell = require('node:fs').readFileSync(require.resolve('../prepared-app-shell.js'),'utf8');
+  assert.match(worker,/preparedShell\.initialize/);
+  assert.doesNotMatch(worker,/caches\.delete/);
+  assert.match(shell,/!ownsShellName\(name\)/);
 });
 
 test('Tutoriales modal: list, player, "Hazlo conmigo" and offline save', () => {

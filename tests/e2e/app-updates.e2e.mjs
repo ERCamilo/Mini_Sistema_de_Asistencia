@@ -10,28 +10,32 @@ import { loadPlaywright, ROOT, PHONE } from '../tutorials/lib.mjs';
 const require = createRequire(import.meta.url), policy = require('../../app-version.js');
 const nextVersion = policy.APP_VERSION.replace(/\d+$/, n => String(Number(n) + 1));
 const release = { version: nextVersion, date: '2026-10-20', title: 'Actualización de prueba', items: ['Mejora de prueba <img src=x onerror=alert(1)>'] };
-let browser, server, base, published = false, invalid = false, unavailable = false, staleNavigation = false, incomingRequests = 0;
+let browser, server, base, published = false, invalid = false, unavailable = false, staleNavigation = false, incomingRequests = 0, stallWorker = false, slowPreparation = 0;
+const sockets = new Set();
 before(async () => {
   server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://test'), rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
+    if(stallWorker&&rel==='sw.js')return;
     if(unavailable&&rel==='app-updates.css'&&url.searchParams.has('__v')){res.writeHead(503).end();return;}
     if(staleNavigation&&rel==='index.html'&&!url.search){res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Stale application</title>');return;}
     let body;
     try { body = fs.readFileSync(path.join(ROOT, rel)); } catch { res.writeHead(404).end(); return; }
-    if (rel === 'sw.js') body = body.toString().replace(/const CACHE_VERSION = '[^']*'/, `const CACHE_VERSION = 'mini-update-test-${published ? 2 : 1}'`);
+    if (rel === 'sw.js') body = body.toString().replace(/const CACHE_VERSION = '[^']*'/, `const CACHE_VERSION = 'asistencia-vmini-update-test-${published ? 2 : 1}'`);
     if (rel === 'app-release.json') {
       if (url.searchParams.has('__incoming')) incomingRequests++;
       body = JSON.stringify(invalid ? {} : { version: published ? nextVersion : policy.APP_VERSION, changelog: published ? [release, ...policy.CHANGELOG] : policy.CHANGELOG });
     }
     if (published && rel === 'app-version.js') body = body.toString().replace(`const APP_VERSION = '${policy.APP_VERSION}'`, `const APP_VERSION = '${nextVersion}'`).replace('const CHANGELOG = [', 'const CHANGELOG = [' + JSON.stringify(release) + ',');
     res.setHeader('Content-Type', { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png' }[path.extname(rel)] || 'application/octet-stream');
-    res.setHeader('Cache-Control', 'no-store'); res.end(body);
+    res.setHeader('Cache-Control', 'no-store');
+    if(slowPreparation&&rel==='app-updates.css'&&url.searchParams.has('__v'))setTimeout(()=>res.end(body),slowPreparation);else res.end(body);
   });
+  server.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));});
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   base = `http://127.0.0.1:${server.address().port}/`;
   const { chromium } = await loadPlaywright(); browser = await chromium.launch();
 });
-after(async () => { await browser?.close(); server?.close(); });
+after(async () => { await browser?.close(); for(const socket of sockets)socket.destroy(); server?.close(); });
 
 test('primera instalación, dos versiones, posponer, guardado fallido y recarga explícita sin perder empleados', async () => {
   const context = await browser.newContext({ viewport: PHONE }), page = await context.newPage(), errors = [];
@@ -57,7 +61,7 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     assert.match(await page.textContent('#update-modal'), /Actualización de prueba/);
     assert.equal(await page.locator('#update-modal img').count(), 0, 'release text is never HTML');
     assert.equal(await page.evaluate(() => window.__pageMarker), 'original');
-    await page.click('#update-modal .btn-secondary');
+    await page.click('#update-modal [data-release-defer]');
     await page.evaluate(async () => { const reg = await navigator.serviceWorker.getRegistration(); await reg.update(); });
     await page.waitForFunction(() => navigator.serviceWorker.controller?.state === 'activated');
     assert.equal(await page.locator('.release-modal.active').count(), 0, 'postponed build stays silent');
@@ -69,20 +73,35 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     unavailable = true;
     await page.evaluate(() => { localDb.writeState = window.__realWrite; }); await page.click('[data-release-apply]');
     await page.waitForFunction(() => document.querySelector('#update-modal [data-release-status]').textContent.includes('Revisa tu conexión'));
-    assert.equal(await page.evaluate(() => window.__pageMarker), 'original', 'download failure cannot reload'); unavailable = false;
+    assert.equal(await page.evaluate(() => window.__pageMarker), 'original', 'download failure cannot reload'); unavailable = false;slowPreparation=250;
     await page.evaluate(() => { const gate = new Promise(resolve => window.__finishWrite = resolve); localDb.writeState = async snapshot => { window.__saving = true; await gate; return window.__realWrite(snapshot); }; });
+    await page.click('[data-release-apply]');
+    await page.waitForSelector('[data-update-feedback][data-activity="download"]');
+    assert.equal(await page.locator('.update-download-arrow').evaluate(el=>getComputedStyle(el).animationName),'update-download-drop');
+    await page.waitForFunction(() => document.querySelector('[data-release-apply]').textContent === 'Actualizar ahora');slowPreparation=0;
     await page.click('[data-release-apply]'); await page.waitForFunction(() => window.__saving);
     assert.equal(await page.evaluate(() => window.__pageMarker), 'original', 'pending real snapshot write cannot reload');
     await page.evaluate(async oldSource => {
-      const name=(await caches.keys()).find(name=>name==='mini-update-test-2');
+      const name=(await caches.keys()).find(name=>name==='asistencia-vmini-update-test-1');
       const cache=await caches.open(name);
       await cache.put(new URL('./app-version.js',location.href).href,new Response(oldSource,{headers:{'Content-Type':'text/javascript'}}));
-      await cache.put(new URL('./stale-shell-entry',location.href).href,new Response('obsolete'));
+      await cache.put(new URL('./stale-shell-entry.js',location.href).href,new Response('obsolete'));
       const tutorials=await caches.open('mini-tutorials-saved');
       await tutorials.put(new URL('./saved-video',location.href).href,new Response('preserved'));
     },fs.readFileSync(path.join(ROOT,'app-version.js'),'utf8'));
     staleNavigation = true;
-    await page.evaluate(() => window.__finishWrite());
+    await page.evaluate(() => {
+      const original=ServiceWorker.prototype.postMessage;
+      ServiceWorker.prototype.postMessage=function(data,transfer){
+        if(data?.type==='ACTIVATE_APP_UPDATE'){window.__finishActivation=()=>original.call(this,data,transfer);return;}
+        return original.apply(this,arguments);
+      };
+      window.__finishWrite();
+    });
+    await page.waitForSelector('[data-update-feedback][data-activity="install"]');
+    assert.equal(await page.locator('.update-arc').evaluate(el=>getComputedStyle(el).animationName),'update-progress-spin');
+    assert.equal(await page.evaluate(()=>window.__pageMarker),'original');
+    await page.evaluate(()=>window.__finishActivation());
     await page.waitForFunction(v => window.MiniAppVersion?.APP_VERSION === v && !window.__pageMarker, nextVersion).catch(async error=>{console.error('Update state',await page.evaluate(async()=>({version:MiniAppVersion.APP_VERSION,status:document.querySelector('#update-modal [data-release-status]')?.textContent,caches:await caches.keys(),worker:navigator.serviceWorker.controller?.scriptURL})));throw error;});
     await page.waitForFunction(() => localDbReady); await page.waitForSelector('#update-success:not([hidden])');
     staleNavigation = false; // Only the immediate update must resist the stale canonical page.
@@ -92,7 +111,11 @@ test('primera instalación, dos versiones, posponer, guardado fallido y recarga 
     assert.equal(await page.textContent('#mini-version'), 'v' + nextVersion);
     assert.deepEqual(await page.evaluate(() => employeeRepository.getAll()), original);
     assert.equal(await page.evaluate(async()=>!!(await (await caches.open('mini-tutorials-saved')).match(new URL('./saved-video',location.href).href))),true);
-    assert.equal(await page.evaluate(async()=>!!(await caches.match(new URL('./stale-shell-entry',location.href).href))),false);
+    assert.equal(await page.evaluate(async()=>{
+      const registration=await navigator.serviceWorker.getRegistration();
+      const name=await new Promise(resolve=>{const channel=new MessageChannel();channel.port1.onmessage=e=>{channel.port1.close();channel.port2.close();resolve(e.data.cacheName);};registration.active.postMessage('GET_VERSION',[channel.port2]);});
+      return !!await(await caches.open(name)).match(new URL('./stale-shell-entry.js',location.href).href);
+    }),false);
     await page.waitForSelector('#update-success', { state: 'hidden' });
     assert.equal(await page.locator('.release-modal.active').count(), 0, 'successful update needs no second acceptance');
     assert.equal(await page.evaluate(() => localStorage.getItem('mini:lastSeenVersion')), nextVersion);
@@ -167,15 +190,24 @@ for (const theme of ['dark', 'light', 'contrast', 'ocean', 'sol']) {
       const other = await context.newPage(); await other.goto(fixture.base, { waitUntil: 'networkidle' });
       await other.waitForFunction(() => typeof localDbReady !== 'undefined' && localDbReady);
       fixture.state.published = true;
-      await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration()).update(); });
+      await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration()).update(); await window.MiniUpdates.check(); });
       await page.waitForSelector('#update-modal.active');
-      await page.evaluate(() => window.__oldBoot = true);
+      await page.evaluate(() => {
+        window.__oldBoot = true;window.__workerReplies=[];
+        const NativeChannel=MessageChannel;
+        window.MessageChannel=class extends NativeChannel {
+          constructor(){super();this.port1.addEventListener('message',event=>window.__workerReplies.push(event.data));this.port1.start();}
+        };
+      });
       // One condition uses the actual old policy asset with the new manager, not a rewritten version.
       fixture.state.stalePolicy = theme === 'dark';
       await page.bringToFront(); // The second tab must not throttle the update animation.
       assert.equal(await page.evaluate(() => document.visibilityState), 'visible');
       await page.click('#update-modal [data-release-apply]');
-      await page.waitForFunction(() => typeof localDbReady !== 'undefined' && localDbReady && !window.__oldBoot);
+      await page.waitForFunction(() => typeof localDbReady !== 'undefined' && localDbReady && !window.__oldBoot,null,{timeout:8000}).catch(async error=>{
+        console.error('LEGACY_STATE',theme,errors,await page.evaluate(async()=>({version:window.MiniAppVersion?.APP_VERSION,marker:window.__oldBoot,replies:window.__workerReplies,status:document.querySelector('#update-modal [data-release-status]')?.textContent,receipt:sessionStorage.getItem('mini:updateReceipt'),caches:await caches.keys(),active:(await navigator.serviceWorker.getRegistration())?.active?.state})));
+        throw error;
+      });
       if (fixture.state.stalePolicy) {
         assert.equal(await page.evaluate(() => MiniAppVersion.APP_VERSION), '2.17.10');
         assert.equal(await page.locator('#update-success:not([hidden])').count(), 0);
@@ -185,7 +217,12 @@ for (const theme of ['dark', 'light', 'contrast', 'ocean', 'sol']) {
         // Model the stale asset becoming fresh; do not recreate the lost receipt or apply again.
         await page.evaluate(async () => {
           const response = await fetch('./app-version.js?__v=recovered', { cache: 'no-store' });
-          const name = (await caches.keys()).find(value => value.startsWith('asistencia-v'));
+          const registration = await navigator.serviceWorker.getRegistration();
+          const name = await new Promise((resolve, reject) => {
+            const channel = new MessageChannel(), timer = setTimeout(() => reject(new Error('Missing worker metadata')), 2000);
+            channel.port1.onmessage = event => { clearTimeout(timer); channel.port1.close(); channel.port2.close(); resolve(event.data.cacheName); };
+            registration.active.postMessage('GET_VERSION', [channel.port2]);
+          });
           await (await caches.open(name)).put(new URL('./app-version.js', location.href).href, response);
         });
         await page.reload({ waitUntil: 'domcontentloaded' });
@@ -222,3 +259,59 @@ for (const theme of ['dark', 'light', 'contrast', 'ocean', 'sol']) {
     } finally { await context.close(); await fixture.close(); }
   });
 }
+
+test('a hanging native worker request times out with reduced motion and leaves a safe reload',async()=>{
+ const context=await browser.newContext({viewport:PHONE,reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ try{
+  await page.goto(base+'manifest.json');
+  await page.evaluate(()=>{localStorage.setItem('users',JSON.stringify([{id:'timeout-user',number:'22',name:'Ana',position:'Ayudante'}]));localStorage.setItem('tutorialsSeen','["marcar-asistencia"]');localStorage.setItem('storageHelpSnoozedUntil',String(Date.now()+86400000));});
+  await page.goto(base,{waitUntil:'networkidle'});await page.fill('#mini-welcome-name','Actualizaciones');await page.click('.mini-welcome-submit');
+  await page.waitForFunction(()=>localDbReady&&!!navigator.serviceWorker.controller);
+  const employees=await page.evaluate(()=>{window.__updateMotionBoot=true;return employeeRepository.getAll();});
+  stallWorker=true;published=true;
+  await page.evaluate(()=>{const original=window.setTimeout.bind(window);window.setTimeout=(fn,delay,...args)=>original(fn,Number(delay)>=10000?Number(delay)/100:delay,...args);return window.MiniUpdates.check();});
+  await page.waitForSelector('#update-modal.active [data-update-feedback]');
+  assert.equal(await page.locator('.update-download-arrow').evaluate(el=>getComputedStyle(el).animationName),'none');
+  await page.waitForFunction(()=>document.querySelector('#update-modal [data-release-status]').textContent.includes('tardó demasiado'));
+  assert.equal(await page.locator('[data-release-apply]').isEnabled(),true);
+  assert.equal(await page.evaluate(()=>window.__updateMotionBoot),true);
+  await page.click('#update-modal [data-release-reload]');
+  await page.waitForFunction(()=>typeof localDbReady!=='undefined'&&localDbReady&&!window.__updateMotionBoot);
+  assert.deepEqual(await page.evaluate(()=>employeeRepository.getAll()),employees);
+  assert.equal(await page.evaluate(()=>MiniAppVersion.APP_VERSION),policy.APP_VERSION);
+  assert.deepEqual(errors,[]);
+ }finally{stallWorker=false;published=false;await context.close();}
+});
+
+test('same-version interface repair renews CSS while retaining data, media and the registration',async()=>{
+ const context=await browser.newContext({viewport:PHONE}),page=await context.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ try{
+  await page.goto(base+'manifest.json');
+  await page.evaluate(()=>{localStorage.setItem('users',JSON.stringify([{id:'repair-user',number:'22',name:'Ana',position:'Ayudante'}]));localStorage.setItem('tutorialsSeen','["marcar-asistencia"]');localStorage.setItem('storageHelpSnoozedUntil',String(Date.now()+86400000));});
+  await page.goto(base,{waitUntil:'networkidle'});await page.fill('#mini-welcome-name','Actualizaciones');await page.click('.mini-welcome-submit');
+  await page.waitForFunction(()=>localDbReady&&!!navigator.serviceWorker.controller);
+  const before=await page.evaluate(async()=>{
+   const registration=await navigator.serviceWorker.getRegistration();
+   const cacheName=await new Promise(resolve=>{const channel=new MessageChannel();channel.port1.onmessage=e=>{channel.port1.close();channel.port2.close();resolve(e.data.cacheName);};registration.active.postMessage('GET_VERSION',[channel.port2]);});
+   const cache=await caches.open(cacheName);
+   await cache.put(new URL('./app-updates.css',location.href).href,new Response('/* corrupted */',{headers:{'Content-Type':'text/css'}}));
+   await cache.put(new URL('./profile-photo.jpg',location.href).href,new Response('profile'));
+   await(await caches.open('mini-receipts-test')).put(new URL('./receipt.jpg',location.href).href,new Response('receipt'));
+   window.__repairBoot=true;
+   return{employees:employeeRepository.getAll(),registrations:(await navigator.serviceWorker.getRegistrations()).length,cacheName};
+  });
+  await page.evaluate(()=>window.MiniUpdates.repair());await page.click('#interface-repair-modal [data-repair-apply]');
+  await page.waitForFunction(()=>typeof localDbReady!=='undefined'&&localDbReady&&!window.__repairBoot);
+  const result=await page.evaluate(async oldCache=>({
+   employees:employeeRepository.getAll(),registrations:(await navigator.serviceWorker.getRegistrations()).length,
+   css:await(await fetch('./app-updates.css')).text(),
+   photo:await(await(await caches.open(oldCache)).match(new URL('./profile-photo.jpg',location.href).href)).text(),
+   receipt:await(await(await caches.open('mini-receipts-test')).match(new URL('./receipt.jpg',location.href).href)).text()
+  }),before.cacheName);
+  assert.deepEqual(result.employees,before.employees);assert.equal(result.registrations,before.registrations);
+  assert.equal(result.css,fs.readFileSync(path.join(ROOT,'app-updates.css'),'utf8'));assert.equal(result.photo,'profile');assert.equal(result.receipt,'receipt');
+  assert.equal(await page.evaluate(()=>MiniAppVersion.APP_VERSION),policy.APP_VERSION);assert.deepEqual(errors,[]);
+ }finally{await context.close();}
+});
