@@ -1,6 +1,16 @@
 {
-  "version": "2.17.12",
+  "version": "2.18.0",
   "changelog": [
+    {
+      "version": "2.18.0",
+      "date": "2026-11-16",
+      "title": "Comida",
+      "items": [
+        "Activa la sección Comida desde la barra o desde Más.",
+        "Anota los pedidos del día y envíalos a la cocina por WhatsApp.",
+        "Lleva la cuenta de cada persona y cierra el período cuando termines de cobrar."
+      ]
+    },
     {
       "version": "2.17.12",
       "date": "2026-10-27",

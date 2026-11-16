@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.17.12-20261030-172515-458';
+const CACHE_VERSION = 'asistencia-v2.18.0-20261116-132658-839';
 
 importScripts('./app-shell-refresh.js?__v=' + CACHE_VERSION, './prepared-app-shell.js?__v=' + CACHE_VERSION);
 

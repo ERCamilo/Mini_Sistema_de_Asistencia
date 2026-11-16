@@ -17,8 +17,9 @@ interface AppVersionPolicy {
   if (root) root.MiniAppVersion = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   // BEGIN VERSION POLICY
-  const APP_VERSION = '2.17.12';
+  const APP_VERSION = '2.18.0';
   const CHANGELOG: AppRelease[] = [
+    { version: '2.18.0', date: '2026-11-16', title: 'Comida', items: ['Activa la sección Comida desde la barra o desde Más.', 'Anota los pedidos del día y envíalos a la cocina por WhatsApp.', 'Lleva la cuenta de cada persona y cierra el período cuando termines de cobrar.'] },
     { version: '2.17.12', date: '2026-10-27', title: 'Actualizaciones a tu ritmo', items: ['La nueva versión se prepara en segundo plano y espera tu confirmación para guardar y reiniciar.', 'Sigue la descarga y la instalación con animaciones; puedes reintentar si la conexión falla.', 'Reparar interfaz renueva la aplicación y conserva tus datos y archivos.'] },
     { version: '2.17.11', date: '2026-10-26', title: 'Confirmación de actualización más confiable', items: ['Si el navegador abre una copia anterior durante la actualización, conservamos la confirmación para cuando se abra la versión nueva.', 'Tus datos se conservan y puedes seguir trabajando después de la confirmación.'] },
     { version: '2.17.10', date: '2026-10-23', title: 'Actualiza y vuelve a tu trabajo', items: ['Al terminar de actualizar verás una confirmación y podrás seguir trabajando sin aceptar otro aviso.', 'Las novedades explican de forma sencilla qué puedes hacer y qué ha mejorado.'] },
