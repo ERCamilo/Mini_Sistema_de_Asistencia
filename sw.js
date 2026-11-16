@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'asistencia-v2.17.12-20261030-172515-458';
+const CACHE_VERSION = 'asistencia-v2.18.0-20261116-141701-383';
 
 importScripts('./app-shell-refresh.js?__v=' + CACHE_VERSION, './prepared-app-shell.js?__v=' + CACHE_VERSION);
 
@@ -83,6 +83,11 @@ const PRECACHE_ASSETS = [
   './p2p-backup-consent.js',
   './mini-backup-summary.js',
   './mini-backup-review.js',
+  './comida-ledger.js',
+  './comida-store.js',
+  './comida-repository.js',
+  './comida-ui.js',
+  './comida.css',
   './p2p-backup-bridge.js',
   './vendor/qrcode.js',
   './back-navigation.js',

@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="./connection-screens.css">
     <link rel="stylesheet" href="./mini-notice.css">
     <link rel="stylesheet" href="./employee-report.css">
+    <link rel="stylesheet" href="./comida.css">
     <link rel="stylesheet" href="./app-updates.css">
 
     <style>
@@ -2913,6 +2914,9 @@
     </div>
 
     <!-- VISTA MÁS (AJUSTES Y GESTIÓN DE DATOS) -->
+    <!-- COMIDA (sección opcional): la pinta comida-ui.js -->
+    <div id="comida-view" class="hidden"></div>
+
     <div id="more-view" class="hidden">
         <div class="view-selector">
             <div class="view-mode-pills">
@@ -2929,6 +2933,36 @@
 
             <!-- PESTAÑA 1: AJUSTES -->
             <div id="more-tab-settings-panel">
+                <!-- SECCIÓN: SECCIONES DE LA BARRA (Reportes / Comida) -->
+                <div class="settings-section">
+                    <div class="settings-section-title">
+                        <span class="ic" data-icon="more"></span> Secciones
+                    </div>
+                    <div class="reminder-config" style="margin-bottom:0;">
+                        <div class="reminder-row">
+                            <button type="button" class="more-section-open" onclick="switchView('requests')">
+                                <span class="ic" data-icon="requests"></span>
+                                <span><span class="reminder-label">Reportes y Solicitudes</span><span class="reminder-hint" id="more-section-requests-hint">Toca para abrir</span></span>
+                            </button>
+                            <label class="toggle-switch" aria-label="Reportes en la barra">
+                                <input type="checkbox" id="more-section-requests-toggle" onchange="setNavSection('requests', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="reminder-row">
+                            <button type="button" class="more-section-open" onclick="switchView('comida')">
+                                <span class="ic" data-icon="food"></span>
+                                <span><span class="reminder-label">Comida</span><span class="reminder-hint" id="more-section-comida-hint">Toca para abrir</span></span>
+                            </button>
+                            <label class="toggle-switch" aria-label="Comida en la barra">
+                                <input type="checkbox" id="more-section-comida-toggle" onchange="setNavSection('comida', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="reminder-hint" style="padding:8px 4px 0;">El interruptor elige cuál de las dos ocupa el espacio de la barra. La otra se abre desde aquí.</div>
+                </div>
+
                 <!-- SECCIÓN: HERRAMIENTAS Y REPORTES -->
                 <div class="settings-section">
                     <div class="settings-section-title">
@@ -3596,6 +3630,11 @@
         <div class="ocr-loading-text" id="ocr-loading-text">Leyendo la foto...</div>
     </div>
 
+    <!-- Hoja de Comida: comida-ui.js reemplaza su contenido -->
+    <div class="modal big" id="comida-sheet" role="dialog" aria-modal="true" aria-label="Comida">
+        <div class="modal-content"></div>
+    </div>
+
     <!-- MODAL DE CONFIRMACIÓN (reemplaza confirm() nativo) -->
     <div class="modal" id="modal-confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
         <div class="modal-content">
@@ -3619,6 +3658,12 @@
         </button>
         <button class="nav-item" id="nav-requests" onclick="switchView('requests')">
             <span class="ic" data-icon="requests"></span><span>Reportes y Solicitudes</span>
+        </button>
+        <button class="nav-item" id="nav-slot" hidden onclick="window.ComidaUI.chooseNavSlot()" aria-label="Elegir qué va en este espacio">
+            <span class="nav-slot-box"><span class="ic" data-icon="add"></span></span><span>Elegir</span>
+        </button>
+        <button class="nav-item" id="nav-comida" hidden onclick="switchView('comida')">
+            <span class="ic" data-icon="food"></span><span>Comida</span>
         </button>
         <div class="nav-center">
             <button class="nav-fab" id="nav-add" onclick="handleNavFab()" aria-label="Agregar">
@@ -3787,6 +3832,10 @@
     <script src="./update-feedback.js"></script>
     <script src="./app-shell-refresh.js"></script>
     <script src="./app-updates.js"></script>
+    <script src="./comida-ledger.js"></script>
+    <script src="./comida-store.js"></script>
+    <script src="./comida-repository.js"></script>
+    <script src="./comida-ui.js"></script>
     <script src="./build-info.js"></script>
     <script>
         let users = [];
@@ -3988,8 +4037,8 @@
             return '';
         }
 
-        const NAV_VIEWS = ['attendance', 'requests', 'employees', 'reports', 'more'];
-        const VIEW_TITLES = { attendance: 'Asistencia', requests: 'Reportes y Solicitudes', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
+        const NAV_VIEWS = ['attendance', 'requests', 'comida', 'employees', 'reports', 'more'];
+        const VIEW_TITLES = { attendance: 'Asistencia', requests: 'Reportes y Solicitudes', comida: 'Comida', employees: 'Empleados', reports: 'Reportes', more: 'Más' };
 
         function updateNavActive(view) {
             NAV_VIEWS.forEach(v => {
@@ -4888,6 +4937,7 @@
             applyIcons(document);
             updateUndoImportButton();
             renderWorkContextBar();
+            initComida();
             localPersistenceReady = initLocalPersistence();
             localPersistenceReady.then(() => {
                 window.MiniUpdates.init({
@@ -5487,7 +5537,8 @@
             'modal-restore-backup', 'modal-import-employees', 'modal-draft-import',
             'modal-quick-actions', 'modal-hours', 'theme-menu',
             'modal-request-create', 'modal-request-answering', 'modal-request-review',
-            'modal-work-contexts', 'modal-archive-months', 'modal-sheet-import', 'modal-sheet-export', 'modal-storage-help', 'modal-tutorials'
+            'modal-work-contexts', 'modal-archive-months', 'modal-sheet-import', 'modal-sheet-export', 'modal-storage-help', 'modal-tutorials',
+            'comida-sheet'
         ]);
         let activeBigModal = null;
 
@@ -5535,7 +5586,9 @@
 
         // The center + is contextual: closes the open big modal, else toggles the add sheet.
         function handleNavFab() {
+            if (activeBigModal === 'comida-sheet') { window.ComidaUI.closeSheet(); return; }
             if (activeBigModal) { closeModal(activeBigModal); return; }
+            if (currentView === 'comida') { window.ComidaUI.openAdd(); return; }
             if (currentView === 'requests') { openNewRequestModal(); return; }
             toggleAddMenu();
         }
@@ -6452,6 +6505,10 @@
             }
 
             document.getElementById('btn-delete-user').onclick = () => {
+                if (window.ComidaUI && window.ComidaUI.hasDebt(document.getElementById('edit-user-id').value)) {
+                    showToast('No se puede eliminar: debe comida. Cobra primero o paúsalo.');
+                    return;
+                }
                 showConfirm('¿Eliminar este empleado permanentemente?', { title: 'Eliminar empleado', confirmText: 'Eliminar' }).then(ok => {
                     if (!ok) return;
                     const id = document.getElementById('edit-user-id').value;
@@ -6471,6 +6528,53 @@
 
         }
 
+        // --- COMIDA (sección opcional) ---
+        function initComida() {
+            try {
+                window.ComidaUI.init({
+                    root: document.getElementById('comida-view'),
+                    sheet: document.getElementById('comida-sheet'),
+                    storage: localStorage,
+                    today: todayDateKey,
+                    getEmployees: () => (window.workContextManager ? window.workContextManager.filterEmployees(users) : users),
+                    isPresent: (id, day) => getRecord(id, day)?.status === 'present',
+                    showToast,
+                    confirm: showConfirm,
+                    openSheet: () => openModal('comida-sheet'),
+                    closeSheet: () => closeModal('comida-sheet'),
+                    isSheetOpen: () => activeBigModal === 'comida-sheet',
+                    applyIcons,
+                    addEmployee: () => toggleAddMenu(),
+                    onNavSlotChange: updateNavSlot,
+                    openView: view => switchView(view)
+                });
+            } catch (error) {
+                console.warn('Mini: no se pudo iniciar Comida.', error);
+            }
+            updateNavSlot();
+        }
+
+        // The bar space of Reportes shows an empty slot until the user picks Reportes or Comida.
+        function updateNavSlot() {
+            const slot = window.ComidaUI ? window.ComidaUI.navSlot() : 'requests';
+            document.getElementById('nav-slot').hidden = slot !== null;
+            document.getElementById('nav-requests').hidden = slot !== 'requests';
+            document.getElementById('nav-comida').hidden = slot !== 'comida';
+            const req = document.getElementById('more-section-requests-toggle');
+            const food = document.getElementById('more-section-comida-toggle');
+            if (req) req.checked = slot === 'requests';
+            if (food) food.checked = slot === 'comida';
+            const reqHint = document.getElementById('more-section-requests-hint');
+            const foodHint = document.getElementById('more-section-comida-hint');
+            if (reqHint) reqHint.textContent = slot === 'requests' ? 'En la barra' : 'Toca para abrir';
+            if (foodHint) foodHint.textContent = slot === 'comida' ? 'En la barra' : 'Toca para abrir';
+        }
+
+        function setNavSection(section, onBar) {
+            const slot = onBar ? section : (section === 'requests' ? 'comida' : 'requests');
+            window.ComidaUI.setNavSlot(slot);
+        }
+
         function switchView(view) {
             closeAddMenu();
             if (activeBigModal) closeModal(activeBigModal);
@@ -6482,8 +6586,10 @@
             const attendanceLink = document.getElementById('btn-attendance-link');
             if (attendanceLink) attendanceLink.classList.toggle('hidden', view !== 'attendance');
             currentView = view;
+            document.body.classList.toggle('comida-mode', view === 'comida');
             if (view === 'attendance') updateDashboard();
             else if (view === 'requests') renderRequestsDashboard();
+            else if (view === 'comida') window.ComidaUI.enter();
             else if (view === 'employees') renderEmployeesList();
             else if (view === 'reports') enterReportsView();
             updateNavActive(view);
@@ -7727,6 +7833,11 @@
                 showToast('Selecciona al menos un empleado');
                 return;
             }
+            const withDebt = window.ComidaUI ? ids.filter(id => window.ComidaUI.hasDebt(id)).length : 0;
+            if (withDebt) {
+                showToast(`No se puede eliminar: ${withDebt} ${withDebt === 1 ? 'empleado debe' : 'empleados deben'} comida. Cobra primero o paúsalos.`);
+                return;
+            }
             showConfirm(`¿Eliminar permanentemente ${ids.length} empleado(s) seleccionado(s)?`, {
                 title: 'Eliminar empleados',
                 confirmText: 'Eliminar',
@@ -7950,6 +8061,8 @@
 
         function downloadJSON() {
             const data = buildMiniBackupData();
+            // Comida travels only in the backup file, never in P2P or SA transfers.
+            if (window.ComidaUI && window.ComidaUI.exportBackup()) data.comida = window.ComidaUI.exportBackup();
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
@@ -8069,6 +8182,8 @@
             }
             const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
             imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
+            // A backup without "comida" (older files, P2P) leaves Comida as it is.
+            const comidaRestore = parsed.comida !== undefined ? window.ComidaRepository.parseBackup(parsed.comida, todayDateKey(), 'cm' + Date.now().toString(36)) : null;
             const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
             const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings };
             const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) } };
@@ -8080,6 +8195,10 @@
                 }
                 applyRestoredSettings();
             }, saveData);
+            if (comidaRestore && window.ComidaUI) {
+                window.ComidaUI.importBackup(comidaRestore);
+                updateNavSlot();
+            }
         }
 
         function clearStagedBackup(stagedTransferId) {
