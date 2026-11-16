@@ -4,11 +4,11 @@
     {
       "version": "2.18.0",
       "date": "2026-11-16",
-      "title": "Comida",
+      "title": "Nueva sección Comida",
       "items": [
-        "Activa la sección Comida desde la barra o desde Más.",
-        "Anota los pedidos del día y envíalos a la cocina por WhatsApp.",
-        "Lleva la cuenta de cada persona y cierra el período cuando termines de cobrar."
+        "Elige Comida o Reportes para el espacio de la barra; puedes cambiarlo en Más.",
+        "Anota quién pide cada día y envía el pedido a la cocina por WhatsApp.",
+        "Registra platos, compras de insumos y pagos, y cierra el período cuando termines de cobrar."
       ]
     },
     {

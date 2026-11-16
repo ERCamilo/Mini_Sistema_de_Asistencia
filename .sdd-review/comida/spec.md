@@ -32,6 +32,12 @@ Sección de Mini para anotar quién pide comida cada día, mandar el pedido a la
 - No viaja por P2P ni a SA.
 - Un empleado con saldo pendiente no se puede borrar (sí pausar).
 
+## Estado (MVP 2.18.0)
+
+Entregado: tareas 1 a 7. Módulos `src/comida-ledger.ts`, `src/comida-store.ts`, `src/comida-repository.ts` y `src/comida-ui.ts`, estilos en `comida.css`, cableado en `index.html` y `sw.js`. Pruebas: `tests/comida-*.test.js` y `tests/e2e/comida.e2e.mjs`.
+
+Quedan fuera del MVP: fotos de platos (peso en el almacenamiento), Deshacer en los avisos (Mini no tiene avisos con acción; se usan confirmaciones antes de borrar), animación de cierre en las demás hojas de Mini, pedidos por adelantado (#36) y animaciones en el resto de Mini (#35).
+
 ## Tareas
 
 1. Módulo puro `comida-ledger` con TDD (saldo, cuenta pendiente, mensaje a la cocina, cambios desde el envío, períodos, resumen).

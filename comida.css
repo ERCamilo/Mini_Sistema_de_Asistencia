@@ -1,0 +1,152 @@
+/* Comida (sección opcional). Usa los tokens de Mini; sólo añade el acento
+   naranja por tema y las piezas que Mini no tenía. */
+:root { --comida-accent: #ea580c; --comida-on-accent: #ffffff; }
+[data-theme="light"] { --comida-accent: #c2410c; --comida-on-accent: #ffffff; }
+[data-theme="contrast"] { --comida-accent: #ff9900; --comida-on-accent: #000000; }
+[data-theme="ocean"] { --comida-accent: #f97316; --comida-on-accent: #0f172a; }
+[data-theme="sol"] { --comida-accent: #a33600; --comida-on-accent: #ffffff; }
+
+/* Dentro de Comida el acento de toda la app pasa a naranja. */
+body.comida-mode { --accent-color: var(--comida-accent); }
+body.comida-mode .view-btn.active,
+body.comida-mode .btn-primary,
+body.comida-mode .category-pill.active { color: var(--comida-on-accent); }
+body.comida-mode .nav-fab { color: var(--comida-on-accent); }
+body.comida-mode #section-title { color: var(--accent-color); }
+.more-section-open { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: 44px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; padding: 0; }
+.more-section-open > span:last-child { display: grid; }
+
+#comida-view .dashboard-panel { display: flex; flex-direction: column; gap: 12px; padding-top: 0; }
+.stats-filters.comida-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
+.stats-filters.comida-stats .stat-value { font-size: clamp(14px, 4.4vw, 18px); white-space: nowrap; }
+.comida-stats .stat-value { display: flex; justify-content: center; font-variant-numeric: tabular-nums; }
+.comida-stats .stat-card.active { border-color: var(--accent-color); }
+
+/* números que ruedan (odómetro) */
+.comida-roll { display: inline-flex; overflow: hidden; height: 1.15em; line-height: 1.15; vertical-align: bottom; font-variant-numeric: tabular-nums; }
+.comida-roll > span { white-space: pre; }
+.comida-roll-col { display: inline-block; height: 1.15em; }
+.comida-roll-strip { display: flex; flex-direction: column; transition: transform .55s cubic-bezier(.22, 1.32, .28, 1); }
+.comida-roll-strip span { display: block; height: 1.15em; text-align: center; }
+
+.whatsapp-cta.comida-send { width: 100%; justify-content: center; background: var(--accent-color); color: var(--comida-on-accent); box-shadow: none; }
+.comida-wa { display: inline-flex; }
+.comida-wa-link { display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; color: #fff; margin-top: 12px; height: auto; min-height: 52px; }
+
+.comida-dishbar { display: flex; align-items: center; gap: 8px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 6px 6px 6px 12px; min-height: 56px; }
+.comida-dishbar-label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-weight: 600; flex: none; }
+.comida-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
+.comida-chips .category-pill { min-height: 44px; font-size: 13px; white-space: nowrap; }
+
+.comida-search { position: relative; }
+.comida-kicker { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); }
+.comida-list { display: grid; gap: 8px; }
+.comida-card { gap: 10px; }
+.comida-avatar { flex: none; width: 44px; height: 44px; cursor: pointer; }
+.comida-avatar.is-client { color: var(--extra-color); border-color: var(--extra-color); }
+.comida-info { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; background: none; border: 0; color: inherit; padding: 4px; min-height: 44px; cursor: pointer; font: inherit; }
+.comida-info .user-name, .comida-info .user-role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comida-today { color: var(--text-color); font-weight: 600; }
+.comida-debtor { width: 100%; cursor: pointer; font: inherit; color: inherit; text-align: left; }
+.comida-money { flex: none; font-weight: 800; padding-right: 6px; font-variant-numeric: tabular-nums; }
+
+/* contador − 0 + : el − se apaga en 0; el + toma el acento cuando la persona ya pidió */
+.comida-step { position: relative; display: flex; align-items: center; flex: none; border: 1px solid var(--border-color); border-radius: 10px; background: var(--input-bg); }
+.comida-step button { width: 44px; height: 44px; border: 0; background: var(--card-bg); color: var(--text-color); font-size: 18px; font-weight: 800; cursor: pointer; transition: background-color .2s, color .2s, transform .12s; }
+.comida-step-minus { border-radius: 9px 0 0 9px; }
+.comida-step-plus { border-radius: 0 9px 9px 0; }
+.comida-step button:active:not(:disabled) { transform: scale(.9); }
+.comida-step button:disabled { color: var(--text-muted); opacity: .45; cursor: default; }
+.comida-step-n { min-width: 34px; display: flex; justify-content: center; font-weight: 800; font-size: 15px; }
+.comida-step.has .comida-step-plus { background: var(--accent-color); color: var(--comida-on-accent); }
+.comida-float { position: absolute; right: 4px; top: -6px; font-size: 13px; font-weight: 800; color: var(--accent-color); pointer-events: none; animation: comidaFloat .85s ease-out forwards; }
+@keyframes comidaFloat { 0% { opacity: 0; transform: translateY(6px); } 20% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-30px); } }
+
+.comida-lock { display: inline-flex; align-items: center; gap: 6px; flex: none; min-height: 44px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-muted); font-weight: 800; }
+.comida-band { display: flex; align-items: center; gap: 8px; background: var(--text-color); color: var(--bg-color); border-radius: 12px; padding: 6px 6px 6px 12px; font-size: 13px; font-weight: 700; min-height: 48px; }
+.comida-band span:not(.ic) { flex: 1; min-width: 0; }
+.comida-band button { flex: none; min-height: 36px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--bg-color); color: var(--text-color); font-weight: 800; cursor: pointer; }
+.comida-note { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 10px 12px; font-size: 13px; font-weight: 600; border: 1px solid var(--border-color); background: var(--card-bg); }
+.comida-note.is-warn { border-color: var(--warning-color); color: var(--warning-color); }
+.comida-note.is-ok { color: var(--success-color); }
+.comida-empty { display: grid; gap: 4px; text-align: center; color: var(--text-muted); padding: 20px 12px; border: 1px dashed var(--border-color); border-radius: 16px; }
+.comida-empty b { color: var(--text-color); }
+.comida-hint { font-size: 12px; color: var(--text-muted); margin: 0; }
+.comida-error { color: var(--danger-color); font-size: 13px; font-weight: 600; min-height: 18px; }
+
+.comida-panel { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
+.comida-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.comida-stack { display: grid; gap: 12px; }
+.comida-big { font-size: 30px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; display: flex; }
+.comida-link { background: none; border: 0; color: var(--text-muted); font-weight: 700; min-height: 40px; padding: 0 6px; cursor: pointer; font: inherit; font-size: 13px; }
+.comida-link.is-danger { color: var(--danger-color); }
+.comida-icon-btn { width: 40px; height: 40px; border-radius: 10px; border: 0; background: none; color: var(--text-muted); display: grid; place-items: center; cursor: pointer; }
+.comida-ink { background: var(--text-color); color: var(--bg-color); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.comida-ink:disabled, .btn-full:disabled { opacity: .45; cursor: default; }
+.comida-row { display: flex; gap: 8px; }
+.comida-row > * { flex: 1; min-width: 0; }
+
+.comida-dish { display: flex; align-items: center; gap: 10px; min-height: 52px; }
+.comida-dish-icon { width: 44px; height: 44px; flex: none; border-radius: 12px; background: var(--input-bg); border: 1px solid var(--border-color); display: grid; place-items: center; font-size: 22px; }
+.comida-dish-name { flex: 1; min-width: 0; display: grid; text-align: left; background: none; border: 0; color: inherit; padding: 0; font: inherit; cursor: pointer; }
+.comida-dish-name small { color: var(--text-muted); font-size: 12px; }
+.comida-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-weight: 700; }
+.comida-total b { font-size: 28px; display: flex; }
+.comida-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); margin: 8px 0 4px; }
+.comida-field, .comida-textarea { padding-left: 14px; }
+.comida-textarea { resize: vertical; min-height: 64px; font: inherit; }
+.comida-emoji-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.comida-emoji-grid button { aspect-ratio: 1; max-width: 100%; border-radius: 10px; border: 1px solid transparent; background: none; font-size: 20px; cursor: pointer; }
+.comida-emoji-grid button[aria-pressed="true"] { border-color: var(--accent-color); background: var(--input-bg); }
+.comida-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
+.comida-switch-row span:first-child { display: grid; }
+.comida-switch-row small { color: var(--text-muted); font-size: 12px; }
+.comida-msg { margin: 0; white-space: pre-wrap; word-break: break-word; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px; max-height: 260px; overflow-y: auto; user-select: all; color: var(--text-color); }
+.comida-option { margin-top: 10px; }
+.comida-option > span:last-child { display: grid; gap: 2px; }
+.comida-option small { color: var(--text-muted); font-size: 12px; }
+.comida-option-icon { width: 40px; height: 40px; flex: none; border-radius: 12px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--accent-color); display: grid; place-items: center; font-size: 20px; }
+
+/* compras (como Mi Tiendita 4.0) */
+.comida-meter { display: grid; gap: 4px; }
+.comida-meter-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 700; }
+.comida-meter i { display: block; height: 10px; border-radius: 99px; background: var(--input-bg); border: 1px solid var(--border-color); overflow: hidden; }
+.comida-meter i b { display: block; height: 100%; border-radius: 99px; transition: width .5s cubic-bezier(.22, 1.32, .28, 1); }
+.comida-supply-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.comida-supply { position: relative; min-height: 64px; min-width: 0; border-radius: 12px; border: 1px solid var(--border-color); background: var(--input-bg); color: var(--text-color); display: grid; place-items: center; align-content: center; gap: 2px; padding: 6px 2px; font-size: 11px; font-weight: 600; cursor: pointer; }
+.comida-supply[aria-pressed="true"] { background: var(--text-color); border-color: var(--text-color); color: var(--bg-color); font-weight: 800; }
+.comida-supply.is-add { border-style: dashed; color: var(--text-muted); }
+.comida-supply.is-delete { border-color: var(--danger-color); }
+.comida-supply-icon { font-size: 20px; }
+.comida-supply-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 2px; }
+.comida-supply-x { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 99px; background: var(--danger-color); color: #fff; display: grid; place-items: center; border: 2px solid var(--card-bg); font-size: 11px; }
+.comida-slot { width: 32px; height: 32px; border-radius: 10px; background: var(--input-bg); border: 1px solid var(--border-color); box-shadow: inset 0 3px 6px rgba(0, 0, 0, .28); display: grid; place-items: center; color: var(--text-muted); }
+.comida-amount { background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 12px; display: grid; gap: 10px; }
+.comida-amount-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; color: var(--text-muted); }
+.comida-amount-box { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 6px 12px; }
+.comida-pill { font-size: 12px; font-weight: 700; background: var(--input-bg); border-radius: 8px; padding: 4px 8px; white-space: nowrap; }
+.comida-amount-input { min-width: 0; width: 100%; text-align: right; font-size: 22px; font-weight: 800; border: 0; outline: 0; background: transparent; color: var(--text-color); font-variant-numeric: tabular-nums; }
+.comida-bills { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.comida-bills button { min-height: 44px; border-radius: 10px; border: 1px solid var(--border-color); background: var(--card-bg); color: var(--text-color); font-weight: 700; font-size: 13px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.comida-hist { display: flex; align-items: center; gap: 6px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 6px 6px 6px 12px; min-height: 56px; }
+.comida-hist-main { flex: 1; min-width: 0; display: grid; }
+.comida-hist-main small { color: var(--text-muted); font-size: 12px; }
+.comida-neg { color: var(--danger-color); flex: none; font-variant-numeric: tabular-nums; }
+
+/* facturación */
+.comida-bars { height: 84px; display: flex; align-items: flex-end; gap: 2px; }
+.comida-bars span { flex: 1; min-width: 0; background: var(--accent-color); border-radius: 2px 2px 0 0; transform-origin: bottom; animation: comidaGrow .5s cubic-bezier(.22, 1.32, .28, 1) both; }
+.comida-bars span.is-zero { background: var(--border-color); }
+@keyframes comidaGrow { from { transform: scaleY(0); } to { transform: none; } }
+.comida-mrow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; font-size: 13px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.comida-mrow.is-head span { color: var(--text-muted); font-size: 11px; }
+
+/* casilla vacía de la barra y hoja que baja al cerrar */
+.bottom-nav .nav-item[hidden] { display: none; }
+.nav-slot-box { width: 30px; height: 26px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--input-bg); box-shadow: inset 0 3px 6px rgba(0, 0, 0, .3); display: grid; place-items: center; }
+#comida-sheet.is-closing { opacity: 0; }
+#comida-sheet.is-closing .modal-content { transform: translateY(100%); }
+
+@media (prefers-reduced-motion: reduce) {
+  .comida-roll-strip, .comida-bars span, .comida-float, .comida-meter i b, .comida-step button { animation: none !important; transition: none !important; }
+}
