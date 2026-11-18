@@ -34,6 +34,29 @@ test('normalize keeps valid data as it is', () => {
   assert.deepEqual(Store.normalizeState(JSON.parse(JSON.stringify(s)), '2026-11-16', 'x'), s);
 });
 
+test('food pauses survive normalization and keep orders and balances', () => {
+  const previous = Store.addOrder(base(), { id: 'o1', personId: 'e1', dishId: 'd1', day: '2026-11-02' });
+  assert.deepEqual(Store.normalizeState({ ...previous, pausedPersonIds: undefined }, '2026-11-16', 'x').pausedPersonIds, []);
+  const paused = Store.setPersonPaused(previous, 'e1', true);
+  assert.deepEqual(previous.pausedPersonIds, []);
+  assert.equal(Store.setPersonPaused(paused, 'e1', true), paused);
+  const restored = Store.normalizeState({ ...paused, pausedPersonIds: ['e1', null, 'e1', '', 'c1'] }, '2026-11-16', 'x');
+  assert.deepEqual(restored.pausedPersonIds, ['e1', 'c1']);
+  assert.deepEqual(restored.orders, previous.orders);
+  assert.equal(Store.hasDebt(restored, 'e1'), true);
+  assert.deepEqual(Store.setPersonPaused(restored, 'e1', false).pausedPersonIds, ['c1']);
+});
+
+test('a paused person must be reactivated before receiving new orders', () => {
+  const order = { id: 'o1', personId: 'e1', dishId: 'd1', day: '2026-11-02' };
+  const previous = Store.addOrder(base(), order);
+  const paused = Store.setPersonPaused(previous, 'e1', true);
+  assert.throws(() => Store.addOrder(paused, { ...order, id: 'o2' }), /reactiva/i);
+  assert.throws(() => Store.repeatLastOrder(paused, 'e1', '2026-11-03', () => 'o2'), /reactiva/i);
+  assert.equal(Store.removeLastOrder(paused, 'e1', order.day).orders.length, 0);
+  assert.equal(Store.addOrder(Store.setPersonPaused(paused, 'e1', false), { ...order, id: 'o2' }).orders.length, 2);
+});
+
 test('an order freezes the dish name, icon, price and cost of that moment', () => {
   let s = Store.addOrder(base(), { id: 'o1', personId: 'e1', dishId: 'd1', day: '2026-11-02' });
   s = Store.saveDish(s, { id: 'd1', name: 'Pollo al horno', emoji: '🍗', price: 275, cost: 150 });

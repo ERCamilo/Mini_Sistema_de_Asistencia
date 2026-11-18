@@ -38,7 +38,9 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; flex: 1; }
 .comida-chips .category-pill { min-height: 44px; font-size: 13px; white-space: nowrap; }
 
-.comida-search { position: relative; }
+.comida-list-tools { display: flex; align-items: center; gap: 8px; }
+.comida-list-tools .category-pill, #comida-sheet .comida-card .category-pill { flex: none; min-height: 44px; white-space: nowrap; }
+.comida-search { position: relative; flex: 1; min-width: 0; }
 .comida-kicker { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); }
 .comida-list { display: grid; gap: 8px; }
 .comida-card { gap: 10px; }
@@ -46,9 +48,29 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-avatar.is-client { color: var(--extra-color); border-color: var(--extra-color); }
 .comida-info { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; background: none; border: 0; color: inherit; padding: 4px; min-height: 44px; cursor: pointer; font: inherit; }
 .comida-info .user-name, .comida-info .user-role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comida-person-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .comida-today { color: var(--text-color); font-weight: 600; }
 .comida-debtor { width: 100%; cursor: pointer; font: inherit; color: inherit; text-align: left; }
 .comida-money { flex: none; font-weight: 800; padding-right: 6px; font-variant-numeric: tabular-nums; }
+
+.comida-calendar-nav { margin-bottom: 12px; }
+.comida-calendar-nav .cal-nav-btn { display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; }
+.comida-calendar-nav .cal-nav-btn:disabled { opacity: .45; cursor: default; }
+.comida-cal-month { text-transform: capitalize; }
+.comida-calendar-scroll { overflow-x: auto; margin-bottom: 12px; }
+.comida-calendar { grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 4px; margin-bottom: 0; }
+.comida-calendar .cal-header { margin-bottom: 4px; }
+.comida-calendar .cal-day { min-height: 44px; }
+.comida-calendar button { cursor: pointer; }
+.comida-calendar .cal-day.has-data { background: color-mix(in srgb, var(--accent-color) 24%, var(--card-bg)); }
+.comida-calendar .cal-day[aria-pressed="true"] { border: 2px solid var(--accent-color); font-weight: 800; }
+.comida-calendar .cal-hours { color: inherit; }
+.comida-cal-future { opacity: .45; }
+.comida-calendar-order { display: flex; justify-content: space-between; gap: 8px; }
+.comida-calendar-order b:last-child { flex: none; }
+@media (max-width: 374px) {
+  .comida-calendar-scroll { margin-inline: -8px; }
+}
 
 /* contador − 0 + : el − se apaga en 0; el + toma el acento cuando la persona ya pidió */
 .comida-step { position: relative; display: flex; align-items: center; flex: none; border: 1px solid var(--border-color); border-radius: 10px; background: var(--input-bg); }

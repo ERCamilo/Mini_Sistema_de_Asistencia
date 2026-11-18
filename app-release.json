@@ -1,6 +1,16 @@
 {
-  "version": "2.18.0",
+  "version": "2.19.0",
   "changelog": [
+    {
+      "version": "2.19.0",
+      "date": "2026-11-18",
+      "title": "Listas y calendario de Comida",
+      "items": [
+        "Empleados y clientes aparecen en orden numérico.",
+        "Toca el número de la tarjeta para ver los pedidos en un calendario mensual.",
+        "Pausa y reactiva personas en Comida sin perder sus pedidos ni su saldo."
+      ]
+    },
     {
       "version": "2.18.0",
       "date": "2026-11-16",

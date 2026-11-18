@@ -16,18 +16,19 @@ after(async () => { await browser?.close(); server?.close(); });
 
 const keyOf = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 
-async function device(theme = 'dark') {
+async function device(theme = 'dark', fixture = {}) {
   const context = await browser.newContext({ viewport: PHONE, serviceWorkers: 'block', locale: 'es-ES' });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   await page.goto(base + 'manifest.json');
-  await page.evaluate(({ today, theme }) => {
-    localStorage.setItem('users', JSON.stringify([{ id: 'u1', name: 'Juan Pérez', number: '1' }, { id: 'u2', name: 'María Gómez', number: '2' }]));
+  await page.evaluate(({ today, theme, fixture }) => {
+    localStorage.setItem('users', JSON.stringify(fixture.users || [{ id: 'u1', name: 'Juan Pérez', number: '1' }, { id: 'u2', name: 'María Gómez', number: '2' }]));
     localStorage.setItem('attendance', JSON.stringify({ [today]: { u1: { status: 'present', hours: 8 }, u2: { status: 'present', hours: 8 } } }));
     localStorage.setItem('tutorialsSeen', '["marcar-asistencia"]');
     localStorage.setItem('appTheme', theme);
-  }, { today: keyOf(new Date()), theme });
+    if (fixture.comida) localStorage.setItem('miniComidaV1', JSON.stringify(fixture.comida));
+  }, { today: keyOf(new Date()), theme, fixture });
   await page.goto(base, { waitUntil: 'networkidle' });
   if (await page.waitForSelector('#mini-welcome-name', { timeout: 4000 }).then(() => true, () => false)) {
     await page.fill('#mini-welcome-name', 'Cocina');
@@ -177,6 +178,72 @@ test('Comida survives a reload and a debtor cannot be deleted', async () => {
   await page.click('#nav-comida');
   await page.click('#comida-view .view-btn >> text=Facturación');
   assert.match(await page.textContent('#comida-view'), /RD\$300/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('cards are ordered by number and open the food calendar, with reversible food-only pauses', async () => {
+  const today = new Date();
+  const previousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 8);
+  const dish = { id: 'pollo', name: 'Pollo guisado', emoji: '🍗', price: 250, cost: 140, onMenu: true };
+  const order = (id, personId, day) => ({ id, personId, day: keyOf(day), dishId: dish.id, dishName: dish.name, dishEmoji: dish.emoji, price: dish.price, cost: dish.cost });
+  const { context, page, errors } = await device('dark', {
+    users: [{ id: 'u1', name: 'Juan Pérez', number: '10' }, { id: 'u2', name: 'María Gómez', number: '2' }],
+    comida: {
+      schemaVersion: 1, navSlot: 'comida', dishes: [dish],
+      clients: [{ id: 'c10', name: 'Rosa', num: 'C10', ref: '' }, { id: 'c2', name: 'Pedro', num: 'C02', ref: '' }],
+      orders: [order('o1', 'u1', previousMonth), order('o2', 'u1', today), order('o3', 'c2', today)],
+      periods: [{ id: 'p', start: keyOf(previousMonth), end: null }]
+    }
+  });
+  const attendanceBefore = await page.evaluate(() => localStorage.getItem('attendance'));
+  const cards = page.locator('#comida-view .comida-card .comida-avatar');
+  const sheet = page.locator('#comida-sheet');
+  await page.click('#nav-comida');
+  assert.deepEqual(await cards.allTextContents(), ['2', '10', 'C02', 'C10']);
+  await page.fill('#comida-search', '10');
+  assert.deepEqual(await cards.allTextContents(), ['10', 'C10']);
+  await page.fill('#comida-search', '');
+
+  await page.getByRole('button', { name: 'Ver calendario de pedidos de Juan Pérez' }).click();
+  await sheetOpen(page);
+  assert.match(await sheet.locator('.comida-calendar-detail').innerText(), /Pollo guisado/);
+  assert.equal(await sheet.getByRole('button', { name: 'Mes siguiente' }).isDisabled(), true);
+  await sheet.getByRole('button', { name: 'Mes anterior' }).click();
+  await sheet.locator('.cal-day.has-data').click();
+  assert.match(await sheet.locator('.comida-calendar-detail').innerText(), /RD\$250/);
+  await sheet.getByRole('button', { name: 'Ver cuenta' }).click();
+  assert.equal(await sheet.locator('.comida-total .comida-roll').getAttribute('aria-label'), 'RD$500');
+  await sheet.getByRole('button', { name: 'Volver al calendario' }).click();
+  assert.match(await sheet.locator('.cal-day[aria-pressed="true"]').getAttribute('aria-label'), /8 de .*1 plato/);
+  await sheet.getByRole('button', { name: 'Pausar en Comida' }).click();
+  await sheet.getByRole('button', { name: 'Cerrar calendario' }).click();
+  await sheet.waitFor({ state: 'hidden' });
+  assert.deepEqual(await cards.allTextContents(), ['2', 'C02', 'C10']);
+  await page.getByRole('button', { name: 'Ver presentes que no han pedido' }).click();
+  assert.deepEqual(await cards.allTextContents(), ['2']);
+  await page.getByRole('button', { name: 'Ver presentes que no han pedido' }).click();
+
+  await page.getByRole('button', { name: 'Ver calendario de pedidos de Pedro' }).click();
+  await sheet.getByRole('button', { name: 'Pausar en Comida' }).click();
+  await sheet.getByRole('button', { name: 'Cerrar calendario' }).click();
+  await sheet.waitFor({ state: 'hidden' });
+  assert.deepEqual(await cards.allTextContents(), ['2', 'C10']);
+  assert.deepEqual((await saved(page)).pausedPersonIds, ['u1', 'c2']);
+  assert.equal((await saved(page)).orders.length, 3);
+  await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+  assert.match(await sheet.locator('.comida-msg').innerText(), /Total: 2 platos/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('attendance')), attendanceBefore);
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('#nav-comida');
+  assert.deepEqual(await cards.allTextContents(), ['2', 'C10']);
+  await page.getByRole('button', { name: 'Pausados (2)' }).click();
+  await sheet.getByRole('button', { name: 'Reactivar a Juan Pérez en Comida' }).click();
+  await sheet.getByRole('button', { name: 'Reactivar a Pedro en Comida' }).click();
+  await sheet.waitFor({ state: 'hidden' });
+  assert.deepEqual(await cards.allTextContents(), ['2', '10', 'C02', 'C10']);
+  assert.deepEqual((await saved(page)).pausedPersonIds, []);
   assert.deepEqual(errors, []);
   await context.close();
 });
