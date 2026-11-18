@@ -55,7 +55,7 @@ test('an employee with food debt cannot be deleted, alone or in bulk', () => {
 
 test('Comida accent is defined for the five themes', () => {
   const css = fs.readFileSync('comida.css', 'utf8');
-  for (const theme of ['light', 'contrast', 'ocean', 'sol']) assert.match(css, new RegExp(`\\[data-theme="${theme}"\\] \\{ --comida-accent`));
-  assert.match(css, /:root \{ --comida-accent/);
-  assert.match(css, /body\.comida-mode \{ --accent-color: var\(--comida-accent\); \}/);
+  for (const theme of ['light', 'contrast', 'ocean', 'sol']) assert.match(css, new RegExp(`\\[data-theme="${theme}"\\] \\{\\s+--comida-accent`));
+  assert.match(css, /:root \{\s+--comida-accent/);
+  assert.match(css, /body\.comida-mode \{[^}]*--accent-color: var\(--comida-accent\);[^}]*background-color: var\(--comida-canvas\);/);
 });

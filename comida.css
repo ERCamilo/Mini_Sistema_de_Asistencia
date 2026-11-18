@@ -1,15 +1,41 @@
-/* Comida (sección opcional). Usa los tokens de Mini; sólo añade el acento
-   naranja por tema y las piezas que Mini no tenía. */
-:root { --comida-accent: #ea580c; --comida-on-accent: #ffffff; }
-[data-theme="light"] { --comida-accent: #c2410c; --comida-on-accent: #ffffff; }
-[data-theme="contrast"] { --comida-accent: #ff9900; --comida-on-accent: #000000; }
-[data-theme="ocean"] { --comida-accent: #f97316; --comida-on-accent: #0f172a; }
-[data-theme="sol"] { --comida-accent: #a33600; --comida-on-accent: #ffffff; }
-:root { --comida-sales-blue: #60a5fa; }
+/* Paleta de Comida sobre las superficies y los temas de Mini. */
+:root {
+  --comida-accent: #ea580c;
+  --comida-on-accent: #1b0d05;
+  --comida-canvas: #231910;
+  --comida-number: #ffb17a;
+  --comida-sales-blue: #60a5fa;
+}
+[data-theme="light"] {
+  --comida-accent: #c2410c;
+  --comida-on-accent: #ffffff;
+  --comida-canvas: #fff0e2;
+  --comida-number: #a13c13;
+}
+[data-theme="contrast"] {
+  --comida-accent: #ff9900;
+  --comida-on-accent: #000000;
+  --comida-canvas: #190f07;
+  --comida-number: #ffc392;
+}
+[data-theme="ocean"] {
+  --comida-accent: #f97316;
+  --comida-on-accent: #0f172a;
+  --comida-canvas: #241d19;
+  --comida-number: #ffb888;
+}
+[data-theme="sol"] {
+  --comida-accent: #a33600;
+  --comida-on-accent: #ffffff;
+  --comida-canvas: #fff4e8;
+  --comida-number: #8f320d;
+}
 [data-theme="light"], [data-theme="sol"] { --comida-sales-blue: #2563eb; }
 
-/* Dentro de Comida el acento de toda la app pasa a naranja. */
-body.comida-mode { --accent-color: var(--comida-accent); }
+body.comida-mode {
+  --accent-color: var(--comida-accent);
+  background-color: var(--comida-canvas);
+}
 body.comida-mode .view-btn.active,
 body.comida-mode .btn-primary,
 body.comida-mode .category-pill.active { color: var(--comida-on-accent); }
@@ -36,10 +62,10 @@ body.comida-mode #section-title { color: var(--accent-color); }
   transform: translate(-50%, -50%) rotate(-45deg);
 }
 
-#comida-view .dashboard-panel { display: flex; flex-direction: column; gap: 12px; padding-top: 0; }
+#comida-view .dashboard-panel { display: flex; flex-direction: column; gap: 12px; padding-top: 0; background-color: transparent; }
 .stats-filters.comida-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
 .stats-filters.comida-stats .stat-value { font-size: clamp(14px, 4.4vw, 18px); white-space: nowrap; }
-.comida-stats .stat-value { display: flex; justify-content: center; font-variant-numeric: tabular-nums; }
+.comida-stats .stat-value { display: flex; justify-content: center; color: var(--comida-number); font-variant-numeric: tabular-nums; }
 .comida-stats .stat-card.active { border-color: var(--accent-color); }
 
 /* números que ruedan (odómetro) */
@@ -64,12 +90,12 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-kicker { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--text-muted); }
 .comida-list { display: grid; gap: 8px; }
 .comida-card { gap: 10px; }
-.comida-avatar { flex: none; width: 44px; height: 44px; cursor: pointer; }
-.comida-avatar.is-client { color: var(--extra-color); border-color: var(--extra-color); }
+.avatar-placeholder.comida-avatar { flex: none; width: 44px; height: 44px; color: var(--comida-number); cursor: pointer; }
+.comida-avatar.is-client { border-color: var(--extra-color); }
 .comida-info { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; background: none; border: 0; color: inherit; padding: 4px; min-height: 44px; cursor: pointer; font: inherit; }
 .comida-info .user-name, .comida-info .user-role { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .comida-person-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.comida-today { color: var(--text-color); font-weight: 600; }
+.comida-today { font-weight: 600; }
 .comida-debtor { width: 100%; cursor: pointer; font: inherit; color: inherit; text-align: left; }
 .comida-money { flex: none; font-weight: 800; padding-right: 6px; font-variant-numeric: tabular-nums; }
 
@@ -80,12 +106,14 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-calendar-scroll { overflow-x: auto; margin-bottom: 12px; }
 .comida-calendar { grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 4px; margin-bottom: 0; }
 .comida-calendar .cal-header { margin-bottom: 4px; }
-.comida-calendar .cal-day { min-height: 44px; }
+.comida-calendar .cal-day { min-height: 44px; color: var(--comida-number); }
 .comida-calendar button { cursor: pointer; }
 .comida-calendar .cal-day.has-data { background: color-mix(in srgb, var(--accent-color) 24%, var(--card-bg)); }
 .comida-calendar .cal-day[aria-pressed="true"] { border: 2px solid var(--accent-color); font-weight: 800; }
 .comida-calendar .cal-hours { color: inherit; }
 .comida-cal-future { opacity: .45; }
+body.comida-mode #modal-date-jump .dj-day { color: var(--comida-number); }
+body.comida-mode #modal-date-jump .dj-selected { color: var(--comida-on-accent); }
 .comida-calendar-order { display: flex; justify-content: space-between; gap: 8px; }
 .comida-calendar-order b:last-child { flex: none; }
 @media (max-width: 374px) {
@@ -191,8 +219,21 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-sales-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .comida-sales-table th, .comida-sales-table td { padding: 6px 4px; border-top: 1px solid var(--border-color); text-align: right; overflow-wrap: anywhere; }
 .comida-sales-table th:first-child { text-align: left; }
+.comida-sales-table td:last-child { color: var(--comida-sales-blue); }
 .comida-mrow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; font-size: 13px; align-items: baseline; font-variant-numeric: tabular-nums; }
 .comida-mrow.is-head span { color: var(--text-muted); font-size: 11px; }
+
+.user-role.comida-today,
+.comida-money,
+.comida-calendar-order b:last-child,
+.comida-step-n,
+.comida-lock,
+.comida-big,
+.comida-total b,
+.comida-amount-input,
+.comida-bills button,
+.comida-sales-table td:first-of-type,
+.comida-mrow b { color: var(--comida-number); }
 
 /* casilla vacía de la barra y hoja que baja al cerrar */
 .bottom-nav .nav-item[hidden] { display: none; }

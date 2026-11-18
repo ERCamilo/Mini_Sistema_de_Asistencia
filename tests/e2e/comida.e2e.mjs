@@ -429,3 +429,59 @@ test('a first-time user can backfill an earlier order and see it in billing', as
     await context.close();
   }
 });
+
+test('the food canvas and orange numbers are readable in all five themes', async () => {
+  const { context, page } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida',
+      dishes: [{ id: 'd1', name: 'Pollo', emoji: '🍗', price: 250, cost: 140, onMenu: true }]
+    }
+  });
+  const luminance = rgb => rgb.match(/\d+/g).slice(0, 3).map(channel => {
+    const value = Number(channel) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }).reduce((l, value, i) => l + value * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => {
+    const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.addStyleTag({ content: 'body { transition: none !important; }' });
+    for (const theme of ['dark', 'light', 'contrast', 'ocean', 'sol']) {
+      await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+      const attendance = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      await page.click('#nav-comida');
+      const colors = await page.evaluate(() => {
+        const style = selector => getComputedStyle(document.querySelector(selector));
+        return {
+          canvas: style('body').backgroundColor,
+          contentBackground: style('#comida-view .dashboard-panel').backgroundColor,
+          surface: style('#comida-view .stat-card').backgroundColor,
+          rosterSurface: style('#users-container .user-card').backgroundColor,
+          count: style('#comida-view .stat-value').color,
+          number: style('#comida-view .comida-avatar').color,
+          numberBackground: style('#comida-view .comida-avatar').backgroundColor,
+          quantity: style('#comida-view .comida-step-n').color,
+          orderButton: style('#comida-view .comida-send').backgroundColor,
+          orderButtonText: style('#comida-view .comida-send').color
+        };
+      });
+      assert.notEqual(colors.canvas, attendance, theme);
+      assert.notEqual(colors.canvas, colors.surface, theme);
+      assert.equal(colors.contentBackground, 'rgba(0, 0, 0, 0)', theme);
+      assert.equal(colors.surface, colors.rosterSurface, theme);
+      const [red, green, blue] = colors.canvas.match(/\d+/g).slice(0, 3).map(Number);
+      assert.ok(red > green && green >= blue, `${theme}: warm canvas`);
+      assert.equal(colors.count, colors.number, theme);
+      assert.equal(colors.count, colors.quantity, theme);
+      assert.ok(contrast(colors.count, colors.surface) >= 4.5, `${theme}: counts`);
+      assert.ok(contrast(colors.number, colors.numberBackground) >= 4.5, `${theme}: employee number`);
+      assert.ok(contrast(colors.orderButtonText, colors.orderButton) >= 4.5, `${theme}: send button`);
+      await page.click('#nav-attendance');
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), attendance, theme);
+    }
+  } finally {
+    await context.close();
+  }
+});
