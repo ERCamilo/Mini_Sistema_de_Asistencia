@@ -7,8 +7,9 @@
         root.MiniAppVersion = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     // BEGIN VERSION POLICY
-    const APP_VERSION = '2.18.0';
+    const APP_VERSION = '2.19.0';
     const CHANGELOG = [
+        { version: '2.19.0', date: '2026-11-18', title: 'Listas y calendario de Comida', items: ['Empleados y clientes aparecen en orden numérico.', 'Toca el número de la tarjeta para ver los pedidos en un calendario mensual.', 'Pausa y reactiva personas en Comida sin perder sus pedidos ni su saldo.'] },
         { version: '2.18.0', date: '2026-11-16', title: 'Nueva sección Comida', items: ['Elige Comida o Reportes para el espacio de la barra; puedes cambiarlo en Más.', 'Anota quién pide cada día y envía el pedido a la cocina por WhatsApp.', 'Registra platos, compras de insumos y pagos, y cierra el período cuando termines de cobrar.'] },
         { version: '2.17.12', date: '2026-10-27', title: 'Actualizaciones a tu ritmo', items: ['La nueva versión se prepara en segundo plano y espera tu confirmación para guardar y reiniciar.', 'Sigue la descarga y la instalación con animaciones; puedes reintentar si la conexión falla.', 'Reparar interfaz renueva la aplicación y conserva tus datos y archivos.'] },
         { version: '2.17.11', date: '2026-10-26', title: 'Confirmación de actualización más confiable', items: ['Si el navegador abre una copia anterior durante la actualización, conservamos la confirmación para cuando se abra la versión nueva.', 'Tus datos se conservan y puedes seguir trabajando después de la confirmación.'] },

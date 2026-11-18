@@ -28,7 +28,7 @@
     function emptyState(today, periodId) {
         return {
             schemaVersion: 1, navSlot: null, withPrices: true, lastClientNumber: 0,
-            clients: [], dishes: [], categories: [], orders: [], notes: {}, payments: [], purchases: [],
+            clients: [], pausedPersonIds: [], dishes: [], categories: [], orders: [], notes: {}, payments: [], purchases: [],
             periods: [{ id: periodId, start: today, end: null }], sent: {}
         };
     }
@@ -72,6 +72,7 @@
             withPrices: value.withPrices !== false,
             lastClientNumber: Math.max(highest, isAmount(value.lastClientNumber) ? value.lastClientNumber : 0),
             clients,
+            pausedPersonIds: [...new Set(listOf(value.pausedPersonIds, id => isText(id) && id.trim() !== ''))],
             dishes: listOf(value.dishes, validDish),
             categories: listOf(value.categories, validCategory),
             orders: listOf(value.orders, validOrder),
@@ -94,6 +95,8 @@
     }
     function addOrder(state, input) {
         requireOpenDay(state, input.day);
+        if (state.pausedPersonIds.includes(input.personId))
+            throw new Error('Reactiva a esta persona en Comida para anotar su pedido.');
         const dish = state.dishes.find(d => d.id === input.dishId);
         if (!dish)
             throw new Error('Ese plato ya no existe.');
@@ -133,6 +136,14 @@
         const next = state.lastClientNumber + 1;
         const client = { id: input.id, num: 'C' + String(next).padStart(2, '0'), name, ref: String(input.ref || '').trim() };
         return { ...state, lastClientNumber: next, clients: [...state.clients, client] };
+    }
+    function setPersonPaused(state, personId, paused) {
+        if (state.pausedPersonIds.includes(personId) === paused)
+            return state;
+        const pausedPersonIds = paused
+            ? [...state.pausedPersonIds, personId]
+            : state.pausedPersonIds.filter(id => id !== personId);
+        return { ...state, pausedPersonIds };
     }
     function saveDish(state, input) {
         const name = requireName(input.name, 'del plato');
@@ -199,7 +210,7 @@
         return ledger().balance(state.orders, state.payments, personId) > 0;
     }
     return {
-        emptyState, normalizeState, addOrder, removeLastOrder, repeatLastOrder, setNote, addClient, saveDish, setDishOnMenu,
+        emptyState, normalizeState, addOrder, removeLastOrder, repeatLastOrder, setNote, addClient, setPersonPaused, saveDish, setDishOnMenu,
         addCategory, removeCategory, savePurchase, removePurchase, addPayment, markSent, closePeriod, setNavSlot,
         setWithPrices, hasDebt
     };
