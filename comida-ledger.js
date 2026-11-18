@@ -124,7 +124,7 @@
     }
     function isDayLocked(periods, day) {
         const open = openPeriod(periods);
-        return !!open && day < open.start;
+        return !!open && day < open.start && periods.some(period => period.end !== null);
     }
     function periodDay(period, today) {
         const [y1, m1, d1] = period.start.split('-').map(Number);
@@ -141,9 +141,23 @@
         const spent = sumOf(purchases.filter(p => inside(p.day)), p => p.amount);
         return { sold, collected, purchases: spent, profit: sold - spent };
     }
+    function dailySales(orders, clientIds, firstDay, lastDay) {
+        const byDay = new Map();
+        for (let day = firstDay; day <= lastDay; day = addDays(day, 1)) {
+            byDay.set(day, { day, clients: 0, staff: 0 });
+        }
+        for (const order of orders) {
+            const sale = byDay.get(order.day);
+            if (!sale)
+                continue;
+            const group = clientIds.has(order.personId) ? 'clients' : 'staff';
+            sale[group] += checkAmount(order.price);
+        }
+        return [...byDay.values()];
+    }
     return {
         REMIND_AFTER_DAYS, balance, pendingAccount, kitchenLines, formatMoney, formatKitchenOrder,
         orderSignature, changesSinceSent, ensureOpenPeriod, closePeriod, isDayLocked, periodDay,
-        shouldRemindClose, periodSummary
+        shouldRemindClose, periodSummary, dailySales
     };
 });

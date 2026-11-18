@@ -4,9 +4,13 @@
     {
       "version": "2.19.1",
       "date": "2026-11-18",
-      "title": "Calendario de Pedidos",
+      "title": "Calendario y ventas de Comida",
       "items": [
-        "Toca la fecha arriba en Pedidos para elegir un día en el calendario o volver a hoy."
+        "Toca la fecha arriba en Pedidos para elegir un día en el calendario o volver a hoy.",
+        "Antes del primer cierre, puedes cargar pedidos de días anteriores a cuando empezaste a usar Comida.",
+        "En Facturación, distingue las ventas de clientes en naranja y las del personal en azul.",
+        "Desde Empleados, toca el icono de Comida para pausar o reactivar sus pedidos.",
+        "Los títulos de las pantallas quedan centrados."
       ]
     },
     {

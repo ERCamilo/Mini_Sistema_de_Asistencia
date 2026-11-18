@@ -189,7 +189,8 @@
 
         /* --- Header & Nav --- */
         .top-nav {
-            display: flex;
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr) 48px;
             align-items: center;
             gap: 8px;
             height: var(--topbar-h);
@@ -735,6 +736,28 @@
             align-items: center;
             gap: 12px;
             padding: 4px;
+        }
+
+        #employees-container .user-info-area {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        #employees-container .avatar-placeholder {
+            flex: none;
+        }
+
+        .employee-card-actions {
+            display: flex;
+            flex: none;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .employee-card-actions .export-btn {
+            width: 44px;
+            height: 44px;
+            font-size: 16px;
         }
 
         .avatar-placeholder {
@@ -1671,8 +1694,9 @@
 
         /* --- Barra de navegacion inferior --- */
         .app-title {
-            flex: 1;
             text-align: center;
+            text-wrap: balance;
+            line-height: 1.15;
             font-size: 18px;
             font-weight: 700;
             color: var(--text-color);
@@ -7659,11 +7683,11 @@
                     `;
                 } else {
                     rightActions = `
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <button type="button" class="export-btn" style="font-size:16px;" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
+                        <div class="employee-card-actions">
+                            <button type="button" class="export-btn" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
                                 <span class="ic" data-icon="${isPaused ? 'play' : 'pause'}"></span>
                             </button>
-                            <button type="button" class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
+                            <button type="button" class="export-btn employee-edit-action" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
                                 <span class="ic" data-icon="edit"></span>
                             </button>
                         </div>
@@ -7684,6 +7708,8 @@
                     </div>
                     ${rightActions}
                 `;
+                const foodButton = !isBulkMode && window.ComidaUI?.employeeFoodButton?.(u);
+                if (foodButton) div.querySelector('.employee-edit-action').before(foodButton);
                 container.appendChild(div);
             });
             applyIcons(container);

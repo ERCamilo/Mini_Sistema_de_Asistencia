@@ -340,7 +340,7 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
     }, person.num || icon('daily'));
   }
 
-  function setPersonPaused(person: ComidaUiPerson, paused: boolean): boolean {
+  function setPersonPaused(person: Pick<ComidaUiPerson, 'id' | 'name'>, paused: boolean): boolean {
     return attempt(() => Store().setPersonPaused(s(), person.id, paused),
       `${person.name} ${paused ? 'se ocultó de Pedidos' : 'se reactivó en Comida'}.`);
   }
@@ -610,6 +610,34 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
     return Ledger().periodSummary(s().orders, s().payments, s().purchases, p);
   }
 
+  function dailySalesChart(sales: ComidaDailySale[]): HTMLElement {
+    const peak = sales.reduce((max, sale) => Math.max(max, sale.clients + sale.staff), 1);
+    const bars = sales.map(({ day, clients, staff }, index) => {
+      const total = clients + staff;
+      const bar = h('div', {
+        class: 'comida-sale-bar' + (total ? '' : ' is-zero'), 'data-day': day,
+        title: `${shortDay(day)} · Clientes ${money(clients)} · Personal ${money(staff)} · Total ${money(total)}`
+      }, clients > 0 && h('span', { class: 'comida-sales-client', style: `flex-grow: ${clients}` }),
+      staff > 0 && h('span', { class: 'comida-sales-staff', style: `flex-grow: ${staff}` }));
+      bar.style.height = total ? `${total / peak * 100}%` : '2px';
+      bar.style.animationDelay = `${Math.min(index * 12, 250)}ms`;
+      return bar;
+    });
+
+    return h('div', { class: 'comida-panel comida-sales' },
+      h('div', { class: 'comida-kicker', text: 'Ventas por día del período' }),
+      h('div', { class: 'comida-sales-legend' },
+        h('span', {}, h('i', { class: 'comida-sales-client', 'aria-hidden': 'true' }), 'Clientes'),
+        h('span', {}, h('i', { class: 'comida-sales-staff', 'aria-hidden': 'true' }), 'Personal')),
+      h('div', { class: 'comida-bars', role: 'img', 'aria-label': 'Ventas por día del período. Clientes en naranja y personal en azul.' }, bars),
+      h('details', {}, h('summary', { class: 'comida-sales-summary', text: 'Importes por día' }),
+        h('table', { class: 'comida-sales-table', 'aria-label': 'Ventas por fecha y grupo' },
+          h('thead', {}, h('tr', {}, ['Fecha', 'Clientes', 'Personal'].map(label => h('th', { scope: 'col', text: label })))),
+          h('tbody', {}, sales.map(({ day, clients, staff }) => h('tr', {},
+            h('th', { scope: 'row', text: shortDay(day) }), h('td', { text: money(clients) }), h('td', { text: money(staff) })))))),
+      h('span', { class: 'comida-hint', text: 'Ganancia = vendido − compras del período' }));
+  }
+
   function renderFacturacion(): ComidaUiChild[] {
     const today = (host as ComidaUiHost).today();
     const p = openPeriod();
@@ -619,10 +647,7 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
     const due = people().filter(x => debtOf(x.id) > 0);
     const shown = due.filter(x => view.billFilter === 'todos' || (view.billFilter === 'emp') === x.employee).sort((a, b) => debtOf(b.id) - debtOf(a.id));
     const past = s().periods.filter(x => x.end !== null).reverse();
-    const days: string[] = [];
-    for (let d = p.start; d <= today; d = addDays(d, 1)) days.push(d);
-    const sales = days.map(d => sum(s().orders.filter(o => o.day === d), o => o.price));
-    const peak = Math.max(1, ...sales);
+    const sales: ComidaDailySale[] = Ledger().dailySales(s().orders, new Set(s().clients.map(c => c.id)), p.start, today);
     const progress = h('b');
     progress.style.width = Math.min(100, (dayN / Ledger().REMIND_AFTER_DAYS) * 100) + '%';
     progress.style.background = remind ? 'var(--warning-color)' : 'var(--accent-color)';
@@ -637,9 +662,7 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
         h('span', { class: 'comida-hint', text: `${due.length} ${due.length === 1 ? 'persona' : 'personas'} con saldo pendiente` })),
       h('div', { class: 'stats-filters comida-stats' },
         statCard('Vendido', money(stats.sold)), statCard('Cobrado', money(stats.collected)), statCard('Ganancia', money(stats.profit), stats.profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)')),
-      days.length > 0 && h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Ventas por día del período' }),
-        h('div', { class: 'comida-bars', role: 'img', 'aria-label': 'Ventas por día del período' }, sales.map((v, i) => { const b = h('span', { class: v ? '' : 'is-zero', title: `${shortDay(days[i])}: ${money(v)}` }); b.style.height = Math.max(2, (v / peak) * 100) + '%'; b.style.animationDelay = i * 12 + 'ms'; return b; })),
-        h('span', { class: 'comida-hint', text: 'Ganancia = vendido − compras del período' })),
+      sales.length > 0 && dailySalesChart(sales),
       past.length > 0 && h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Períodos anteriores' }),
         h('div', { class: 'comida-mrow is-head' }, h('span'), h('span', { text: 'Vendido' }), h('span', { text: 'Compras' }), h('span', { text: 'Ganancia' })),
         past.map(x => { const st = periodStats(x); return h('div', { class: 'comida-mrow', title: `${shortDay(x.start)} – ${shortDay(x.end as string)}` }, h('b', { text: '#' + periodNumber(x) }), h('span', { text: money(st.sold) }), h('span', { text: money(st.purchases) }), h('b', { style: `color: var(${st.profit >= 0 ? '--success-color' : '--danger-color'})`, text: money(st.profit) })); })),
@@ -789,6 +812,24 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
     return !!state && Store().hasDebt(state, String(personId));
   }
 
+  function employeeFoodButton(employee: ComidaUiEmployee): HTMLElement | null {
+    if (!state) return null;
+    const person = { id: String(employee.id), name: employee.name };
+    const button = h('button', { type: 'button', class: 'export-btn comida-employee-toggle', 'aria-label': `Comida para ${person.name}` },
+      h('span', { class: 'ic comida-employee-icon', 'data-icon': 'food', 'data-icon-vector': true, 'aria-hidden': 'true' }));
+    const isPaused = () => s().pausedPersonIds.includes(person.id);
+    const update = () => {
+      const paused = isPaused();
+      button.setAttribute('aria-pressed', String(!paused));
+      button.title = paused ? 'Reactivar en Comida' : 'Pausar en Comida';
+    };
+    button.addEventListener('click', () => {
+      if (setPersonPaused(person, !isPaused())) update();
+    });
+    update();
+    return button;
+  }
+
   function exportBackup(): ComidaStoreState | null {
     return state;
   }
@@ -808,5 +849,5 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
       option('requests', 'requests', 'Reportes y Solicitudes', 'Lo que antes estaba en este lugar')]);
   }
 
-  return { init, enter, render, openAdd, closeSheet, navSlot, setNavSlot, chooseNavSlot, hasDebt, exportBackup, importBackup };
+  return { init, enter, render, openAdd, closeSheet, navSlot, setNavSlot, chooseNavSlot, hasDebt, employeeFoodButton, exportBackup, importBackup };
 });

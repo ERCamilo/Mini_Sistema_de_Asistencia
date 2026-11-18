@@ -126,10 +126,11 @@ test('closing needs an open period', () => {
   assert.throws(() => Ledger.closePeriod([], '2026-11-16', 'p1'), /No hay un período abierto/);
 });
 
-test('days before the open period are locked', () => {
+test('days before the open period are locked once a period has closed', () => {
   const periods = [{ id: 'p1', start: '2026-10-27', end: '2026-11-16' }, { id: 'p2', start: '2026-11-17', end: null }];
   assert.equal(Ledger.isDayLocked(periods, '2026-11-16'), true);
   assert.equal(Ledger.isDayLocked(periods, '2026-11-17'), false);
+  assert.equal(Ledger.isDayLocked([{ id: 'first', start: '2026-11-17', end: null }], '2026-11-12'), false);
   assert.equal(Ledger.isDayLocked([], '2020-01-01'), false);
 });
 
@@ -139,6 +140,24 @@ test('period day count and reminder at 21 days', () => {
   assert.equal(Ledger.periodDay(open, '2026-11-16'), 21);
   assert.equal(Ledger.shouldRemindClose(open, '2026-11-15'), false);
   assert.equal(Ledger.shouldRemindClose(open, '2026-11-16'), true);
+});
+
+test('daily sales split clients and staff and keep empty days in the period', () => {
+  const sales = [
+    order('old', 'c1', 'd1', 'Pollo', 900, '2026-10-30'),
+    order('a', 'former-employee', 'd1', 'Pollo', 250, '2026-10-31'),
+    order('b', 'c1', 'd2', 'Res', 300, '2026-10-31'),
+    order('c', 'c1', 'd3', 'Refresco', 50, '2026-10-31'),
+    order('d', 'c1', 'd1', 'Pollo', 200, '2026-11-02'),
+    order('later', 'e1', 'd1', 'Pollo', 900, '2026-11-03')
+  ];
+  const clients = new Set(['c1']);
+  assert.deepEqual(Ledger.dailySales(sales, clients, '2026-10-31', '2026-11-02'), [
+    { day: '2026-10-31', clients: 350, staff: 250 },
+    { day: '2026-11-01', clients: 0, staff: 0 },
+    { day: '2026-11-02', clients: 200, staff: 0 }
+  ]);
+  assert.deepEqual(Ledger.dailySales(sales, clients, '2026-11-03', '2026-11-02'), []);
 });
 
 test('period summary: sold, collected, purchases and profit = sold minus purchases', () => {

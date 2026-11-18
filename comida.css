@@ -5,6 +5,8 @@
 [data-theme="contrast"] { --comida-accent: #ff9900; --comida-on-accent: #000000; }
 [data-theme="ocean"] { --comida-accent: #f97316; --comida-on-accent: #0f172a; }
 [data-theme="sol"] { --comida-accent: #a33600; --comida-on-accent: #ffffff; }
+:root { --comida-sales-blue: #60a5fa; }
+[data-theme="light"], [data-theme="sol"] { --comida-sales-blue: #2563eb; }
 
 /* Dentro de Comida el acento de toda la app pasa a naranja. */
 body.comida-mode { --accent-color: var(--comida-accent); }
@@ -15,6 +17,24 @@ body.comida-mode .nav-fab { color: var(--comida-on-accent); }
 body.comida-mode #section-title { color: var(--accent-color); }
 .more-section-open { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: 44px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; padding: 0; }
 .more-section-open > span:last-child { display: grid; }
+
+.comida-employee-toggle[aria-pressed="true"] {
+  color: var(--comida-accent);
+  border-color: var(--comida-accent);
+  background: color-mix(in srgb, var(--comida-accent) 12%, var(--card-bg));
+}
+.comida-employee-toggle:focus-visible { outline: 2px solid var(--comida-accent); outline-offset: 2px; }
+.comida-employee-icon { position: relative; font-size: 19px; }
+.comida-employee-toggle[aria-pressed="false"] .comida-employee-icon::after {
+  content: '';
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 24px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 0 0 0 1px var(--input-bg);
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
 
 #comida-view .dashboard-panel { display: flex; flex-direction: column; gap: 12px; padding-top: 0; }
 .stats-filters.comida-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 0; }
@@ -156,10 +176,21 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-neg { color: var(--danger-color); flex: none; font-variant-numeric: tabular-nums; }
 
 /* facturación */
-.comida-bars { height: 84px; display: flex; align-items: flex-end; gap: 2px; }
-.comida-bars span { flex: 1; min-width: 0; background: var(--accent-color); border-radius: 2px 2px 0 0; transform-origin: bottom; animation: comidaGrow .5s cubic-bezier(.22, 1.32, .28, 1) both; }
-.comida-bars span.is-zero { background: var(--border-color); }
+.comida-sales { min-width: 0; }
+.comida-sales-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
+.comida-sales-legend > span { display: flex; align-items: center; gap: 6px; }
+.comida-sales-legend i { width: 12px; height: 12px; border-radius: 3px; }
+.comida-sales-client { background: var(--comida-accent); }
+.comida-sales-staff { background: var(--comida-sales-blue); }
+.comida-bars { height: 84px; min-width: 0; overflow-x: auto; display: flex; align-items: flex-end; gap: 2px; }
+.comida-sale-bar { display: flex; flex: 1 0 2px; flex-direction: column; overflow: hidden; border-radius: 3px 3px 0 0; transform-origin: bottom; animation: comidaGrow .5s cubic-bezier(.22, 1.32, .28, 1) both; }
+.comida-sale-bar > span { flex-basis: 0; }
+.comida-sale-bar.is-zero { background: var(--border-color); }
 @keyframes comidaGrow { from { transform: scaleY(0); } to { transform: none; } }
+.comida-sales-summary { min-height: 44px; line-height: 44px; cursor: pointer; font-size: 13px; font-weight: 700; }
+.comida-sales-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.comida-sales-table th, .comida-sales-table td { padding: 6px 4px; border-top: 1px solid var(--border-color); text-align: right; overflow-wrap: anywhere; }
+.comida-sales-table th:first-child { text-align: left; }
 .comida-mrow { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; font-size: 13px; align-items: baseline; font-variant-numeric: tabular-nums; }
 .comida-mrow.is-head span { color: var(--text-muted); font-size: 11px; }
 
@@ -170,5 +201,5 @@ body.comida-mode #section-title { color: var(--accent-color); }
 #comida-sheet.is-closing .modal-content { transform: translateY(100%); }
 
 @media (prefers-reduced-motion: reduce) {
-  .comida-roll-strip, .comida-bars span, .comida-float, .comida-meter i b, .comida-step button { animation: none !important; transition: none !important; }
+  .comida-roll-strip, .comida-sale-bar, .comida-float, .comida-meter i b, .comida-step button { animation: none !important; transition: none !important; }
 }

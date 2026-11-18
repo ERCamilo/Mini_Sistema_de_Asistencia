@@ -161,7 +161,11 @@ interface ComidaStoreLedger {
       id: input.id, personId: input.personId, dishId: dish.id, dishName: dish.name, dishEmoji: dish.emoji,
       price: dish.price, cost: dish.cost, day: input.day
     };
-    return { ...state, orders: [...state.orders, order] };
+    const open = state.periods.find(period => period.end === null);
+    const periods = open && input.day < open.start
+      ? state.periods.map(period => period === open ? { ...period, start: input.day } : period)
+      : state.periods;
+    return { ...state, periods, orders: [...state.orders, order] };
   }
 
   function removeLastOrder(state: ComidaStoreState, personId: string, day: string, dishId?: string): ComidaStoreState {

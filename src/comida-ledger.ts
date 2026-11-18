@@ -69,6 +69,12 @@ interface ComidaPeriodSummary {
   profit: number;
 }
 
+interface ComidaDailySale {
+  day: string;
+  clients: number;
+  staff: number;
+}
+
 (function exposeComidaLedger(root: any, factory: () => unknown) {
   const api = factory();
   if (typeof module === 'object' && module && module.exports) module.exports = api;
@@ -195,7 +201,7 @@ interface ComidaPeriodSummary {
 
   function isDayLocked(periods: ComidaPeriod[], day: string): boolean {
     const open = openPeriod(periods);
-    return !!open && day < open.start;
+    return !!open && day < open.start && periods.some(period => period.end !== null);
   }
 
   function periodDay(period: ComidaPeriod, today: string): number {
@@ -216,9 +222,23 @@ interface ComidaPeriodSummary {
     return { sold, collected, purchases: spent, profit: sold - spent };
   }
 
+  function dailySales(orders: ComidaOrder[], clientIds: ReadonlySet<string>, firstDay: string, lastDay: string): ComidaDailySale[] {
+    const byDay = new Map<string, ComidaDailySale>();
+    for (let day = firstDay; day <= lastDay; day = addDays(day, 1)) {
+      byDay.set(day, { day, clients: 0, staff: 0 });
+    }
+    for (const order of orders) {
+      const sale = byDay.get(order.day);
+      if (!sale) continue;
+      const group = clientIds.has(order.personId) ? 'clients' : 'staff';
+      sale[group] += checkAmount(order.price);
+    }
+    return [...byDay.values()];
+  }
+
   return {
     REMIND_AFTER_DAYS, balance, pendingAccount, kitchenLines, formatMoney, formatKitchenOrder,
     orderSignature, changesSinceSent, ensureOpenPeriod, closePeriod, isDayLocked, periodDay,
-    shouldRemindClose, periodSummary
+    shouldRemindClose, periodSummary, dailySales
   };
 });
