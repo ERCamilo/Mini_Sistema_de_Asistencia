@@ -1,6 +1,14 @@
 {
-  "version": "2.19.0",
+  "version": "2.19.1",
   "changelog": [
+    {
+      "version": "2.19.1",
+      "date": "2026-11-18",
+      "title": "Calendario de Pedidos",
+      "items": [
+        "Toca la fecha arriba en Pedidos para elegir un día en el calendario o volver a hoy."
+      ]
+    },
     {
       "version": "2.19.0",
       "date": "2026-11-18",

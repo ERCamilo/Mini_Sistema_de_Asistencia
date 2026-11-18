@@ -24,6 +24,7 @@ interface ComidaUiHost {
   openSheet(): void;
   closeSheet(): void;
   isSheetOpen(): boolean;
+  openDatePicker(day: string, onPick: (day: string) => void): void;
   applyIcons(container: HTMLElement): void;
   addEmployee(): void;
   onNavSlotChange(): void;
@@ -319,7 +320,15 @@ type ComidaUiChild = Node | string | number | null | undefined | false | ComidaU
     const today = host ? host.today() : day;
     return h('div', { class: 'date-nav' },
       h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día anterior', onclick: () => { view.day = addDays(view.day, -1); render(); } }, icon('chevronLeft')),
-      h('div', { class: 'current-date-wrapper' }, h('span', { class: 'current-date-display', text: (day === today ? 'Hoy · ' : '') + shortDay(day) + (locked ? ' · cerrado' : '') })),
+      h('button', {
+        type: 'button', class: 'current-date-wrapper', id: 'comida-date-jump-trigger', title: 'Ir a una fecha',
+        'aria-label': `Elegir fecha de pedidos · ${longDay(day)}`, 'aria-haspopup': 'dialog',
+        onclick: () => host?.openDatePicker(day, selected => {
+          view.day = selected;
+          render();
+          host?.root.querySelector<HTMLButtonElement>('#comida-date-jump-trigger')?.focus({ preventScroll: true });
+        })
+      }, h('span', { class: 'current-date-display', text: (day === today ? 'Hoy · ' : '') + shortDay(day) + (locked ? ' · cerrado' : '') })),
       h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día siguiente', disabled: day >= today, onclick: () => { view.day = addDays(view.day, 1); render(); } }, icon('chevronRight')));
   }
 

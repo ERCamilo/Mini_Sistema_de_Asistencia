@@ -1929,8 +1929,14 @@
             transition: transform 0.12s, background 0.2s;
         }
 
-        .cal-day.dj-day:active {
+        .cal-day.dj-day:not(:disabled):active {
             transform: scale(0.9);
+        }
+
+        .cal-day.dj-day:disabled,
+        #datejump-next:disabled {
+            opacity: 0.45;
+            cursor: default;
         }
 
         .cal-day.dj-selected {
@@ -2818,11 +2824,11 @@
     </div>
 
     <!-- MODAL IR A UNA FECHA (navegacion rapida de dias) -->
-    <div class="modal big" id="modal-date-jump">
+    <div class="modal big" id="modal-date-jump" role="dialog" aria-labelledby="datejump-title">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
-                <div class="modal-title">Ir a una fecha</div>
+                <div class="modal-title" id="datejump-title">Ir a una fecha</div>
                 <div class="modal-subtitle"><span class="ic" data-icon="pin" style="color:var(--danger-color);"></span> marca el día de hoy</div>
             </div>
             <div class="calendar-nav">
@@ -6342,8 +6348,8 @@
             closeModal('modal-calendar');
         }
 
-        // --- CALENDARIO REUSABLE (barra de fecha del modo diario + campos del reporte) ---
-        let _datePicker = { monthDate: new Date(), selected: null, onPick: null };
+        // --- CALENDARIO REUSABLE (Asistencia, Comida y campos del reporte) ---
+        let _datePicker = { monthDate: new Date(), selected: null, onPick: null, maxDate: null };
 
         function todayDateKey() {
             const t = new Date();
@@ -6351,10 +6357,11 @@
         }
 
         // Abre el calendario sobre `currentDateStr` y llama onPick(dateStr) al elegir.
-        function openDatePicker(currentDateStr, onPick) {
-            const base = (currentDateStr && /^\d{4}-\d{2}-\d{2}$/.test(currentDateStr)) ? currentDateStr : todayDateKey();
+        function openDatePicker(currentDateStr, onPick, maxDate = null) {
+            const requested = (currentDateStr && /^\d{4}-\d{2}-\d{2}$/.test(currentDateStr)) ? currentDateStr : todayDateKey();
+            const base = maxDate && requested > maxDate ? maxDate : requested;
             const [y, m] = base.split('-');
-            _datePicker = { monthDate: new Date(Number(y), Number(m) - 1, 1), selected: base, onPick: onPick };
+            _datePicker = { monthDate: new Date(Number(y), Number(m) - 1, 1), selected: base, onPick, maxDate };
             renderDatePickerGrid();
             openModal('modal-date-jump');
         }
@@ -6362,8 +6369,11 @@
         function renderDatePickerGrid() {
             const y = _datePicker.monthDate.getFullYear();
             const m = _datePicker.monthDate.getMonth();
+            const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+            const { maxDate } = _datePicker;
             const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             document.getElementById('datejump-month-year').textContent = `${months[m]} ${y}`;
+            document.getElementById('datejump-next').disabled = !!maxDate && monthKey >= maxDate.slice(0, 7);
 
             const grid = document.getElementById('datejump-grid');
             grid.innerHTML = `
@@ -6378,16 +6388,18 @@
             for (let i = 0; i < firstDay; i++) grid.innerHTML += `<div class="cal-day empty"></div>`;
 
             for (let d = 1; d <= daysInMonth; d++) {
-                const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dateStr = `${monthKey}-${String(d).padStart(2, '0')}`;
                 let cls = 'cal-day dj-day';
                 if (dateStr === _datePicker.selected) cls += ' dj-selected';
+                const disabled = maxDate && dateStr > maxDate ? ' disabled' : '';
                 const pin = (dateStr === todayStr) ? '<span class="dj-pin"><span class="ic" data-icon="pin"></span></span>' : '';
-                grid.innerHTML += `<button type="button" class="${cls}" onclick="pickDate('${dateStr}')" aria-label="${d}">${pin}${d}</button>`;
+                grid.innerHTML += `<button type="button" class="${cls}" onclick="pickDate('${dateStr}')" aria-label="${d}"${disabled}>${pin}${d}</button>`;
             }
             applyIcons(grid);
         }
 
         function pickDate(dateStr) {
+            if (_datePicker.maxDate && dateStr > _datePicker.maxDate) return;
             const cb = _datePicker.onPick;
             closeModal('modal-date-jump');
             if (cb) cb(dateStr);
@@ -6543,6 +6555,7 @@
                     openSheet: () => openModal('comida-sheet'),
                     closeSheet: () => closeModal('comida-sheet'),
                     isSheetOpen: () => activeBigModal === 'comida-sheet',
+                    openDatePicker: (day, onPick) => openDatePicker(day, onPick, todayDateKey()),
                     applyIcons,
                     addEmployee: () => toggleAddMenu(),
                     onNavSlotChange: updateNavSlot,

@@ -283,7 +283,16 @@
     }
     function dateNav(day, locked) {
         const today = host ? host.today() : day;
-        return h('div', { class: 'date-nav' }, h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día anterior', onclick: () => { view.day = addDays(view.day, -1); render(); } }, icon('chevronLeft')), h('div', { class: 'current-date-wrapper' }, h('span', { class: 'current-date-display', text: (day === today ? 'Hoy · ' : '') + shortDay(day) + (locked ? ' · cerrado' : '') })), h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día siguiente', disabled: day >= today, onclick: () => { view.day = addDays(view.day, 1); render(); } }, icon('chevronRight')));
+        return h('div', { class: 'date-nav' }, h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día anterior', onclick: () => { view.day = addDays(view.day, -1); render(); } }, icon('chevronLeft')), h('button', {
+            type: 'button', class: 'current-date-wrapper', id: 'comida-date-jump-trigger', title: 'Ir a una fecha',
+            'aria-label': `Elegir fecha de pedidos · ${longDay(day)}`, 'aria-haspopup': 'dialog',
+            onclick: () => host === null || host === void 0 ? void 0 : host.openDatePicker(day, selected => {
+                var _a;
+                view.day = selected;
+                render();
+                (_a = host === null || host === void 0 ? void 0 : host.root.querySelector('#comida-date-jump-trigger')) === null || _a === void 0 ? void 0 : _a.focus({ preventScroll: true });
+            })
+        }, h('span', { class: 'current-date-display', text: (day === today ? 'Hoy · ' : '') + shortDay(day) + (locked ? ' · cerrado' : '') })), h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día siguiente', disabled: day >= today, onclick: () => { view.day = addDays(view.day, 1); render(); } }, icon('chevronRight')));
     }
     function calendarButton(person, back) {
         return h('button', {

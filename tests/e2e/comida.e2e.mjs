@@ -247,3 +247,51 @@ test('cards are ordered by number and open the food calendar, with reversible fo
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('the Pedidos date uses the shared calendar without changing the attendance date', async () => {
+  const today = new Date();
+  const closedDay = keyOf(new Date(today.getFullYear(), today.getMonth() - 1, 8));
+  const { context, page, errors } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida',
+      orders: [{ id: 'o1', personId: 'u1', day: closedDay, dishId: 'd1', dishName: 'Res', dishEmoji: '🥩', price: 300, cost: 150 }],
+      periods: [{ id: 'p1', start: closedDay, end: closedDay }, { id: 'p2', start: keyOf(today), end: null }]
+    }
+  });
+  try {
+    const attendanceDate = await page.textContent('#header-date');
+    await page.click('#nav-comida');
+    const date = page.getByRole('button', { name: /Elegir fecha de pedidos/ });
+    const calendar = page.locator('#modal-date-jump');
+    const nextMonth = calendar.locator('#datejump-next');
+    assert.equal(await date.count(), 1);
+    await date.press('Enter');
+    await calendar.waitFor();
+    assert.equal(await calendar.locator('.dj-selected').getAttribute('aria-label'), String(today.getDate()));
+    assert.equal(await nextMonth.isDisabled(), true);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    if (today.getDate() < monthEnd) {
+      assert.equal(await calendar.getByRole('button', { name: String(today.getDate() + 1), exact: true }).isDisabled(), true);
+    }
+
+    await calendar.locator('#datejump-prev').click();
+    assert.equal(await nextMonth.isEnabled(), true);
+    await calendar.getByRole('button', { name: '8', exact: true }).click();
+    await calendar.waitFor({ state: 'hidden' });
+    assert.match(await date.innerText(), /8 .*cerrado/);
+    assert.match(await page.locator('#comida-view .comida-today').innerText(), /RD\$300/);
+    assert.ok(await page.isVisible('#comida-view .comida-band'));
+
+    await date.click();
+    assert.equal(await calendar.locator('.dj-selected').getAttribute('aria-label'), '8');
+    await calendar.locator('#datejump-today').click();
+    assert.match(await date.innerText(), /Hoy/);
+    await page.click('#nav-attendance');
+    assert.equal(await page.textContent('#header-date'), attendanceDate);
+    await page.click('#date-jump-trigger');
+    assert.equal(await nextMonth.isEnabled(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
