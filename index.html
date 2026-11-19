@@ -189,7 +189,8 @@
 
         /* --- Header & Nav --- */
         .top-nav {
-            display: flex;
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr) 48px;
             align-items: center;
             gap: 8px;
             height: var(--topbar-h);
@@ -735,6 +736,28 @@
             align-items: center;
             gap: 12px;
             padding: 4px;
+        }
+
+        #employees-container .user-info-area {
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        #employees-container .avatar-placeholder {
+            flex: none;
+        }
+
+        .employee-card-actions {
+            display: flex;
+            flex: none;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .employee-card-actions .export-btn {
+            width: 44px;
+            height: 44px;
+            font-size: 16px;
         }
 
         .avatar-placeholder {
@@ -1671,8 +1694,9 @@
 
         /* --- Barra de navegacion inferior --- */
         .app-title {
-            flex: 1;
             text-align: center;
+            text-wrap: balance;
+            line-height: 1.15;
             font-size: 18px;
             font-weight: 700;
             color: var(--text-color);
@@ -1929,8 +1953,14 @@
             transition: transform 0.12s, background 0.2s;
         }
 
-        .cal-day.dj-day:active {
+        .cal-day.dj-day:not(:disabled):active {
             transform: scale(0.9);
+        }
+
+        .cal-day.dj-day:disabled,
+        #datejump-next:disabled {
+            opacity: 0.45;
+            cursor: default;
         }
 
         .cal-day.dj-selected {
@@ -2818,17 +2848,17 @@
     </div>
 
     <!-- MODAL IR A UNA FECHA (navegacion rapida de dias) -->
-    <div class="modal big" id="modal-date-jump">
+    <div class="modal big" id="modal-date-jump" role="dialog" aria-labelledby="datejump-title">
         <div class="modal-content">
             <div class="modal-handle"></div>
             <div class="modal-header">
-                <div class="modal-title">Ir a una fecha</div>
+                <div class="modal-title" id="datejump-title">Ir a una fecha</div>
                 <div class="modal-subtitle"><span class="ic" data-icon="pin" style="color:var(--danger-color);"></span> marca el día de hoy</div>
             </div>
             <div class="calendar-nav">
-                <button class="cal-nav-btn" id="datejump-prev"><span class="ic" data-icon="chevronLeft"></span></button>
-                <span style="font-weight: 700; font-size: 16px;" id="datejump-month-year">...</span>
-                <button class="cal-nav-btn" id="datejump-next"><span class="ic" data-icon="chevronRight"></span></button>
+                <button type="button" class="cal-nav-btn" id="datejump-prev" aria-label="Mes anterior"><span class="ic" data-icon="chevronLeft"></span></button>
+                <span style="font-weight: 700; font-size: 16px;" id="datejump-month-year" aria-live="polite">...</span>
+                <button type="button" class="cal-nav-btn" id="datejump-next" aria-label="Mes siguiente"><span class="ic" data-icon="chevronRight"></span></button>
             </div>
             <div class="calendar-grid" id="datejump-grid"></div>
             <button class="btn-full btn-primary" id="datejump-today"><span class="ic" data-icon="today"></span> Ir a hoy</button>
@@ -5170,12 +5200,13 @@
             return !!error && (error.name === 'QuotaExceededError' || error.code === 22);
         }
 
-        function saveData({ quiet = false } = {}) {
+        function saveData({ quiet = false, strict = false } = {}) {
             localDataRevision += 1;
             try {
                 writeLegacyMirror(captureLocalSnapshot());
                 fieldRequestsRepository.save(requests, requestTemplates);
             } catch (error) {
+                if (strict) throw error;
                 // Keep going: the IndexedDB snapshot below must still capture the change.
                 console.warn('No se pudo actualizar la copia en localStorage.', error);
                 if (isStorageQuotaError(error) && !quiet) {
@@ -6342,8 +6373,8 @@
             closeModal('modal-calendar');
         }
 
-        // --- CALENDARIO REUSABLE (barra de fecha del modo diario + campos del reporte) ---
-        let _datePicker = { monthDate: new Date(), selected: null, onPick: null };
+        // --- CALENDARIO REUSABLE (Asistencia, Comida y campos del reporte) ---
+        let _datePicker = { monthDate: new Date(), selected: null, onPick: null, maxDate: null };
 
         function todayDateKey() {
             const t = new Date();
@@ -6351,10 +6382,11 @@
         }
 
         // Abre el calendario sobre `currentDateStr` y llama onPick(dateStr) al elegir.
-        function openDatePicker(currentDateStr, onPick) {
-            const base = (currentDateStr && /^\d{4}-\d{2}-\d{2}$/.test(currentDateStr)) ? currentDateStr : todayDateKey();
+        function openDatePicker(currentDateStr, onPick, maxDate = null) {
+            const requested = (currentDateStr && /^\d{4}-\d{2}-\d{2}$/.test(currentDateStr)) ? currentDateStr : todayDateKey();
+            const base = maxDate && requested > maxDate ? maxDate : requested;
             const [y, m] = base.split('-');
-            _datePicker = { monthDate: new Date(Number(y), Number(m) - 1, 1), selected: base, onPick: onPick };
+            _datePicker = { monthDate: new Date(Number(y), Number(m) - 1, 1), selected: base, onPick, maxDate };
             renderDatePickerGrid();
             openModal('modal-date-jump');
         }
@@ -6362,8 +6394,11 @@
         function renderDatePickerGrid() {
             const y = _datePicker.monthDate.getFullYear();
             const m = _datePicker.monthDate.getMonth();
+            const monthKey = `${y}-${String(m + 1).padStart(2, '0')}`;
+            const { maxDate } = _datePicker;
             const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
             document.getElementById('datejump-month-year').textContent = `${months[m]} ${y}`;
+            document.getElementById('datejump-next').disabled = !!maxDate && monthKey >= maxDate.slice(0, 7);
 
             const grid = document.getElementById('datejump-grid');
             grid.innerHTML = `
@@ -6378,16 +6413,18 @@
             for (let i = 0; i < firstDay; i++) grid.innerHTML += `<div class="cal-day empty"></div>`;
 
             for (let d = 1; d <= daysInMonth; d++) {
-                const dateStr = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const dateStr = `${monthKey}-${String(d).padStart(2, '0')}`;
                 let cls = 'cal-day dj-day';
                 if (dateStr === _datePicker.selected) cls += ' dj-selected';
+                const disabled = maxDate && dateStr > maxDate ? ' disabled' : '';
                 const pin = (dateStr === todayStr) ? '<span class="dj-pin"><span class="ic" data-icon="pin"></span></span>' : '';
-                grid.innerHTML += `<button type="button" class="${cls}" onclick="pickDate('${dateStr}')" aria-label="${d}">${pin}${d}</button>`;
+                grid.innerHTML += `<button type="button" class="${cls}" onclick="pickDate('${dateStr}')" aria-label="${d}" aria-pressed="${dateStr === _datePicker.selected}"${dateStr === todayStr ? ' aria-current="date"' : ''}${disabled}>${pin}${d}</button>`;
             }
             applyIcons(grid);
         }
 
         function pickDate(dateStr) {
+            if (_datePicker.maxDate && dateStr > _datePicker.maxDate) return;
             const cb = _datePicker.onPick;
             closeModal('modal-date-jump');
             if (cb) cb(dateStr);
@@ -6536,13 +6573,14 @@
                     sheet: document.getElementById('comida-sheet'),
                     storage: localStorage,
                     today: todayDateKey,
-                    getEmployees: () => (window.workContextManager ? window.workContextManager.filterEmployees(users) : users),
+                    getEmployees: all => (all || !window.workContextManager ? users : window.workContextManager.filterEmployees(users)),
                     isPresent: (id, day) => getRecord(id, day)?.status === 'present',
                     showToast,
                     confirm: showConfirm,
                     openSheet: () => openModal('comida-sheet'),
                     closeSheet: () => closeModal('comida-sheet'),
                     isSheetOpen: () => activeBigModal === 'comida-sheet',
+                    openDatePicker: (day, onPick) => openDatePicker(day, onPick, todayDateKey()),
                     applyIcons,
                     addEmployee: () => toggleAddMenu(),
                     onNavSlotChange: updateNavSlot,
@@ -7646,11 +7684,11 @@
                     `;
                 } else {
                     rightActions = `
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <button type="button" class="export-btn" style="font-size:16px;" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
+                        <div class="employee-card-actions">
+                            <button type="button" class="export-btn" onclick="togglePauseUser('${esc(u.id)}')" aria-label="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}" title="${isPaused ? 'Reactivar empleado' : 'Pausar empleado'}">
                                 <span class="ic" data-icon="${isPaused ? 'play' : 'pause'}"></span>
                             </button>
-                            <button type="button" class="export-btn" style="font-size:16px;" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
+                            <button type="button" class="export-btn employee-edit-action" onclick="editUser('${esc(u.id)}')" aria-label="Editar empleado" title="Editar">
                                 <span class="ic" data-icon="edit"></span>
                             </button>
                         </div>
@@ -7671,6 +7709,8 @@
                     </div>
                     ${rightActions}
                 `;
+                const foodButton = !isBulkMode && window.ComidaUI?.employeeFoodButton?.(u);
+                if (foodButton) div.querySelector('.employee-edit-action').before(foodButton);
                 container.appendChild(div);
             });
             applyIcons(container);
@@ -8184,21 +8224,22 @@
             imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
             // A backup without "comida" (older files, P2P) leaves Comida as it is.
             const comidaRestore = parsed.comida !== undefined ? window.ComidaRepository.parseBackup(parsed.comida, todayDateKey(), 'cm' + Date.now().toString(36)) : null;
-            const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
-            const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings };
-            const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) } };
-            fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
-                users = state.users; attendanceRepository.importBatch(state.attendance, 'replace'); attendanceData = attendanceRepository.getAll(); requests = state.requests; requestTemplates = state.templates;
-                BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
-                if (workContextsSnapshot && window.workContextManager) {
-                    window.workContextManager.importSnapshot(workContextsSnapshot);
-                }
-                applyRestoredSettings();
-            }, saveData);
-            if (comidaRestore && window.ComidaUI) {
-                window.ComidaUI.importBackup(comidaRestore);
-                updateNavSlot();
+            const applyOther = () => {
+                const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
+                const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings, workContexts: workContextsSnapshot && window.workContextManager?.exportSnapshot() };
+                const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) }, workContexts: workContextsSnapshot };
+                fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
+                    users = state.users; attendanceRepository.importBatch(state.attendance, 'replace'); attendanceData = attendanceRepository.getAll(); requests = state.requests; requestTemplates = state.templates;
+                    BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
+                    if (state.workContexts) window.workContextManager?.importSnapshot(state.workContexts);
+                    applyRestoredSettings();
+                }, () => saveData({ strict: !!comidaRestore }));
+            };
+            if (comidaRestore) {
+                if (!window.ComidaUI) throw new Error('Comida todavía no está lista para restaurarse.');
+                return window.ComidaUI.importBackup(comidaRestore, applyOther).then(updateNavSlot);
             }
+            applyOther();
         }
 
         function clearStagedBackup(stagedTransferId) {
@@ -8226,18 +8267,19 @@
         }
 
         // Used by the P2P backup review screen (cards instead of raw JSON).
-        window.restoreMiniBackupData = (parsed, options = {}) => {
+        window.restoreMiniBackupData = async (parsed, options = {}) => {
             if (window.MiniBackupSummary.summarize(parsed).isEmpty) {
                 throw new Error('El respaldo no tiene empleados ni asistencia. Restaurarlo borraría tus datos.');
             }
-            applyBackupRestore(parsed);
+            await applyBackupRestore(parsed);
             clearStagedBackup(options.stagedTransferId);
             renderList(); renderEmployeesList(); renderRequestsDashboard(); renderWorkContextBar();
         };
 
-        window.doRestoreBackup = () => {
+        window.doRestoreBackup = async () => {
             const btn = document.getElementById('btn-do-restore');
-            if (btn.getAttribute('data-ready') !== 'yes') return;
+            if (btn.disabled || btn.getAttribute('data-ready') !== 'yes') return;
+            btn.disabled = true;
             const ta = document.getElementById('restore-backup-textarea');
             const modal = document.getElementById('modal-restore-backup');
             const raw = ta ? ta.value.trim() : '';
@@ -8251,7 +8293,7 @@
                     showToast('Se agregaron ' + merged.days + ' días archivados' + (merged.employeesAdded ? ' y ' + merged.employeesAdded + ' empleados' : '') + '.');
                     return;
                 }
-                applyBackupRestore(parsed);
+                await applyBackupRestore(parsed);
                 if (stagedTransferId) {
                     clearStagedBackup(stagedTransferId);
                     if (ta && ta.dataset) delete ta.dataset.transferId;
@@ -8261,7 +8303,11 @@
                 renderList(); renderEmployeesList(); renderRequestsDashboard(); renderWorkContextBar();
                 document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
             } catch (err) {
-                document.getElementById('restore-validation-msg').innerHTML = '&#x274C; Error: ' + err.message;
+                const status = document.getElementById('restore-validation-msg');
+                status.style.color = 'var(--danger-color)';
+                status.textContent = 'Error al restaurar. ' + err.message;
+            } finally {
+                btn.disabled = false;
             }
         }
 

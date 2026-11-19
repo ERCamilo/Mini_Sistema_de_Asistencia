@@ -60,3 +60,32 @@ test('backup section is the saved state, and restoring it is validated', () => {
   assert.throws(() => parseBackup([], '2026-11-16', 'p9'), /Comida/);
   assert.throws(() => parseBackup({ schemaVersion: 2 }, '2026-11-16', 'p9'), /versión/);
 });
+
+test('transactions from two readers preserve both changes', async () => {
+  const storage = memoryStorage();
+  const first = repoWith(storage);
+  const second = repoWith(storage);
+  first.load();
+  second.load();
+  await Promise.all([
+    first.update(s => Store.addClient(s, { id: 'c1', name: 'Ana', ref: '' })),
+    second.update(s => Store.addClient(s, { id: 'c2', name: 'Beto', ref: '' }))
+  ]);
+  assert.deepEqual(first.load().clients.map(c => [c.id, c.num]), [['c1', 'C01'], ['c2', 'C02']]);
+});
+
+test('a failed food restore leaves other data alone and a failed application rolls Comida back', async () => {
+  const storage = memoryStorage();
+  const repo = repoWith(storage);
+  const before = repo.load();
+  repo.save(before);
+  const next = Store.setNavSlot(before, 'comida');
+  const set = storage.setItem;
+  let applied = false;
+  storage.setItem = () => { throw new DOMException('Full', 'QuotaExceededError'); };
+  await assert.rejects(() => repo.restore(next, () => { applied = true; }), /espacio/i);
+  assert.equal(applied, false);
+  storage.setItem = set;
+  await assert.rejects(() => repo.restore(next, () => { throw new Error('falla de otras secciones'); }), /otras secciones/);
+  assert.deepEqual(repo.load(), before);
+});

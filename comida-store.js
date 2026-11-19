@@ -104,7 +104,11 @@
             id: input.id, personId: input.personId, dishId: dish.id, dishName: dish.name, dishEmoji: dish.emoji,
             price: dish.price, cost: dish.cost, day: input.day
         };
-        return { ...state, orders: [...state.orders, order] };
+        const open = state.periods.find(period => period.end === null);
+        const periods = open && input.day < open.start
+            ? state.periods.map(period => period === open ? { ...period, start: input.day } : period)
+            : state.periods;
+        return { ...state, periods, orders: [...state.orders, order] };
     }
     function removeLastOrder(state, personId, day, dishId) {
         requireOpenDay(state, day);
@@ -115,6 +119,27 @@
             return state;
         return { ...state, orders: state.orders.filter((_, i) => i !== index) };
     }
+    function setHistoricPrices(state, personId, day, today, prices) {
+        requireOpenDay(state, day);
+        if (day >= today)
+            throw new Error('Elige una fecha anterior para corregir el precio histórico.');
+        const updates = new Map();
+        for (const entry of prices) {
+            if (!Number.isSafeInteger(entry.price) || entry.price < 0)
+                throw new Error('Escribe un precio entero de cero o más.');
+            const order = state.orders.find(item => item.id === entry.id && item.day === day && item.personId === personId);
+            if (!order || order.price !== entry.previous)
+                throw new Error('El pedido cambió. Vuelve a abrirlo para revisar sus precios.');
+            if (order.price !== entry.price)
+                updates.set(order.id, entry.price);
+        }
+        if (!updates.size)
+            return state;
+        return { ...state, orders: state.orders.map(order => {
+                const price = updates.get(order.id);
+                return order.day === day && order.personId === personId && price !== undefined ? { ...order, price } : order;
+            }) };
+    }
     function repeatLastOrder(state, personId, day, newId) {
         const previous = state.orders.filter(o => o.personId === personId && o.day < day).map(o => o.day).sort().pop();
         if (!previous)
@@ -123,8 +148,11 @@
             .reduce((next, o) => addOrder(next, { id: newId(), personId, dishId: o.dishId, day }), state);
     }
     function setNote(state, personId, day, text) {
+        requireOpenDay(state, day);
         const notes = { ...state.notes };
         const clean = String(text || '').trim();
+        if ((notes[personId + '@' + day] || '') === clean)
+            return state;
         if (clean)
             notes[personId + '@' + day] = clean;
         else
@@ -192,8 +220,9 @@
             throw new Error('El pago no puede pasar de lo que debe.');
         return { ...state, payments: [...state.payments, { id: input.id, personId: input.personId, amount: input.amount, day: input.day }] };
     }
-    function markSent(state, day) {
-        return { ...state, sent: { ...state.sent, [day]: ledger().orderSignature(state.orders, day) } };
+    function markSent(state, day, signature = ledger().orderSignature(state.orders, day)) {
+        requireOpenDay(state, day);
+        return { ...state, sent: { ...state.sent, [day]: signature } };
     }
     function closePeriod(state, today, nextId) {
         return { ...state, periods: ledger().closePeriod(state.periods, today, nextId) };
@@ -210,7 +239,7 @@
         return ledger().balance(state.orders, state.payments, personId) > 0;
     }
     return {
-        emptyState, normalizeState, addOrder, removeLastOrder, repeatLastOrder, setNote, addClient, setPersonPaused, saveDish, setDishOnMenu,
+        emptyState, normalizeState, addOrder, removeLastOrder, setHistoricPrices, repeatLastOrder, setNote, addClient, setPersonPaused, saveDish, setDishOnMenu,
         addCategory, removeCategory, savePurchase, removePurchase, addPayment, markSent, closePeriod, setNavSlot,
         setWithPrices, hasDebt
     };

@@ -6,12 +6,15 @@
 interface ComidaRepositoryStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 interface ComidaRepositoryOptions {
   storage: ComidaRepositoryStorage;
   today: () => string;
   newId: () => string;
+  locks?: LockManager;
+  indexedDB?: IDBFactory;
 }
 
 interface ComidaRepositorySaveResult {
@@ -21,7 +24,7 @@ interface ComidaRepositorySaveResult {
 }
 
 interface ComidaRepositoryStoreApi {
-  normalizeState(raw: unknown, today: string, periodId: string): any;
+  normalizeState(raw: unknown, today: string, periodId: string): ComidaStoreState;
 }
 
 (function exposeComidaRepository(root: any, factory: () => unknown) {
@@ -43,14 +46,17 @@ interface ComidaRepositoryStoreApi {
   }
 
   function createComidaRepository(options: ComidaRepositoryOptions) {
-    function load() {
+    const normalize = (raw: unknown) => store().normalizeState(raw, options.today(), options.newId());
+
+    function load(fallback?: ComidaStoreState) {
       let raw: string | null = null;
       try {
         raw = options.storage.getItem(STORAGE_KEY);
       } catch (error) {
-        console.warn('No se pudo leer Comida; se empieza vacío.', error);
+        console.warn('No se pudo leer Comida.', error);
+        if (fallback) return fallback;
       }
-      return store().normalizeState(raw, options.today(), options.newId());
+      return normalize(raw);
     }
 
     function save(state: unknown): ComidaRepositorySaveResult {
@@ -63,7 +69,63 @@ interface ComidaRepositoryStoreApi {
       }
     }
 
-    return { load, save };
+    // A readwrite IndexedDB transaction is the writer lock on browsers without Web Locks.
+    // The Comida data itself stays in the same localStorage key.
+    async function exclusive<T>(work: () => T): Promise<T> {
+      if (options.locks) return options.locks.request(STORAGE_KEY, work);
+      const factory = options.indexedDB;
+      if (!factory) return work();
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = factory.open('mini-comida-writer', 1);
+        request.onupgradeneeded = () => request.result.createObjectStore('writer');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      try {
+        return await new Promise<T>((resolve, reject) => {
+          const transaction = db.transaction('writer', 'readwrite');
+          let result: T;
+          transaction.oncomplete = () => resolve(result);
+          transaction.onabort = () => reject(transaction.error);
+          transaction.objectStore('writer').get(STORAGE_KEY).onsuccess = () => {
+            try { result = work(); }
+            catch (error) { reject(error); transaction.abort(); }
+          };
+        });
+      } finally { db.close(); }
+    }
+
+    function write(state: ComidaStoreState): void {
+      const result = save(state);
+      if (!result.ok) throw new Error(result.quota
+        ? 'No se guardó Comida: el almacenamiento está lleno. Exporta un respaldo y libera espacio.'
+        : 'No se pudo guardar Comida. Intenta de nuevo.');
+    }
+
+    function update(change: (current: ComidaStoreState) => ComidaStoreState): Promise<ComidaStoreState> {
+      return exclusive(() => {
+        const current = normalize(options.storage.getItem(STORAGE_KEY));
+        const next = change(current);
+        if (next !== current) write(next);
+        return next;
+      });
+    }
+
+    function restore(next: ComidaStoreState, applyOther: () => void): Promise<ComidaStoreState> {
+      return exclusive(() => {
+        const previous = options.storage.getItem(STORAGE_KEY);
+        write(next);
+        try { applyOther(); }
+        catch (error) {
+          if (previous === null) options.storage.removeItem(STORAGE_KEY);
+          else options.storage.setItem(STORAGE_KEY, previous);
+          throw error;
+        }
+        return next;
+      });
+    }
+
+    return { load, save, update, restore };
   }
 
   // The "comida" section of a backup file: must be an object of a known version.

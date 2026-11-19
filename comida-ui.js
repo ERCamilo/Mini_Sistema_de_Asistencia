@@ -23,7 +23,7 @@
     let host = null;
     let repo = null;
     let state = null;
-    const view = { tab: 'pedidos', day: '', dishId: '', query: '', onlyMissing: false, billFilter: 'todos', supplyId: '', editPurchase: '', deleteSupplies: false };
+    const view = { tab: 'pedidos', day: '', dishId: '', query: '', onlyMissing: false, billFilter: 'todos', supplyId: '', editPurchase: '', deleteSupplies: false, salesByWeek: false, salesDate: '' };
     let sheetRender = null;
     const rollMemory = new Map();
     const g = globalThis;
@@ -73,11 +73,20 @@
     const motionOk = () => !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
     // Digits roll from their last shown value to the new one (odometer).
     function roll(key, value) {
+        const el = h('span', { class: 'comida-roll', 'data-comida-roll': key });
+        paintRoll(el, key, value);
+        return el;
+    }
+    function paintRoll(el, key, value) {
         const text = String(value);
-        const el = h('span', { class: 'comida-roll', 'aria-label': text });
-        const previous = rollMemory.get(key);
+        const displayed = el.getAttribute('aria-label');
+        if (displayed === text)
+            return;
+        const previous = displayed !== null && displayed !== void 0 ? displayed : rollMemory.get(key);
         const from = previous && previous.replace(/\d/g, '0') === text.replace(/\d/g, '0') ? previous : text;
         rollMemory.set(key, text);
+        el.setAttribute('aria-label', text);
+        el.replaceChildren();
         const strips = [];
         [...text].forEach((ch, i) => {
             if (/\d/.test(ch)) {
@@ -95,7 +104,11 @@
             requestAnimationFrame(() => requestAnimationFrame(settle));
         else
             settle();
-        return el;
+    }
+    function updateRoll(container, key, value) {
+        const el = container.querySelector(`[data-comida-roll="${CSS.escape(key)}"]`);
+        if (el)
+            paintRoll(el, key, value);
     }
     /* ── state ── */
     function s() {
@@ -103,30 +116,28 @@
             throw new Error('Comida no está iniciada.');
         return state;
     }
-    function commit(next, message) {
-        const result = repo ? repo.save(next) : { ok: true };
-        if (!result.ok) {
-            host === null || host === void 0 ? void 0 : host.showToast(result.quota ? 'No se guardó: el almacenamiento está lleno. Exportá un respaldo y liberá espacio.' : 'No se pudo guardar Comida. Intentá de nuevo.');
-            return false;
-        }
-        state = next;
-        if (message)
-            host === null || host === void 0 ? void 0 : host.showToast(message);
-        render();
-        return true;
-    }
-    function attempt(action, message) {
+    async function attempt(action, message, redraw = render, errorBox) {
         try {
-            return commit(action(), message);
+            if (!repo)
+                return false;
+            const saved = await repo.update(action);
+            state = repo.load(saved);
         }
         catch (error) {
-            if (host)
-                host.showToast(error instanceof Error ? error.message : 'No se pudo completar.');
+            const text = error instanceof Error ? error.message : 'No se pudo guardar Comida. Intenta de nuevo.';
+            if (errorBox === null || errorBox === void 0 ? void 0 : errorBox.isConnected)
+                errorBox.textContent = text;
+            else
+                host === null || host === void 0 ? void 0 : host.showToast(text);
             return false;
         }
+        if (message)
+            host === null || host === void 0 ? void 0 : host.showToast(message);
+        redraw();
+        return true;
     }
-    function people() {
-        const employees = host ? host.getEmployees() : [];
+    function people(all = false) {
+        const employees = host ? host.getEmployees(all) : [];
         const pausedIds = new Set(s().pausedPersonIds);
         return [
             ...employees.map(e => { var _a; return ({ id: String(e.id), num: String((_a = e.number) !== null && _a !== void 0 ? _a : ''), name: e.name, role: e.position || 'Sin cargo', employee: true, paused: pausedIds.has(String(e.id)), attendancePaused: !!e.paused }); }),
@@ -137,9 +148,12 @@
         return Number(b.employee) - Number(a.employee) || Number(!a.num) - Number(!b.num)
             || numberOrder.compare(a.num, b.num) || numberOrder.compare(a.name, b.name);
     }
-    const personById = (id) => people().find(p => p.id === id);
+    const personById = (id) => people(true).find(p => p.id === id);
     const ordersOf = (personId, day) => s().orders.filter(o => o.personId === personId && o.day === day);
     const debtOf = (personId) => Ledger().balance(s().orders, s().payments, personId);
+    const balancesOf = (current) => Ledger().accountBalances(current.orders, current.payments);
+    const balanceLabel = (balance) => balance > 0 ? 'Debe' : balance < 0 ? 'Saldo a favor' : 'Al día';
+    const balanceText = (balance) => balance ? `${balanceLabel(balance)} ${money(Math.abs(balance))}` : balanceLabel(balance);
     const summary = (orders) => {
         const counts = new Map();
         orders.forEach(o => counts.set(o.dishEmoji, (counts.get(o.dishEmoji) || 0) + 1));
@@ -184,13 +198,17 @@
         setTimeout(() => { sheet.classList.remove('is-closing'); host && host.closeSheet(); }, 260);
     }
     const sheetHead = (title, subtitle) => h('div', { class: 'modal-header' }, h('div', { class: 'modal-title', text: title }), subtitle && h('div', { class: 'modal-subtitle', text: subtitle }));
-    function messageSheet(title, subtitle, text, extra, onConfirm) {
-        let opened = false;
+    function messageSheet(title, subtitle, message, extra, onConfirm) {
+        let shared = null;
+        let copiedBody = null;
         showSheet(() => {
-            const body = text();
+            const current = message();
+            const { body } = current;
             const pre = h('pre', { class: 'comida-msg', text: body });
             const copy = h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: () => {
-                    const done = () => { copy.textContent = 'Copiado'; opened = true; sheetRender && sheetRender(); };
+                    const draw = sheetRender;
+                    const done = () => { if (draw !== sheetRender)
+                        return; shared = current; copiedBody = body; draw === null || draw === void 0 ? void 0 : draw(); };
                     const fallback = () => { const r = document.createRange(); r.selectNodeContents(pre); const sel = getSelection(); sel && (sel.removeAllRanges(), sel.addRange(r)); copy.textContent = 'Texto seleccionado'; };
                     try {
                         (navigator.clipboard ? navigator.clipboard.writeText(body) : Promise.reject(new Error('sin portapapeles'))).then(done).catch(fallback);
@@ -198,16 +216,50 @@
                     catch {
                         fallback();
                     }
-                } }, 'Copiar');
-            const wa = h('a', { class: 'btn-full whatsapp-cta comida-wa-link', href: 'https://wa.me/?text=' + encodeURIComponent(body), target: '_blank', rel: 'noopener', onclick: () => { opened = true; setTimeout(() => sheetRender && sheetRender(), 0); } }, waIcon(), 'Abrir WhatsApp');
+                } }, copiedBody === body ? 'Copiado' : 'Copiar');
+            const wa = h('a', { class: 'btn-full whatsapp-cta comida-wa-link', href: 'https://wa.me/?text=' + encodeURIComponent(body), target: '_blank', rel: 'noopener', onclick: () => { shared = current; setTimeout(() => sheetRender === null || sheetRender === void 0 ? void 0 : sheetRender(), 0); } }, waIcon(), 'Abrir WhatsApp');
             return [sheetHead(title, subtitle), extra && extra(), pre, h('div', { class: 'comida-row' }, copy, wa),
-                onConfirm && opened && h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => { onConfirm(); closeSheet(); } }, 'Ya lo envié'),
+                onConfirm && (shared === null || shared === void 0 ? void 0 : shared.body) === body && shared.signature === current.signature && h('button', { type: 'button', class: 'btn-full btn-primary', onclick: async (event) => {
+                        const button = event.currentTarget;
+                        button.disabled = true;
+                        if (await onConfirm(current.signature || '') && button.isConnected)
+                            closeSheet();
+                        else
+                            button.disabled = false;
+                    } }, 'Ya lo envié'),
                 onConfirm && h('p', { class: 'comida-hint', text: 'Abrir WhatsApp no confirma el envío. Cuando lo mandes, toca «Ya lo envié».' })];
         });
     }
+    function kitchenNotes(day) {
+        const ordered = new Set(s().orders.filter(order => order.day === day).map(order => order.personId));
+        return people(true).filter(p => ordered.has(p.id) && s().notes[p.id + '@' + day])
+            .map(p => ({ name: p.name, text: s().notes[p.id + '@' + day] }));
+    }
+    function kitchenStatus(day, locked) {
+        const sent = s().sent[day];
+        if (locked || sent === undefined)
+            return null;
+        const changes = Ledger().changesSinceSent(sent, s().orders, day, kitchenNotes(day));
+        const details = [
+            changes.added && `${changes.added} ${changes.added > 1 ? 'platos nuevos' : 'plato nuevo'}`,
+            changes.removed && `${changes.removed} ${changes.removed > 1 ? 'quitados' : 'quitado'}`,
+            changes.notesChanged && 'notas actualizadas'
+        ].filter(Boolean).join(', ');
+        return h('div', { class: 'comida-note' + (changes.changed ? ' is-warn' : ' is-ok') }, icon(changes.changed ? 'warning' : 'check'), changes.changed ? 'Cambió desde el último envío: ' + details : 'Pedido enviado a la cocina');
+    }
+    function refreshKitchenStatus() {
+        const region = host === null || host === void 0 ? void 0 : host.root.querySelector('.comida-kitchen-status');
+        if (!region || view.tab !== 'pedidos')
+            return;
+        const status = kitchenStatus(view.day, isLocked(view.day));
+        region.replaceChildren(...(status ? [status] : []));
+        host === null || host === void 0 ? void 0 : host.applyIcons(region);
+    }
     /* ── Pedidos ── */
-    function stepper(person, count, onMinus, onPlus, key) {
-        return h('div', { class: 'comida-step' + (count > 0 ? ' has' : '') }, h('button', { type: 'button', class: 'comida-step-minus', 'aria-label': `Quitar un plato a ${person.name}`, disabled: count === 0, onclick: onMinus }, '−'), h('span', { class: 'comida-step-n' }, roll(key, count)), h('button', { type: 'button', class: 'comida-step-plus', 'data-person': person.id, 'aria-label': `Anotar un plato a ${person.name}`, onclick: onPlus }, '+'));
+    function stepper(person, count, onMinus, onPlus, key, dishId) {
+        const digits = roll(key, count);
+        digits.setAttribute('aria-hidden', 'true');
+        return h('div', { class: 'comida-step' + (count > 0 ? ' has' : ''), 'data-comida-step': person.id, 'data-comida-dish': dishId }, h('button', { type: 'button', class: 'comida-step-minus', 'aria-label': `Quitar un plato a ${person.name}`, disabled: count === 0, onclick: onMinus }, '−'), h('span', { class: 'comida-step-n' }, digits, h('span', { class: 'comida-step-status', role: 'status', text: count === 1 ? '1 plato' : `${count} platos` })), h('button', { type: 'button', class: 'comida-step-plus', 'data-person': person.id, 'aria-label': `Anotar un plato a ${person.name}`, onclick: onPlus }, '+'));
     }
     function floatPlus(personId, text) {
         if (!host || !motionOk())
@@ -219,17 +271,84 @@
         button.parentElement && button.parentElement.append(f);
         setTimeout(() => f.remove(), 900);
     }
-    function addPlate(person, dishId) {
+    async function addPlate(person, dishId) {
         const dish = s().dishes.find(d => d.id === dishId);
-        if (attempt(() => Store().addOrder(s(), { id: newId(), personId: person.id, dishId, day: view.day }))) {
-            if (dish)
+        const day = view.day;
+        if (await attempt(current => Store().addOrder(current, { id: newId(), personId: person.id, dishId, day }), undefined, () => refreshOrderView(person, day))) {
+            if (dish && view.day === day)
                 floatPlus(person.id, '+1 ' + dish.emoji);
-            sheetRender && sheetRender();
         }
     }
-    function removePlate(person, dishId) {
-        if (attempt(() => Store().removeLastOrder(s(), person.id, view.day, dishId)))
-            sheetRender && sheetRender();
+    async function removePlate(person, dishId) {
+        const day = view.day;
+        await attempt(current => Store().removeLastOrder(current, person.id, day, dishId), undefined, () => refreshOrderView(person, day));
+    }
+    function orderLine(personId, orders) {
+        return orders.length ? `${summary(orders)} · ${money(sum(orders, o => o.price))}` : balanceText(debtOf(personId));
+    }
+    function missingEmployees(visible, ordered, day) {
+        return visible.filter(p => p.employee && (host === null || host === void 0 ? void 0 : host.isPresent(p.id, day)) && !ordered.has(p.id));
+    }
+    function paintStepper(step, orders) {
+        var _a;
+        const dishId = step.dataset.comidaDish;
+        const count = dishId ? orders.filter(o => o.dishId === dishId).length : orders.length;
+        const number = step.querySelector('[data-comida-roll]');
+        if (number)
+            paintRoll(number, number.dataset.comidaRoll || '', count);
+        const status = step.querySelector('.comida-step-status');
+        const text = count === 1 ? '1 plato' : `${count} platos`;
+        if (status && status.textContent !== text)
+            status.textContent = text;
+        step.classList.toggle('has', count > 0);
+        const minus = step.querySelector('.comida-step-minus');
+        if (!minus)
+            return;
+        if (!count && document.activeElement === minus)
+            (_a = step.querySelector('.comida-step-plus')) === null || _a === void 0 ? void 0 : _a.focus({ preventScroll: true });
+        minus.disabled = !count;
+    }
+    function refreshOrderView(person, day) {
+        var _a, _b;
+        if (!host || day !== view.day || view.tab !== 'pedidos')
+            return;
+        const { root, sheet } = host;
+        const personKey = CSS.escape(person.id);
+        const mine = ordersOf(person.id, day);
+        const needsNewList = view.onlyMissing || (person.attendancePaused && !mine.length);
+        if (needsNewList) {
+            const returnToFilter = view.onlyMissing && !!root.contains(document.activeElement);
+            render();
+            if (returnToFilter)
+                (_a = root.querySelector('.comida-stats button')) === null || _a === void 0 ? void 0 : _a.focus({ preventScroll: true });
+        }
+        else {
+            const dayOrders = s().orders.filter(order => order.day === day);
+            const orderedIds = new Set(dayOrders.map(order => order.personId));
+            const active = people().filter(p => !p.paused && (!p.attendancePaused || orderedIds.has(p.id)));
+            updateRoll(root, 'plates', dayOrders.length);
+            updateRoll(root, 'total', money(sum(dayOrders, order => order.price)));
+            updateRoll(root, 'missing', missingEmployees(active, orderedIds, day).length);
+            const line = root.querySelector(`[data-comida-card="${personKey}"] .user-role`);
+            if (line) {
+                line.textContent = orderLine(person.id, mine);
+                line.classList.toggle('comida-today', mine.length > 0);
+            }
+            root.querySelectorAll(`[data-comida-step="${personKey}"]`).forEach(step => paintStepper(step, mine));
+            refreshKitchenStatus();
+        }
+        if (!host.isSheetOpen())
+            return;
+        sheet.querySelectorAll(`[data-comida-step="${personKey}"]`).forEach(step => paintStepper(step, mine));
+        updateRoll(sheet, 'ot' + person.id, money(sum(mine, order => order.price)));
+        const repeat = sheet.querySelector(`[data-comida-repeat="${personKey}"]`);
+        if (repeat)
+            repeat.disabled = mine.length > 0 || !s().orders.some(o => o.personId === person.id && o.day < day);
+        const prices = sheet.querySelector(`[data-comida-historic="${personKey}"]`);
+        if (prices) {
+            const editor = historicPriceEditor(person.id, day, mine, (_b = prices.querySelector('details')) !== null && _b !== void 0 ? _b : undefined);
+            prices.replaceChildren(...(editor ? [editor] : []));
+        }
     }
     function renderPedidos() {
         const day = view.day;
@@ -239,7 +358,7 @@
         const all = people().sort(comparePeople);
         const pausedCount = all.filter(p => p.paused).length;
         const visible = all.filter(p => !p.paused && (!p.attendancePaused || orderedIds.has(p.id)));
-        const missing = visible.filter(p => p.employee && host && host.isPresent(p.id, day) && !orderedIds.has(p.id));
+        const missing = missingEmployees(visible, orderedIds, day);
         const menu = s().dishes.filter(d => d.onMenu);
         if (!menu.some(d => d.id === view.dishId))
             view.dishId = menu[0] ? menu[0].id : '';
@@ -247,13 +366,10 @@
         const match = (p) => p.name.toLowerCase().includes(q) || p.num.toLowerCase().includes(q);
         const employees = (view.onlyMissing ? missing : visible.filter(p => p.employee)).filter(match);
         const clients = view.onlyMissing ? [] : visible.filter(p => !p.employee).filter(match);
-        const sentSig = s().sent[day];
-        const changes = sentSig !== undefined ? Ledger().changesSinceSent(sentSig, s().orders, day) : null;
         const closed = locked ? s().periods.find(p => p.end !== null && day >= p.start && day <= p.end) : null;
         const card = (p) => {
             const mine = ordersOf(p.id, day);
-            const debt = debtOf(p.id);
-            return h('div', { class: 'user-card comida-card' + (p.attendancePaused ? ' paused' : '') }, calendarButton(p), h('button', { type: 'button', class: 'comida-info', 'aria-label': 'Pedido de ' + p.name, onclick: () => (locked ? openAccount(p.id) : openOrder(p.id)) }, h('span', { class: 'user-name', text: p.name }), h('span', { class: 'user-role' + (mine.length ? ' comida-today' : ''), text: mine.length ? `${summary(mine)} · ${money(sum(mine, o => o.price))}` : debt > 0 ? 'Debe ' + money(debt) : 'Al día' })), locked ? h('span', { class: 'comida-lock' }, icon('lock'), String(mine.length))
+            return h('div', { class: 'user-card comida-card' + (p.attendancePaused ? ' paused' : ''), 'data-comida-card': p.id }, calendarButton(p), h('button', { type: 'button', class: 'comida-info', 'aria-label': 'Pedido de ' + p.name, onclick: () => (locked ? openAccount(p.id) : openOrder(p.id)) }, h('span', { class: 'user-name', text: p.name }), h('span', { class: 'user-role' + (mine.length ? ' comida-today' : ''), text: orderLine(p.id, mine) })), locked ? h('span', { class: 'comida-lock' }, icon('lock'), String(mine.length))
                 : view.dishId && stepper(p, mine.length, () => removePlate(p), () => addPlate(p, view.dishId), 'q' + p.id));
         };
         const searchInput = h('input', { class: 'search-input', id: 'comida-search', type: 'search', placeholder: 'Nombre o número', 'aria-label': 'Buscar persona', value: view.query, autocomplete: 'off' });
@@ -269,7 +385,7 @@
             dateNav(day, locked),
             closed && h('div', { class: 'comida-band' }, icon('lock'), h('span', { text: `Período #${periodNumber(closed)} cerrado el ${shortDay(closed.end)}. Solo lectura.` }), h('button', { type: 'button', onclick: () => { view.day = host ? host.today() : view.day; render(); } }, 'Ir a hoy')),
             h('div', { class: 'stats-filters comida-stats' }, h('div', { class: 'stat-card' }, h('div', { class: 'stat-value' }, roll('plates', orders.length)), h('div', { class: 'stat-label', text: 'Platos' })), h('div', { class: 'stat-card' }, h('div', { class: 'stat-value' }, roll('total', money(sum(orders, o => o.price)))), h('div', { class: 'stat-label', text: 'Total' })), h('button', { type: 'button', class: 'stat-card' + (view.onlyMissing ? ' active' : ''), 'aria-pressed': String(view.onlyMissing), 'aria-label': 'Ver presentes que no han pedido', onclick: () => { view.onlyMissing = !view.onlyMissing; render(); } }, h('div', { class: 'stat-value', style: 'color: var(--warning-color)' }, roll('missing', missing.length)), h('div', { class: 'stat-label', text: 'Sin pedir' }))),
-            !locked && changes && h('div', { class: 'comida-note' + (changes.changed ? ' is-warn' : ' is-ok') }, icon(changes.changed ? 'warning' : 'check'), changes.changed ? 'Cambió desde el último envío: ' + [changes.added && `${changes.added} ${changes.added > 1 ? 'platos nuevos' : 'plato nuevo'}`, changes.removed && `${changes.removed} ${changes.removed > 1 ? 'quitados' : 'quitado'}`].filter(Boolean).join(', ') : 'Pedido enviado a la cocina'),
+            h('div', { class: 'comida-kitchen-status' }, kitchenStatus(day, locked)),
             !locked && h('button', { type: 'button', class: 'whatsapp-cta comida-send', onclick: openKitchenMessage }, waIcon(), 'Enviar Pedido'),
             !locked && (menu.length
                 ? h('div', { class: 'comida-dishbar' }, h('span', { class: 'comida-dishbar-label' }, icon('food'), 'Plato:'), h('div', { class: 'comida-chips' }, menu.map(d => h('button', { type: 'button', class: 'category-pill' + (view.dishId === d.id ? ' active' : ''), 'aria-pressed': String(view.dishId === d.id), onclick: () => { view.dishId = d.id; render(); } }, `${d.emoji} ${d.name} ${d.price}`))))
@@ -283,7 +399,16 @@
     }
     function dateNav(day, locked) {
         const today = host ? host.today() : day;
-        return h('div', { class: 'date-nav' }, h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día anterior', onclick: () => { view.day = addDays(view.day, -1); render(); } }, icon('chevronLeft')), h('div', { class: 'current-date-wrapper' }, h('span', { class: 'current-date-display', text: (day === today ? 'Hoy · ' : '') + shortDay(day) + (locked ? ' · cerrado' : '') })), h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día siguiente', disabled: day >= today, onclick: () => { view.day = addDays(view.day, 1); render(); } }, icon('chevronRight')));
+        return h('div', { class: 'date-nav' }, h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día anterior', onclick: () => { view.day = addDays(view.day, -1); render(); } }, icon('chevronLeft')), h('button', {
+            type: 'button', class: 'current-date-wrapper', id: 'comida-date-jump-trigger', title: 'Ir a una fecha',
+            'aria-label': `Elegir fecha de pedidos · ${longDay(day)}`, 'aria-haspopup': 'dialog',
+            onclick: () => host === null || host === void 0 ? void 0 : host.openDatePicker(day, selected => {
+                var _a;
+                view.day = selected;
+                render();
+                (_a = host === null || host === void 0 ? void 0 : host.root.querySelector('#comida-date-jump-trigger')) === null || _a === void 0 ? void 0 : _a.focus({ preventScroll: true });
+            })
+        }, h('span', { class: 'current-date-display', text: (day === today ? 'Hoy · ' : '') + shortDay(day) + (locked ? ' · cerrado' : '') })), h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Día siguiente', disabled: day >= today, onclick: () => { view.day = addDays(view.day, 1); render(); } }, icon('chevronRight')));
     }
     function calendarButton(person, back) {
         return h('button', {
@@ -293,15 +418,15 @@
         }, person.num || icon('daily'));
     }
     function setPersonPaused(person, paused) {
-        return attempt(() => Store().setPersonPaused(s(), person.id, paused), `${person.name} ${paused ? 'se ocultó de Pedidos' : 'se reactivó en Comida'}.`);
+        return attempt(current => Store().setPersonPaused(current, person.id, paused), `${person.name} ${paused ? 'se ocultó de Pedidos' : 'se reactivó en Comida'}.`);
     }
     function openPausedPeople() {
         showSheet(() => {
             const paused = people().filter(person => person.paused).sort(comparePeople);
             return [sheetHead('Pausados en Comida', 'Reactiva a una persona para volver a anotar sus pedidos.'),
-                h('div', { class: 'comida-list' }, paused.map(person => h('div', { class: 'user-card comida-card' }, calendarButton(person, openPausedPeople), h('div', { class: 'comida-person-label' }, h('div', { class: 'user-name', text: person.name }), h('div', { class: 'user-role', text: person.role })), h('button', { type: 'button', class: 'category-pill', 'aria-label': `Reactivar a ${person.name} en Comida`, onclick: () => {
+                h('div', { class: 'comida-list' }, paused.map(person => h('div', { class: 'user-card comida-card' }, calendarButton(person, openPausedPeople), h('div', { class: 'comida-person-label' }, h('div', { class: 'user-name', text: person.name }), h('div', { class: 'user-role', text: person.role })), h('button', { type: 'button', class: 'category-pill', 'aria-label': `Reactivar a ${person.name} en Comida`, onclick: async () => {
                         var _a;
-                        if (!setPersonPaused(person, false))
+                        if (!await setPersonPaused(person, false))
                             return;
                         if (paused.length === 1)
                             closeSheet();
@@ -370,8 +495,8 @@
                 h('div', { class: 'calendar-nav comida-calendar-nav' }, h('button', { type: 'button', class: 'cal-nav-btn comida-cal-prev', 'aria-label': 'Mes anterior', onclick: () => moveMonth(-1) }, icon('chevronLeft')), h('strong', { class: 'comida-cal-month', 'aria-live': 'polite', text: monthLabel.format(date) }), h('button', { type: 'button', class: 'cal-nav-btn comida-cal-next', 'aria-label': 'Mes siguiente', disabled: atCurrentMonth, onclick: () => moveMonth(1) }, icon('chevronRight'))),
                 h('div', { class: 'comida-calendar-scroll' }, h('div', { class: 'calendar-grid comida-calendar' }, DOW.map(label => h('span', { class: 'cal-header', text: label.toUpperCase() })), Array.from({ length: firstWeekday }, () => h('span', { 'aria-hidden': 'true' })), days)),
                 h('div', { class: 'comida-panel comida-calendar-detail' }, h('b', { text: longDay(selectedDay) }), dishes.size ? [...dishes.values()].map(dish => h('div', { class: 'comida-calendar-order' }, h('span', { text: `${dish.name} ×${dish.count}` }), h('b', { text: money(dish.total) }))) : h('span', { class: 'comida-hint', text: 'Sin pedidos este día.' }), dishes.size > 0 && h('div', { class: 'comida-calendar-order' }, h('b', { text: 'Total del día' }), h('b', { text: money(sum(selectedOrders, order => order.price)) }))),
-                h('div', { class: 'comida-row' }, h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => openAccount(person.id, false, () => openFoodCalendar(personId, selectedDay, back)) }, 'Ver cuenta'), h('button', { type: 'button', class: 'btn-full btn-secondary comida-cal-pause', onclick: () => {
-                        if (setPersonPaused(person, !person.paused))
+                h('div', { class: 'comida-row' }, h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => openAccount(person.id, false, () => openFoodCalendar(personId, selectedDay, back)) }, 'Ver cuenta'), h('button', { type: 'button', class: 'btn-full btn-secondary comida-cal-pause', onclick: async () => {
+                        if (await setPersonPaused(person, !person.paused))
                             redraw('.comida-cal-pause');
                     } }, person.paused ? 'Reactivar en Comida' : 'Pausar en Comida')),
                 h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: back ? () => {
@@ -384,8 +509,14 @@
     }
     function openKitchenMessage() {
         const day = view.day;
-        messageSheet('Pedido para la cocina', shortDay(day), () => Ledger().formatKitchenOrder(s().orders, day, { dateLabel: longDay(day), withPrices: s().withPrices,
-            notes: people().filter(p => s().notes[p.id + '@' + day] && ordersOf(p.id, day).length).map(p => ({ name: p.name, text: s().notes[p.id + '@' + day] })) }), () => h('label', { class: 'comida-switch-row' }, h('span', {}, h('b', { text: 'Incluir precios' }), h('small', { text: 'Quítalos si la cocina no debe verlos' })), toggle('Incluir precios', s().withPrices, value => { state = Store().setWithPrices(s(), value); repo && repo.save(s()); sheetRender && sheetRender(); })), () => commit(Store().markSent(s(), day), 'Pedido marcado como enviado'));
+        messageSheet('Pedido para la cocina', shortDay(day), () => {
+            const notes = kitchenNotes(day);
+            return {
+                body: Ledger().formatKitchenOrder(s().orders, day, { dateLabel: longDay(day), withPrices: s().withPrices, notes }),
+                signature: Ledger().kitchenSignature(s().orders, day, notes)
+            };
+        }, () => h('label', { class: 'comida-switch-row' }, h('span', {}, h('b', { text: 'Incluir precios' }), h('small', { text: 'Quítalos si la cocina no debe verlos' })), toggle('Incluir precios', s().withPrices, async (value) => { const draw = sheetRender; await attempt(current => Store().setWithPrices(current, value)); if (draw === sheetRender)
+            draw === null || draw === void 0 ? void 0 : draw(); })), signature => attempt(current => Store().markSent(current, day, signature), 'Pedido marcado como enviado'));
     }
     function toggle(label, checked, onChange) {
         const input = h('input', { type: 'checkbox', 'aria-label': label });
@@ -394,31 +525,64 @@
         return h('span', { class: 'toggle-switch' }, input, h('span', { class: 'toggle-slider' }));
     }
     function openOrder(personId) {
+        const day = view.day;
         const draw = () => {
             const p = personById(personId);
             if (!p)
                 return [sheetHead('Persona no encontrada')];
-            const day = view.day;
             const mine = ordersOf(p.id, day);
             const key = p.id + '@' + day;
             const note = h('textarea', { class: 'search-input comida-textarea', id: 'comida-note', rows: '2', placeholder: 'Ej.: sin ensalada' });
             note.value = s().notes[key] || '';
-            note.addEventListener('change', () => { state = Store().setNote(s(), p.id, day, note.value); repo && repo.save(s()); });
+            const saveNote = (text) => attempt(current => Store().setNote(current, p.id, day, text), undefined, refreshKitchenStatus);
+            note.addEventListener('change', () => { void saveNote(note.value); });
             const hasPrevious = s().orders.some(o => o.personId === p.id && o.day < day);
             return [sheetHead(`${p.name} · ${p.num}`, longDay(day)),
-                s().dishes.filter(d => d.onMenu).map(d => h('div', { class: 'comida-dish' }, h('span', { class: 'comida-dish-icon', text: d.emoji }), h('span', { class: 'comida-dish-name' }, h('b', { text: d.name }), h('small', { text: money(d.price) })), stepper(p, mine.filter(o => o.dishId === d.id).length, () => removePlate(p, d.id), () => addPlate(p, d.id), 'o' + p.id + d.id))),
+                s().dishes.filter(d => d.onMenu).map(d => h('div', { class: 'comida-dish' }, h('span', { class: 'comida-dish-icon', text: d.emoji }), h('span', { class: 'comida-dish-name' }, h('b', { text: d.name }), h('small', { text: money(d.price) })), stepper(p, mine.filter(o => o.dishId === d.id).length, () => removePlate(p, d.id), () => addPlate(p, d.id), 'o' + p.id + d.id, d.id))),
                 h('label', { class: 'comida-label', for: 'comida-note', text: 'Nota para la cocina' }), note,
                 h('div', { class: 'comida-total' }, h('span', { text: 'Total del día' }), h('b', {}, roll('ot' + p.id, money(sum(mine, o => o.price))))),
-                h('button', { type: 'button', class: 'btn-full btn-secondary', disabled: !hasPrevious || mine.length > 0, onclick: () => attempt(() => Store().repeatLastOrder(s(), p.id, day, newId), 'Se repitió el último pedido') && sheetRender && sheetRender() }, 'Repetir último pedido'),
-                h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => { state = Store().setNote(s(), p.id, day, note.value); repo && repo.save(s()); closeSheet(); render(); } }, 'Listo')];
+                h('div', { 'data-comida-historic': p.id }, historicPriceEditor(p.id, day, mine)),
+                h('button', { type: 'button', class: 'btn-full btn-secondary', 'data-comida-repeat': p.id, disabled: !hasPrevious || mine.length > 0, onclick: async () => {
+                        await attempt(current => Store().repeatLastOrder(current, p.id, day, newId), 'Se repitió el último pedido', () => refreshOrderView(p, day));
+                    } }, 'Repetir último pedido'),
+                h('button', { type: 'button', class: 'btn-full btn-primary', onclick: async (event) => {
+                        const button = event.currentTarget;
+                        if (await saveNote(note.value) && button.isConnected)
+                            closeSheet();
+                    } }, 'Listo')];
         };
         showSheet(draw);
+    }
+    function historicPriceEditor(personId, day, orders, previous) {
+        if (!host || day >= host.today() || isLocked(day) || !orders.length)
+            return null;
+        const draft = new Map(Array.from((previous === null || previous === void 0 ? void 0 : previous.querySelectorAll('[data-price-order]')) || [], input => [input.dataset.priceOrder, input.value]));
+        const error = h('div', { class: 'comida-error', role: 'alert' });
+        const rows = orders.map((order, index) => {
+            var _a;
+            const id = `comida-history-price-${index}`;
+            const input = h('input', { id, class: 'search-input comida-field', inputmode: 'numeric', 'data-price-order': order.id, value: (_a = draft.get(order.id)) !== null && _a !== void 0 ? _a : String(order.price) });
+            return { order, input, row: h('div', { class: 'comida-history-price-row' }, h('label', { for: id, text: `${index + 1}. ${order.dishName}` }), input) };
+        });
+        return h('details', { class: 'comida-history-prices', open: previous === null || previous === void 0 ? void 0 : previous.open }, h('summary', { class: 'comida-sales-summary', text: 'Editar precios históricos' }), h('span', { class: 'comida-hint', text: 'Importes por plato en RD$.' }), rows.map(row => row.row), error, h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: async (event) => {
+                var _a;
+                const button = event.currentTarget;
+                const updates = rows.map(({ order, input }) => ({ id: order.id, previous: order.price, price: input.value.trim() ? Number(input.value) : NaN }));
+                const today = host.today();
+                button.disabled = true;
+                if (await attempt(current => Store().setHistoricPrices(current, personId, day, today, updates), 'Precios del pedido guardados', render, error) && button.isConnected) {
+                    sheetRender === null || sheetRender === void 0 ? void 0 : sheetRender();
+                    (_a = content().querySelector('.comida-history-prices summary')) === null || _a === void 0 ? void 0 : _a.focus({ preventScroll: true });
+                }
+                else
+                    button.disabled = false;
+            } }, 'Guardar precios'));
     }
     /* ── Cocina ── */
     function renderCocina() {
         return [
             h('div', { class: 'comida-kicker', text: 'Platos' }),
-            s().dishes.length ? h('div', { class: 'comida-panel' }, s().dishes.map(d => h('div', { class: 'comida-dish' }, h('span', { class: 'comida-dish-icon', text: d.emoji }), h('button', { type: 'button', class: 'comida-dish-name', 'aria-label': 'Editar ' + d.name, onclick: () => openDish(d.id) }, h('b', { text: d.name }), h('small', { text: `${money(d.price)} · costo ${money(d.cost)} · deja ${money(d.price - d.cost)}` })), toggle(d.name + ' en el menú', d.onMenu, value => attempt(() => Store().setDishOnMenu(s(), d.id, value))))))
+            s().dishes.length ? h('div', { class: 'comida-panel' }, s().dishes.map(d => h('div', { class: 'comida-dish' }, h('span', { class: 'comida-dish-icon', text: d.emoji }), h('button', { type: 'button', class: 'comida-dish-name', 'aria-label': 'Editar ' + d.name, onclick: () => openDish(d.id) }, h('b', { text: d.name }), h('small', { text: `${money(d.price)} · costo ${money(d.cost)} · deja ${money(d.price - d.cost)}` })), toggle(d.name + ' en el menú', d.onMenu, value => attempt(current => Store().setDishOnMenu(current, d.id, value))))))
                 : h('div', { class: 'comida-empty', text: 'Todavía no hay platos. Crea el primero.' }),
             h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => openDish('') }, icon('add'), ' Nuevo plato'),
             h('div', { class: 'comida-kicker', text: 'Compras' }),
@@ -438,8 +602,9 @@
                 h('div', { class: 'comida-row' }, h('div', {}, h('label', { class: 'comida-label', for: 'comida-dish-price', text: 'Precio de venta' }), price), h('div', {}, h('label', { class: 'comida-label', for: 'comida-dish-cost', text: 'Costo estimado' }), cost)),
                 h('div', { class: 'comida-label', text: 'Icono' }),
                 h('div', { class: 'comida-emoji-grid' }, DISH_ICONS.map(e => h('button', { type: 'button', 'aria-pressed': String(e === st.emoji), 'aria-label': 'Icono ' + e, text: e, onclick: () => openDish(dishId, { ...keep(), emoji: e }) }))),
-                h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => {
-                        if (attempt(() => Store().saveDish(s(), { id: d ? d.id : newId(), name: name.value, emoji: st.emoji, price: Number(price.value), cost: Number(cost.value || 0) }), 'Plato guardado'))
+                h('button', { type: 'button', class: 'btn-full btn-primary', onclick: async () => {
+                        const dish = { id: d ? d.id : newId(), name: name.value, emoji: st.emoji, price: Number(price.value), cost: Number(cost.value || 0) };
+                        if (await attempt(current => Store().saveDish(current, dish), 'Plato guardado'))
                             closeSheet();
                     } }, 'Guardar plato')];
         });
@@ -462,16 +627,18 @@
         const keepAmount = (change) => { const value = amount.value; change(); const again = document.getElementById('comida-amount'); if (again && !editing)
             again.value = value; };
         const back = inSheet ? () => openPurchases() : null;
-        const save = () => {
+        const save = async () => {
             if (!category) {
                 error.textContent = s().categories.length ? 'Elige un insumo.' : 'Primero crea un insumo con el botón +.';
                 return;
             }
             const value = Number(amount.value);
-            const ok = attempt(() => Store().savePurchase(s(), { id: editing ? editing.id : newId(), categoryId: category.id, amount: value, day: editing ? editing.day : host.today(), time: editing ? editing.time : nowTime() }), editing ? `Compra actualizada · ${category.name} ${money(value)}` : `Compra de ${category.name} por ${money(value)}`);
+            const purchase = { id: editing ? editing.id : newId(), categoryId: category.id, amount: value, day: editing ? editing.day : host.today(), time: editing ? editing.time : nowTime() };
+            const ok = await attempt(current => Store().savePurchase(current, purchase), editing ? `Compra actualizada · ${category.name} ${money(value)}` : `Compra de ${category.name} por ${money(value)}`);
             if (ok) {
                 view.editPurchase = '';
-                sheetRender && sheetRender();
+                render();
+                sheetRender === null || sheetRender === void 0 ? void 0 : sheetRender();
             }
         };
         const tile = (c) => h('button', { type: 'button', class: 'comida-supply' + (view.deleteSupplies ? ' is-delete' : ''), 'aria-pressed': String(!view.deleteSupplies && view.supplyId === c.id), 'aria-label': view.deleteSupplies ? 'Eliminar insumo ' + c.name : c.name,
@@ -480,25 +647,30 @@
                     keepAmount(() => { view.supplyId = c.id; render(); sheetRender && sheetRender(); });
                     return;
                 }
-                host.confirm(`¿Eliminar el insumo «${c.name}»? Sus compras se conservan en el historial.`, { title: 'Eliminar insumo', confirmText: 'Eliminar', danger: true }).then(ok => {
+                host.confirm(`¿Eliminar el insumo «${c.name}»? Sus compras se conservan en el historial.`, { title: 'Eliminar insumo', confirmText: 'Eliminar', danger: true }).then(async (ok) => {
                     if (!ok)
                         return;
-                    attempt(() => Store().removeCategory(s(), c.id), 'Insumo eliminado');
+                    if (!await attempt(current => Store().removeCategory(current, c.id), 'Insumo eliminado'))
+                        return;
                     if (!s().categories.length)
                         view.deleteSupplies = false;
-                    sheetRender && sheetRender();
+                    render();
+                    sheetRender === null || sheetRender === void 0 ? void 0 : sheetRender();
                 });
             } }, view.deleteSupplies && h('span', { class: 'comida-supply-x' }, icon('close')), h('span', { class: 'comida-supply-icon', text: c.emoji }), h('span', { class: 'comida-supply-name', text: c.name }));
         const when = (p) => { const today = host.today(); return (p.day === today ? 'Hoy' : p.day === addDays(today, -1) ? 'Ayer' : shortDay(p.day)) + (p.time ? ' · ' + p.time : ''); };
         return h('div', { class: 'comida-stack' }, h('div', { class: 'comida-panel' }, h('b', { text: `Ventas vs. compras del período #${periodNumber(period)}` }), h('span', { class: 'comida-hint', text: sold >= spent ? `Las compras son el ${ratio}% de lo vendido; queda el ${100 - ratio}%.` : `Las compras superan lo vendido por ${money(spent - sold)}.` }), meterRow('Ventas (cobrado + por cobrar)', sold, 100, 'var(--success-color)'), meterRow('Compras de mercado e insumos', spent, ratio, 'var(--danger-color)')), h('div', { class: 'comida-panel' }, h('div', { class: 'comida-panel-head' }, h('b', { text: editing ? `Editando compra (${editing.categoryName})` : 'Registrar compra' }), editing ? h('button', { type: 'button', class: 'comida-link is-danger', onclick: () => { view.editPurchase = ''; render(); sheetRender && sheetRender(); } }, 'Cancelar edición')
             : s().categories.length > 0 && h('button', { type: 'button', class: 'comida-link', onclick: () => { view.deleteSupplies = !view.deleteSupplies; render(); sheetRender && sheetRender(); } }, view.deleteSupplies ? 'Listo' : 'Editar insumos')), h('span', { class: 'comida-hint', text: view.deleteSupplies ? 'Toca un insumo para eliminarlo. Las compras ya registradas no se borran.' : s().categories.length ? 'Elige el insumo y suma los billetes o escribe el monto.' : 'Todavía no hay insumos. Crea el primero con el botón +.' }), h('div', { class: 'comida-supply-grid' }, s().categories.map(tile), !view.deleteSupplies && h('button', { type: 'button', class: 'comida-supply is-add', 'aria-label': 'Agregar insumo', onclick: () => openSupply(back) }, h('span', { class: 'comida-slot' }, icon('add')), h('span', { class: 'comida-supply-name', text: 'Agregar' }))), h('div', { class: 'comida-amount' }, h('div', { class: 'comida-amount-head' }, h('span', { text: 'Monto gastado (RD$)' }), h('button', { type: 'button', class: 'comida-link is-danger', onclick: () => { amount.value = '0'; } }, 'Limpiar')), h('div', { class: 'comida-amount-box' }, h('span', { class: 'comida-pill', text: category ? `${category.emoji} ${category.name}` : 'Sin insumo' }), amount), h('div', { class: 'comida-bills' }, [100, 200, 500, 1000].map(n => h('button', { type: 'button', onclick: () => { amount.value = String((Number(amount.value) || 0) + n); error.textContent = ''; } }, '+' + n.toLocaleString('en-US')))), error, h('button', { type: 'button', class: 'btn-full comida-ink', onclick: save }, editing ? 'Actualizar compra' : 'Guardar compra'))), h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Historial de compras' }), purchases.length ? [...purchases].reverse().slice(0, 30).map(p => h('div', { class: 'comida-hist' }, h('span', { class: 'comida-hist-main' }, h('b', { text: `${p.categoryEmoji} ${p.categoryName}` }), h('small', { text: when(p) })), h('b', { class: 'comida-neg', text: '-' + money(p.amount) }), h('button', { type: 'button', class: 'comida-link', onclick: () => { view.editPurchase = p.id; view.supplyId = p.categoryId; view.deleteSupplies = false; render(); sheetRender && sheetRender(); } }, 'Editar'), h('button', { type: 'button', class: 'comida-icon-btn', 'aria-label': `Eliminar compra de ${p.categoryName}`, onclick: () => {
-                host.confirm(`¿Eliminar la compra de ${p.categoryName} por ${money(p.amount)}?`, { title: 'Eliminar compra', confirmText: 'Eliminar', danger: true }).then(ok => {
+                host.confirm(`¿Eliminar la compra de ${p.categoryName} por ${money(p.amount)}?`, { title: 'Eliminar compra', confirmText: 'Eliminar', danger: true }).then(async (ok) => {
                     if (!ok)
                         return;
-                    if (view.editPurchase === p.id)
+                    if (!await attempt(current => Store().removePurchase(current, p.id), 'Compra eliminada'))
+                        return;
+                    if (view.editPurchase === p.id) {
                         view.editPurchase = '';
-                    attempt(() => Store().removePurchase(s(), p.id), 'Compra eliminada');
-                    sheetRender && sheetRender();
+                        render();
+                    }
+                    sheetRender === null || sheetRender === void 0 ? void 0 : sheetRender();
                 });
             } }, icon('close'))))
             : h('div', { class: 'comida-empty', text: 'Sin compras en este período.' })));
@@ -521,10 +693,10 @@
                 h('label', { class: 'comida-label', for: 'comida-supply-name', text: 'Nombre' }), name,
                 h('div', { class: 'comida-label', text: 'Icono' }),
                 h('div', { class: 'comida-emoji-grid' }, SUPPLY_ICONS.map(e => h('button', { type: 'button', 'aria-pressed': String(e === st.emoji), 'aria-label': 'Icono ' + e, text: e, onclick: () => openSupply(back, { name: name.value, emoji: e }) }))),
-                h('div', { class: 'comida-row' }, h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: done }, 'Cancelar'), h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => {
-                        const id = newId();
-                        if (attempt(() => Store().addCategory(s(), { id, name: name.value, emoji: st.emoji }), `Insumo ${st.emoji} ${name.value.trim()} creado`)) {
-                            view.supplyId = id;
+                h('div', { class: 'comida-row' }, h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: done }, 'Cancelar'), h('button', { type: 'button', class: 'btn-full btn-primary', onclick: async () => {
+                        const supply = { id: newId(), name: name.value, emoji: st.emoji };
+                        if (await attempt(current => Store().addCategory(current, supply), `Insumo ${st.emoji} ${supply.name.trim()} creado`)) {
+                            view.supplyId = supply.id;
                             view.deleteSupplies = false;
                             done();
                             render();
@@ -536,32 +708,123 @@
     function periodStats(p) {
         return Ledger().periodSummary(s().orders, s().payments, s().purchases, p);
     }
+    function dailySalesChart(sales) {
+        const chart = h('div', { class: 'comida-bars', role: 'slider', tabindex: '0', 'aria-label': 'Ventas por día del período', 'aria-valuemin': '0' });
+        const details = h('div', { class: 'comida-sale-values', 'aria-live': 'polite' });
+        let buckets = [];
+        let bars = [];
+        let selected = -1;
+        const previous = h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Venta anterior' }, icon('chevronLeft'));
+        const next = h('button', { type: 'button', class: 'nav-arrow', 'aria-label': 'Venta siguiente' }, icon('chevronRight'));
+        const dayMode = h('button', { type: 'button', class: 'category-pill', onclick: () => setGrouping(false) }, 'Días');
+        const weekMode = h('button', { type: 'button', class: 'category-pill', onclick: () => setGrouping(true) }, 'Semanas');
+        const dateLabel = ({ day, end }) => day === end ? shortDay(day) : `${shortDay(day)} – ${shortDay(end)}`;
+        function select(index, scroll = false) {
+            var _a;
+            const value = Math.max(0, Math.min(index, buckets.length - 1));
+            const sale = buckets[value];
+            if (!sale)
+                return;
+            (_a = bars[selected]) === null || _a === void 0 ? void 0 : _a.classList.remove('is-selected');
+            selected = value;
+            const bar = bars[selected];
+            bar.classList.add('is-selected');
+            const label = dateLabel(sale);
+            const total = money(sale.clients + sale.staff);
+            chart.setAttribute('aria-valuenow', String(value));
+            chart.setAttribute('aria-valuetext', `${label}. Clientes ${money(sale.clients)}. Personal ${money(sale.staff)}. Total ${total}.`);
+            previous.disabled = value === 0;
+            next.disabled = value === buckets.length - 1;
+            details.replaceChildren(h('strong', { class: 'comida-sale-date', text: label }), h('span', { text: `Clientes ${money(sale.clients)}` }), h('span', { text: `Personal ${money(sale.staff)}` }), h('b', { text: `Total ${total}` }));
+            if (scroll)
+                revealSelection();
+        }
+        function revealSelection() {
+            const windowBounds = chart.getBoundingClientRect();
+            const barBounds = bars[selected].getBoundingClientRect();
+            if (barBounds.left < windowBounds.left)
+                chart.scrollLeft -= windowBounds.left - barBounds.left;
+            else if (barBounds.right > windowBounds.right)
+                chart.scrollLeft += barBounds.right - windowBounds.right;
+        }
+        function setGrouping(weekly) {
+            view.salesByWeek = weekly;
+            buckets = weekly ? Ledger().weeklySales(sales) : sales.map(sale => ({ ...sale, end: sale.day }));
+            const peak = buckets.reduce((max, sale) => Math.max(max, sale.clients + sale.staff), 1);
+            bars = buckets.map((sale, index) => {
+                const { day, clients, staff } = sale;
+                const total = clients + staff;
+                const bar = h('div', {
+                    class: 'comida-sale-bar' + (total ? '' : ' is-zero'), 'data-day': day, 'data-sale-index': index,
+                    title: `${dateLabel(sale)} · Clientes ${money(clients)} · Personal ${money(staff)} · Total ${money(total)}`,
+                    'aria-hidden': 'true'
+                }, clients > 0 && h('span', { class: 'comida-sales-client', style: `flex-grow: ${clients}` }), staff > 0 && h('span', { class: 'comida-sales-staff', style: `flex-grow: ${staff}` }));
+                bar.style.height = total ? `${total / peak * 100}%` : '2px';
+                bar.style.animationDelay = `${Math.min(index * 12, 250)}ms`;
+                return bar;
+            });
+            chart.replaceChildren(...bars);
+            chart.setAttribute('aria-label', weekly ? 'Ventas por semana del período' : 'Ventas por día del período');
+            chart.setAttribute('aria-valuemax', String(buckets.length - 1));
+            dayMode.setAttribute('aria-pressed', String(!weekly));
+            weekMode.setAttribute('aria-pressed', String(weekly));
+            dayMode.classList.toggle('active', !weekly);
+            weekMode.classList.toggle('active', weekly);
+            const matching = buckets.findIndex(sale => sale.day <= view.salesDate && view.salesDate <= sale.end);
+            select(matching >= 0 ? matching : buckets.length - 1, true);
+        }
+        function choose(index) {
+            var _a;
+            select(index, true);
+            view.salesDate = ((_a = buckets[selected]) === null || _a === void 0 ? void 0 : _a.day) || '';
+        }
+        previous.onclick = () => choose(selected - 1);
+        next.onclick = () => choose(selected + 1);
+        chart.addEventListener('click', event => {
+            const hit = event.target.closest('[data-sale-index]');
+            const position = event.clientX - chart.getBoundingClientRect().left + chart.scrollLeft;
+            choose(hit ? Number(hit.dataset.saleIndex) : Math.floor(position * buckets.length / chart.scrollWidth));
+        });
+        chart.addEventListener('keydown', event => {
+            const keys = { ArrowLeft: selected - 1, ArrowDown: selected - 1, ArrowRight: selected + 1, ArrowUp: selected + 1, Home: 0, End: buckets.length - 1 };
+            const target = keys[event.key];
+            if (target === undefined)
+                return;
+            event.preventDefault();
+            choose(target);
+        });
+        setGrouping(view.salesByWeek);
+        requestAnimationFrame(() => { if (chart.isConnected)
+            revealSelection(); });
+        return h('div', { class: 'comida-panel comida-sales' }, h('div', { class: 'comida-kicker', text: 'Ventas del período' }), h('div', { class: 'comida-chips comida-chart-modes', role: 'group', 'aria-label': 'Agrupar ventas' }, dayMode, weekMode), h('div', { class: 'comida-sales-legend' }, h('span', {}, h('i', { class: 'comida-sales-client', 'aria-hidden': 'true' }), 'Clientes'), h('span', {}, h('i', { class: 'comida-sales-staff', 'aria-hidden': 'true' }), 'Personal')), chart, h('div', { class: 'comida-sale-selection' }, previous, details, next), h('details', {}, h('summary', { class: 'comida-sales-summary', text: 'Importes por día' }), h('table', { class: 'comida-sales-table', 'aria-label': 'Ventas por fecha y grupo' }, h('thead', {}, h('tr', {}, ['Fecha', 'Clientes', 'Personal'].map(label => h('th', { scope: 'col', text: label })))), h('tbody', {}, sales.map(({ day, clients, staff }) => h('tr', {}, h('th', { scope: 'row', text: shortDay(day) }), h('td', { text: money(clients) }), h('td', { text: money(staff) })))))), h('span', { class: 'comida-hint', text: 'Ganancia = vendido − compras del período' }));
+    }
     function renderFacturacion() {
         const today = host.today();
         const p = openPeriod();
         const stats = periodStats(p);
         const dayN = Math.max(0, Ledger().periodDay(p, today));
         const remind = Ledger().shouldRemindClose(p, today);
-        const due = people().filter(x => debtOf(x.id) > 0);
-        const shown = due.filter(x => view.billFilter === 'todos' || (view.billFilter === 'emp') === x.employee).sort((a, b) => debtOf(b.id) - debtOf(a.id));
+        const balances = balancesOf(s());
+        const named = new Map(people(true).map(person => [person.id, person]));
+        const due = [...balances.values()].filter(balance => balance > 0);
+        const shown = [...balances].filter(([, balance]) => balance !== 0)
+            .map(([id, balance]) => ({ person: named.get(id) || archivedPerson(id), balance }))
+            .filter(({ person }) => view.billFilter === 'todos' || (view.billFilter === 'emp') === person.employee)
+            .sort((a, b) => b.balance - a.balance);
         const past = s().periods.filter(x => x.end !== null).reverse();
-        const days = [];
-        for (let d = p.start; d <= today; d = addDays(d, 1))
-            days.push(d);
-        const sales = days.map(d => sum(s().orders.filter(o => o.day === d), o => o.price));
-        const peak = Math.max(1, ...sales);
+        const sales = Ledger().dailySales(s().orders, new Set(s().clients.map(c => c.id)), p.start, today);
         const progress = h('b');
         progress.style.width = Math.min(100, (dayN / Ledger().REMIND_AFTER_DAYS) * 100) + '%';
         progress.style.background = remind ? 'var(--warning-color)' : 'var(--accent-color)';
         return [
             h('div', { class: 'comida-panel' }, h('div', { class: 'comida-panel-head' }, h('b', { text: `Período #${periodNumber(p)}` }), h('span', { class: 'comida-hint', text: p.start > today ? `Empieza ${shortDay(p.start)}` : `Desde ${shortDay(p.start)} · día ${dayN} de ${Ledger().REMIND_AFTER_DAYS}` })), h('div', { class: 'comida-meter' }, h('i', {}, progress)), remind && h('div', { class: 'comida-note is-warn' }, icon('warning'), 'Ya pasaron 21 días. Cierra el período cuando termines de cobrar.'), h('button', { type: 'button', class: 'btn-full comida-ink', onclick: openClosePeriod }, icon('lock'), ' Cerrar período')),
-            h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Por cobrar' }), h('div', { class: 'comida-big' }, roll('due', money(sum(due, x => debtOf(x.id))))), h('span', { class: 'comida-hint', text: `${due.length} ${due.length === 1 ? 'persona' : 'personas'} con saldo pendiente` })),
+            h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Por cobrar' }), h('div', { class: 'comida-big' }, roll('due', money(sum(due, amount => amount)))), h('span', { class: 'comida-hint', text: `${due.length} ${due.length === 1 ? 'persona' : 'personas'} con saldo pendiente` })),
             h('div', { class: 'stats-filters comida-stats' }, statCard('Vendido', money(stats.sold)), statCard('Cobrado', money(stats.collected)), statCard('Ganancia', money(stats.profit), stats.profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)')),
-            days.length > 0 && h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Ventas por día del período' }), h('div', { class: 'comida-bars', role: 'img', 'aria-label': 'Ventas por día del período' }, sales.map((v, i) => { const b = h('span', { class: v ? '' : 'is-zero', title: `${shortDay(days[i])}: ${money(v)}` }); b.style.height = Math.max(2, (v / peak) * 100) + '%'; b.style.animationDelay = i * 12 + 'ms'; return b; })), h('span', { class: 'comida-hint', text: 'Ganancia = vendido − compras del período' })),
+            sales.length > 0 && dailySalesChart(sales),
             past.length > 0 && h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Períodos anteriores' }), h('div', { class: 'comida-mrow is-head' }, h('span'), h('span', { text: 'Vendido' }), h('span', { text: 'Compras' }), h('span', { text: 'Ganancia' })), past.map(x => { const st = periodStats(x); return h('div', { class: 'comida-mrow', title: `${shortDay(x.start)} – ${shortDay(x.end)}` }, h('b', { text: '#' + periodNumber(x) }), h('span', { text: money(st.sold) }), h('span', { text: money(st.purchases) }), h('b', { style: `color: var(${st.profit >= 0 ? '--success-color' : '--danger-color'})`, text: money(st.profit) })); })),
             h('div', { class: 'comida-chips' }, [['todos', 'Todos'], ['emp', 'Empleados'], ['cli', 'Clientes']].map(([k, l]) => h('button', { type: 'button', class: 'category-pill' + (view.billFilter === k ? ' active' : ''), 'aria-pressed': String(view.billFilter === k), onclick: () => { view.billFilter = k; render(); } }, l))),
-            shown.length ? h('div', { class: 'comida-list' }, shown.map(x => h('button', { type: 'button', class: 'user-card comida-card comida-debtor', onclick: () => openAccount(x.id) }, h('span', { class: 'avatar-placeholder comida-avatar' + (x.employee ? '' : ' is-client'), text: x.num }), h('span', { class: 'comida-info' }, h('span', { class: 'user-name', text: x.name }), h('span', { class: 'user-role', text: x.employee ? x.role : 'Cliente' })), h('b', { class: 'comida-money', text: money(debtOf(x.id)) }))))
-                : h('div', { class: 'comida-empty', text: 'Nadie debe en este grupo.' })
+            shown.length ? h('div', { class: 'comida-list' }, shown.map(({ person: x, balance }) => h('button', { type: 'button', class: 'user-card comida-card comida-debtor', onclick: () => openAccount(x.id) }, h('span', { class: 'avatar-placeholder comida-avatar' + (x.employee ? '' : ' is-client'), text: x.num }), h('span', { class: 'comida-info' }, h('span', { class: 'user-name', text: x.name }), h('span', { class: 'user-role', text: balance < 0 ? balanceLabel(balance) : x.employee ? x.role : 'Cliente' })), h('b', { class: 'comida-money', text: money(Math.abs(balance)) }))))
+                : h('div', { class: 'comida-empty', text: 'Sin saldos en este grupo.' })
         ];
     }
     function statCard(label, value, color) {
@@ -572,15 +835,30 @@
             const today = host.today();
             const p = openPeriod();
             const st = periodStats(p);
-            const pending = sum(people(), x => Math.max(0, debtOf(x.id)));
+            const pending = sum([...balancesOf(s()).values()], balance => Math.max(0, balance));
             const already = p.start > today;
             return [sheetHead(`Cerrar período #${periodNumber(p)}`, already ? 'Ya cerraste un período hoy.' : `Del ${shortDay(p.start)} a hoy · ${Ledger().periodDay(p, today)} días`),
                 h('div', { class: 'stats-filters comida-stats' }, statCard('Vendido', money(st.sold)), statCard('Cobrado', money(st.collected)), statCard('Ganancia', money(st.profit), st.profit >= 0 ? 'var(--success-color)' : 'var(--danger-color)')),
                 h('div', { class: 'comida-note ' + (pending ? 'is-warn' : 'is-ok') }, icon(pending ? 'warning' : 'check'), pending ? `Quedan ${money(pending)} por cobrar. Esa deuda pasa al período siguiente.` : 'Todos pagaron.'),
                 h('p', { class: 'comida-hint', text: 'El cierre incluye hoy. Desde mañana empieza un período nuevo, y los días cerrados quedan de solo lectura.' }),
-                h('button', { type: 'button', class: 'btn-full comida-ink', disabled: already, onclick: () => {
-                        if (attempt(() => Store().closePeriod(s(), today, newId()), `Período #${periodNumber(p)} cerrado. El siguiente empieza mañana.`))
+                h('button', { type: 'button', class: 'btn-full comida-ink', disabled: already, onclick: async () => {
+                        const saved = await attempt(current => {
+                            const live = current.periods.find(period => period.end === null);
+                            const sales = live && Ledger().periodSummary(current.orders, current.payments, current.purchases, live);
+                            const remaining = sum([...balancesOf(current).values()], balance => Math.max(0, balance));
+                            if ((live === null || live === void 0 ? void 0 : live.id) !== p.id || live.start !== p.start || remaining !== pending || sales.sold !== st.sold || sales.collected !== st.collected || sales.purchases !== st.purchases) {
+                                throw new Error('Los importes del período cambiaron. Revisa el cierre actualizado.');
+                            }
+                            return Store().closePeriod(current, today, newId());
+                        }, `Período #${periodNumber(p)} cerrado. El siguiente empieza mañana.`);
+                        if (saved)
                             closeSheet();
+                        else {
+                            if (repo)
+                                state = repo.load();
+                            render();
+                            sheetRender === null || sheetRender === void 0 ? void 0 : sheetRender();
+                        }
                     } }, already ? 'Ya cerraste hoy' : 'Cerrar período'),
                 h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: closeSheet }, 'Cancelar')];
         });
@@ -593,13 +871,16 @@
             const partial = items.some(it => it.remaining < it.order.price);
             return `${shortDay(day)}: ${summary(items.map(it => it.order))} = ${money(sum(items, it => it.remaining))}${partial ? ' (resto)' : ''}`;
         });
-        return `*Tu cuenta de comida*\n${p.name} (${p.num})\n\n${lines.join('\n') || '(nada pendiente)'}\n\n*Debes: ${money(account.total)}*`;
+        const balance = debtOf(p.id);
+        const closing = balance < 0 ? `Saldo a favor: ${money(-balance)}` : `Debes: ${money(account.total)}`;
+        return `*Tu cuenta de comida*\n${p.name}${p.num ? ` (${p.num})` : ''}\n\n${lines.join('\n') || '(nada pendiente)'}\n\n*${closing}*`;
+    }
+    function archivedPerson(id) {
+        return { id, name: 'Personal sin ficha', num: '', role: 'Historial de Comida', employee: true, paused: false, attendancePaused: false };
     }
     function openAccount(personId, paying = false, back) {
         showSheet(() => {
-            const p = personById(personId);
-            if (!p)
-                return [sheetHead('Persona no encontrada')];
+            const p = personById(personId) || archivedPerson(personId);
             const debt = debtOf(p.id);
             const mine = s().orders.filter(o => o.personId === p.id);
             const paid = s().payments.filter(x => x.personId === p.id);
@@ -612,24 +893,23 @@
             if (paying && debt > 0) {
                 const input = h('input', { class: 'search-input comida-field', id: 'comida-pay', inputmode: 'numeric', value: String(debt) });
                 const error = h('div', { class: 'comida-error', role: 'alert' });
-                payBox = h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Pago en efectivo' }), h('label', { class: 'comida-label', for: 'comida-pay', text: 'Monto' }), input, h('div', { class: 'comida-chips' }, h('button', { type: 'button', class: 'category-pill', onclick: () => { input.value = String(debt); } }, 'Todo ' + money(debt)), h('button', { type: 'button', class: 'category-pill', onclick: () => { input.value = String(Math.round(debt / 2)); } }, 'Mitad ' + money(Math.round(debt / 2)))), error, h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => {
+                payBox = h('div', { class: 'comida-panel' }, h('div', { class: 'comida-kicker', text: 'Pago en efectivo' }), h('label', { class: 'comida-label', for: 'comida-pay', text: 'Monto' }), input, h('div', { class: 'comida-chips' }, h('button', { type: 'button', class: 'category-pill', onclick: () => { input.value = String(debt); } }, 'Todo ' + money(debt)), h('button', { type: 'button', class: 'category-pill', onclick: () => { input.value = String(Math.round(debt / 2)); } }, 'Mitad ' + money(Math.round(debt / 2)))), error, h('button', { type: 'button', class: 'btn-full btn-primary', onclick: async (event) => {
                         const value = Number(input.value);
-                        try {
-                            const next = Store().addPayment(s(), { id: newId(), personId: p.id, amount: value, day: host.today() });
-                            if (commit(next, `${value < debt ? 'Pago parcial' : 'Pago'} de ${money(value)} · ${p.name}`))
-                                openAccount(p.id, false, back);
-                        }
-                        catch (e) {
-                            error.textContent = e instanceof Error ? e.message : 'Revisa el monto.';
-                        }
+                        const button = event.currentTarget;
+                        const payment = { id: newId(), personId: p.id, amount: value, day: host.today() };
+                        button.disabled = true;
+                        if (await attempt(current => Store().addPayment(current, payment), `Pago de ${money(value)} · ${p.name}`, render, error) && button.isConnected)
+                            openAccount(p.id, false, back);
+                        else
+                            button.disabled = false;
                     } }, 'Guardar pago'));
             }
-            return [sheetHead(`${p.name} · ${p.num}`, p.employee ? p.role : 'Cliente · ' + p.role),
-                h('div', { class: 'comida-total' }, h('span', { text: debt > 0 ? 'Debe' : 'Al día' }), h('b', { style: debt > 0 ? null : 'color: var(--success-color)' }, roll('acc' + p.id, money(Math.max(0, debt))))),
+            return [sheetHead([p.name, p.num].filter(Boolean).join(' · '), p.employee ? p.role : 'Cliente · ' + p.role),
+                h('div', { class: 'comida-total' }, h('span', { text: balanceLabel(debt) }), h('b', { style: debt > 0 ? null : 'color: var(--success-color)' }, roll('acc' + p.id, money(Math.abs(debt))))),
                 h('div', { class: 'stats-filters comida-stats' }, statCard('Comprado', money(sum(mine, o => o.price))), statCard('Pagado', money(sum(paid, x => x.amount))), statCard('Platos', String(mine.length))),
                 counts.size > 0 && [h('div', { class: 'comida-kicker', text: 'Lo que ha comprado' }), h('div', { class: 'comida-chips' }, [...counts.values()].sort((a, b) => b.n - a.n).map(c => h('span', { class: 'category-pill', text: `${c.label} × ${c.n}` })))],
                 payBox,
-                h('div', { class: 'comida-row' }, h('button', { type: 'button', class: 'btn-full btn-primary', disabled: debt <= 0, onclick: () => openAccount(p.id, !paying, back) }, paying ? 'Cancelar pago' : 'Registrar pago'), h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: () => messageSheet('Cuenta de ' + p.name, 'Para que la revise antes de pagar', () => accountText(p)) }, 'Enviar cuenta')),
+                h('div', { class: 'comida-row' }, h('button', { type: 'button', class: 'btn-full btn-primary', disabled: debt <= 0, onclick: () => openAccount(p.id, !paying, back) }, paying ? 'Cancelar pago' : 'Registrar pago'), h('button', { type: 'button', class: 'btn-full btn-secondary', onclick: () => messageSheet('Cuenta de ' + p.name, 'Resumen de movimientos y saldo', () => ({ body: accountText(p) })) }, 'Enviar cuenta')),
                 h('div', { class: 'comida-kicker', text: 'Movimientos' }),
                 days.size ? h('div', { class: 'comida-panel' }, [...days].sort((a, b) => (a[0] < b[0] ? 1 : -1)).slice(0, 40).map(([day, d]) => h('div', { class: 'comida-mrow' }, h('span', { text: shortDay(day) }), h('span', { text: d.bought.length ? summary(d.bought) : '' }), h('b', { text: d.bought.length ? money(sum(d.bought, o => o.price)) : '' }), h('b', { style: 'color: var(--success-color)', text: d.paid ? '-' + money(d.paid) : '' }))))
                     : h('div', { class: 'comida-empty', text: 'Sin movimientos.' }),
@@ -652,8 +932,9 @@
             return [sheetHead('Nuevo cliente', `Recibirá el número ${next}. No se le toma asistencia.`),
                 h('label', { class: 'comida-label', for: 'comida-client-name', text: 'Nombre' }), name,
                 h('label', { class: 'comida-label', for: 'comida-client-ref', text: 'Referencia' }), ref,
-                h('button', { type: 'button', class: 'btn-full btn-primary', onclick: () => {
-                        if (attempt(() => Store().addClient(s(), { id: newId(), name: name.value, ref: ref.value }), `${name.value.trim()} agregado como ${next}`))
+                h('button', { type: 'button', class: 'btn-full btn-primary', onclick: async () => {
+                        const client = { id: newId(), name: name.value, ref: ref.value };
+                        if (await attempt(current => Store().addClient(current, client), `${client.name.trim()} agregado`))
                             closeSheet();
                     } }, 'Agregar cliente')];
         });
@@ -669,9 +950,18 @@
     }
     function init(options) {
         host = options;
-        repo = g.ComidaRepository.createComidaRepository({ storage: options.storage, today: options.today, newId });
+        repo = g.ComidaRepository.createComidaRepository({ storage: options.storage, today: options.today, newId, locks: navigator.locks, indexedDB: globalThis.indexedDB });
         state = repo.load();
         view.day = options.today();
+        window.addEventListener('storage', event => {
+            if (event.storageArea !== options.storage || (event.key !== g.ComidaRepository.STORAGE_KEY && event.key !== null) || !repo)
+                return;
+            state = repo.load(s());
+            options.onNavSlotChange();
+            if (!options.root.classList.contains('hidden'))
+                render();
+            document.querySelectorAll('[data-comida-employee]').forEach(button => paintEmployeeFoodButton(button, button.dataset.comidaEmployee || ''));
+        });
     }
     function enter() {
         if (!host)
@@ -683,30 +973,49 @@
     function navSlot() {
         return state ? state.navSlot : null;
     }
-    function setNavSlot(slot) {
-        if (!state)
-            return;
-        if (commit(Store().setNavSlot(state, slot)))
-            host === null || host === void 0 ? void 0 : host.onNavSlotChange();
+    async function setNavSlot(slot) {
+        const saved = await attempt(current => Store().setNavSlot(current, slot));
+        host === null || host === void 0 ? void 0 : host.onNavSlotChange();
+        return saved;
     }
     function hasDebt(personId) {
-        return !!state && Store().hasDebt(state, String(personId));
+        return !!repo && Store().hasDebt(repo.load(state !== null && state !== void 0 ? state : undefined), String(personId));
+    }
+    function paintEmployeeFoodButton(button, personId) {
+        const paused = s().pausedPersonIds.includes(personId);
+        button.setAttribute('aria-pressed', String(!paused));
+        button.title = paused ? 'Reactivar en Comida' : 'Pausar en Comida';
+    }
+    function employeeFoodButton(employee) {
+        if (!state)
+            return null;
+        const person = { id: String(employee.id), name: employee.name };
+        const button = h('button', { type: 'button', class: 'export-btn comida-employee-toggle', 'aria-label': `Comida para ${person.name}`, 'data-comida-employee': person.id }, h('span', { class: 'ic comida-employee-icon', 'data-icon': 'food', 'data-icon-vector': true, 'aria-hidden': 'true' }));
+        button.addEventListener('click', async () => {
+            if (await setPersonPaused(person, !s().pausedPersonIds.includes(person.id)))
+                paintEmployeeFoodButton(button, person.id);
+        });
+        paintEmployeeFoodButton(button, person.id);
+        return button;
     }
     function exportBackup() {
-        return state;
+        return (repo === null || repo === void 0 ? void 0 : repo.load(state !== null && state !== void 0 ? state : undefined)) || state;
     }
-    function importBackup(section) {
-        if (!host)
-            return;
+    async function importBackup(section, applyOther) {
+        if (!host || !repo)
+            throw new Error('Comida todavía no está lista para restaurarse.');
         const next = g.ComidaRepository.parseBackup(section, host.today(), newId());
-        commit(next);
+        const restored = await repo.restore(next, applyOther);
+        state = repo.load(restored);
+        render();
     }
     // The bar space that used to hold Reportes shows an empty slot until the user picks.
     function chooseNavSlot() {
-        const option = (slot, iconName, title, text) => h('button', { type: 'button', class: 'export-option comida-option', onclick: () => { setNavSlot(slot); host && host.openView(slot); } }, h('span', { class: 'comida-option-icon' }, icon(iconName)), h('span', {}, h('b', { text: title }), h('small', { text })));
+        const option = (slot, iconName, title, text) => h('button', { type: 'button', class: 'export-option comida-option', onclick: async () => { if (await setNavSlot(slot))
+                host === null || host === void 0 ? void 0 : host.openView(slot); } }, h('span', { class: 'comida-option-icon' }, icon(iconName)), h('span', {}, h('b', { text: title }), h('small', { text })));
         showSheet(() => [sheetHead('¿Qué quieres en este espacio?', 'Lo eliges una vez. Después se cambia desde Más.'),
             option('comida', 'food', 'Comida', 'Pedidos del día, cocina y facturación'),
             option('requests', 'requests', 'Reportes y Solicitudes', 'Lo que antes estaba en este lugar')]);
     }
-    return { init, enter, render, openAdd, closeSheet, navSlot, setNavSlot, chooseNavSlot, hasDebt, exportBackup, importBackup };
+    return { init, enter, render, openAdd, closeSheet, navSlot, setNavSlot, chooseNavSlot, hasDebt, employeeFoodButton, exportBackup, importBackup };
 });

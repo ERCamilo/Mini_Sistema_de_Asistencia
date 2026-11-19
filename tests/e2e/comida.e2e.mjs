@@ -28,6 +28,8 @@ async function device(theme = 'dark', fixture = {}) {
     localStorage.setItem('tutorialsSeen', '["marcar-asistencia"]');
     localStorage.setItem('appTheme', theme);
     if (fixture.comida) localStorage.setItem('miniComidaV1', JSON.stringify(fixture.comida));
+    if (fixture.workContexts) localStorage.setItem('local_work_contexts_v1', JSON.stringify(fixture.workContexts));
+    if (fixture.activeContext) localStorage.setItem('local_work_active_context_v1', fixture.activeContext);
   }, { today: keyOf(new Date()), theme, fixture });
   await page.goto(base, { waitUntil: 'networkidle' });
   if (await page.waitForSelector('#mini-welcome-name', { timeout: 4000 }).then(() => true, () => false)) {
@@ -53,6 +55,7 @@ test('the empty bar slot is chosen once, and Más can swap it back', async () =>
   assert.equal(await page.isVisible('#nav-comida'), true);
   await page.click('#nav-more');
   await page.click('#more-section-requests-toggle + .toggle-slider');
+  await page.locator('#nav-requests').waitFor();
   assert.equal(await page.isVisible('#nav-requests'), true);
   assert.equal(await page.isVisible('#nav-comida'), false);
   assert.equal((await saved(page)).navSlot, 'requests');
@@ -84,6 +87,7 @@ test('a full day: dish, orders, kitchen message, purchase, partial payment and c
   await page.click('[data-person="u1"]');
   await page.click('[data-person="u1"]');
   await page.click('[data-person="u2"]');
+  await page.locator('[data-comida-roll="plates"][aria-label="3"]').waitFor();
   let state = await saved(page);
   assert.equal(state.orders.length, 3);
   assert.equal(state.orders[0].price, 250, 'el precio queda congelado en el pedido');
@@ -102,6 +106,7 @@ test('a full day: dish, orders, kitchen message, purchase, partial payment and c
   await page.waitForTimeout(400);
   assert.match(await page.textContent('.comida-note'), /Pedido enviado/);
   await page.click('[data-person="u2"]');
+  await page.locator('.comida-note', { hasText: '1 plato nuevo' }).waitFor();
   assert.match(await page.textContent('.comida-note'), /Cambió desde el último envío: 1 plato nuevo/);
 
   // A client through the central +
@@ -207,6 +212,11 @@ test('cards are ordered by number and open the food calendar, with reversible fo
 
   await page.getByRole('button', { name: 'Ver calendario de pedidos de Juan Pérez' }).click();
   await sheetOpen(page);
+  await page.setViewportSize({ width: 320, height: 844 });
+  const calendarFit = await sheet.locator('.comida-calendar-scroll').evaluate(calendar => ({ width: calendar.clientWidth, content: calendar.scrollWidth, days: getComputedStyle(calendar.querySelector('.calendar-grid')).gridTemplateColumns.split(' ').length }));
+  assert.equal(calendarFit.width, calendarFit.content);
+  assert.equal(calendarFit.days, 7);
+  await page.setViewportSize(PHONE);
   assert.match(await sheet.locator('.comida-calendar-detail').innerText(), /Pollo guisado/);
   assert.equal(await sheet.getByRole('button', { name: 'Mes siguiente' }).isDisabled(), true);
   await sheet.getByRole('button', { name: 'Mes anterior' }).click();
@@ -246,4 +256,382 @@ test('cards are ordered by number and open the food calendar, with reversible fo
   assert.deepEqual((await saved(page)).pausedPersonIds, []);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test('the Pedidos date uses the shared calendar without changing the attendance date', async () => {
+  const today = new Date();
+  const closedDay = keyOf(new Date(today.getFullYear(), today.getMonth() - 1, 8));
+  const { context, page, errors } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida',
+      orders: [{ id: 'o1', personId: 'u1', day: closedDay, dishId: 'd1', dishName: 'Res', dishEmoji: '🥩', price: 300, cost: 150 }],
+      periods: [{ id: 'p1', start: closedDay, end: closedDay }, { id: 'p2', start: keyOf(today), end: null }]
+    }
+  });
+  try {
+    const attendanceDate = await page.textContent('#header-date');
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.click('#nav-comida');
+    const date = page.getByRole('button', { name: /Elegir fecha de pedidos/ });
+    const calendar = page.locator('#modal-date-jump');
+    const nextMonth = calendar.locator('#datejump-next');
+    assert.equal(await date.count(), 1);
+    await date.press('Enter');
+    await calendar.waitFor();
+    assert.equal(await calendar.getByRole('button', { name: 'Mes anterior' }).isVisible(), true);
+    assert.equal(await calendar.getByRole('button', { name: 'Mes siguiente' }).isVisible(), true);
+    const dateCells = await calendar.locator('#datejump-grid').evaluate(el => ({ width: el.clientWidth, content: el.scrollWidth, dayHeight: el.querySelector('button').getBoundingClientRect().height }));
+    assert.equal(dateCells.width, dateCells.content);
+    assert.ok(dateCells.dayHeight >= 44);
+    assert.equal(await calendar.locator('.dj-selected').getAttribute('aria-label'), String(today.getDate()));
+    assert.equal(await nextMonth.isDisabled(), true);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    if (today.getDate() < monthEnd) {
+      assert.equal(await calendar.getByRole('button', { name: String(today.getDate() + 1), exact: true }).isDisabled(), true);
+    }
+
+    await calendar.locator('#datejump-prev').click();
+    assert.equal(await nextMonth.isEnabled(), true);
+    await calendar.getByRole('button', { name: '8', exact: true }).click();
+    await calendar.waitFor({ state: 'hidden' });
+    assert.match(await date.innerText(), /8 .*cerrado/);
+    assert.match(await page.locator('#comida-view .comida-today').innerText(), /RD\$300/);
+    assert.ok(await page.isVisible('#comida-view .comida-band'));
+
+    await date.click();
+    assert.equal(await calendar.locator('.dj-selected').getAttribute('aria-label'), '8');
+    await calendar.locator('#datejump-today').click();
+    assert.match(await date.innerText(), /Hoy/);
+    await page.click('#nav-attendance');
+    assert.equal(await page.textContent('#header-date'), attendanceDate);
+    await page.click('#date-jump-trigger');
+    assert.equal(await nextMonth.isEnabled(), true);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('billing stacks client and staff sales with a readable daily breakdown', async () => {
+  const today = new Date();
+  const first = keyOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2));
+  const yesterday = keyOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1));
+  const order = (id, personId, day, price) => ({ id, personId, day, price, dishId: 'd1', dishName: 'Res', dishEmoji: '🥩', cost: 80 });
+  const { context, page, errors } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida',
+      clients: [{ id: 'c1', name: 'Pedro', num: 'C01', ref: '' }],
+      orders: [order('o1', 'former-employee', first, 200), order('o2', 'c1', first, 400), order('o3', 'c1', keyOf(today), 300)],
+      periods: [{ id: 'p1', start: first, end: null }]
+    }
+  });
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.click('#nav-comida');
+    await page.getByRole('button', { name: 'Facturación' }).click();
+    const chart = page.getByRole('slider', { name: 'Ventas por día del período' });
+    const parts = chart.locator(`[data-day="${first}"]`);
+    const clients = parts.locator('.comida-sales-client');
+    const staff = parts.locator('.comida-sales-staff');
+    assert.equal(await chart.locator('[data-day]').count(), 3);
+    assert.equal(await clients.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(234, 88, 12)');
+    assert.equal(await staff.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(96, 165, 250)');
+    const clientHeight = (await clients.boundingBox()).height;
+    const staffHeight = (await staff.boundingBox()).height;
+    assert.ok(Math.abs(clientHeight - 2 * staffHeight) < 1);
+    assert.equal(await chart.locator(`[data-day="${yesterday}"].is-zero`).count(), 1);
+    assert.match(await parts.getAttribute('title'), /Clientes RD\$400 · Personal RD\$200 · Total RD\$600/);
+    await chart.press('Home');
+    assert.match(await chart.getAttribute('aria-valuetext'), /Clientes RD\$400.*Personal RD\$200/);
+    await chart.press('ArrowRight');
+    assert.match(await page.locator('.comida-sale-values').innerText(), /Total RD\$0/);
+    await parts.click();
+    assert.match(await page.locator('.comida-sale-values').innerText(), /Total RD\$600/);
+    await page.getByRole('button', { name: 'Semanas', exact: true }).click();
+    assert.ok(await page.getByRole('slider', { name: 'Ventas por semana del período' }).isVisible());
+    await page.getByText('Importes por día', { exact: true }).click();
+    const table = page.locator('.comida-sales-table');
+    assert.equal(await table.isVisible(), true);
+    assert.deepEqual(await table.locator('thead th').allTextContents(), ['Fecha', 'Clientes', 'Personal']);
+    assert.deepEqual(await table.locator('tbody tr').first().locator('td').allTextContents(), ['RD$400', 'RD$200']);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('the food toggle in Empleados changes only the food pause and keeps focus', async () => {
+  const { context, page, errors } = await device('dark', {
+    comida: { schemaVersion: 1, navSlot: 'comida', pausedPersonIds: ['u1'] }
+  });
+  try {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await page.click('#nav-employees');
+    const card = page.locator('#employees-container .user-card', { hasText: 'Juan Pérez' });
+    const toggle = card.getByRole('button', { name: 'Comida para Juan Pérez' });
+    const roster = await page.evaluate(() => localStorage.getItem('users'));
+    assert.equal(await toggle.count(), 1);
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    assert.equal(await toggle.getAttribute('title'), 'Reactivar en Comida');
+    const bounds = await toggle.boundingBox();
+    assert.ok(bounds.width >= 44 && bounds.height >= 44 && bounds.x + bounds.width <= 320);
+    await toggle.click();
+    await card.locator('.comida-employee-toggle[aria-pressed="true"]').waitFor();
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+    assert.equal(await toggle.evaluate(el => el === document.activeElement), true);
+    assert.equal(await toggle.getAttribute('title'), 'Pausar en Comida');
+    assert.equal(await card.getByRole('button', { name: 'Pausar empleado', exact: true }).isVisible(), true);
+    assert.deepEqual((await saved(page)).pausedPersonIds, []);
+
+    await page.click('#nav-comida');
+    assert.equal(await page.getByRole('button', { name: 'Ver calendario de pedidos de Juan Pérez' }).isVisible(), true);
+    await page.click('#nav-employees');
+    await toggle.click();
+    await card.locator('.comida-employee-toggle[aria-pressed="false"]').waitFor();
+    assert.equal(await page.evaluate(() => localStorage.getItem('users')), roster);
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.click('#nav-employees');
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    assert.deepEqual((await saved(page)).pausedPersonIds, ['u1']);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('screen titles stay centered with and without the connections button', async () => {
+  const { context, page } = await device();
+  try {
+    const title = page.locator('#section-title');
+    const header = page.locator('.top-nav');
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const [view, label] of [['attendance', 'Asistencia'], ['requests', 'Reportes y Solicitudes'], ['employees', 'Empleados'], ['comida', 'Comida'], ['more', 'Más']]) {
+        await page.evaluate(target => switchView(target), view);
+        assert.equal(await title.textContent(), label);
+        const { x, width: titleWidth } = await title.boundingBox();
+        const { x: headerX, width: headerWidth } = await header.boundingBox();
+        assert.ok(Math.abs(x + titleWidth / 2 - (headerX + headerWidth / 2)) < 1, `${label} at ${width}px`);
+        assert.equal(await page.locator('#btn-attendance-link').isVisible(), view === 'attendance');
+      }
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+test('a first-time user can backfill an earlier order and see it in billing', async () => {
+  const today = new Date();
+  const earlier = keyOf(new Date(today.getFullYear(), today.getMonth() - 1, 7));
+  const { context, page, errors } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida',
+      dishes: [{ id: 'd1', name: 'Res', emoji: '🥩', price: 300, cost: 150, onMenu: true }]
+    }
+  });
+  try {
+    await page.click('#nav-comida');
+    await page.getByRole('button', { name: /Elegir fecha de pedidos/ }).click();
+    const calendar = page.locator('#modal-date-jump');
+    await calendar.locator('#datejump-prev').click();
+    await calendar.getByRole('button', { name: '7', exact: true }).click();
+    const add = page.locator('[data-person="u1"]');
+    assert.equal(await add.count(), 1);
+    await add.click();
+    await add.click();
+    await page.getByRole('button', { name: 'Quitar un plato a Juan Pérez' }).click();
+    await page.getByRole('button', { name: 'Pedido de Juan Pérez' }).click();
+    await page.getByText('Editar precios históricos', { exact: true }).click();
+    await page.locator('#comida-history-price-0').fill('225');
+    await page.getByRole('button', { name: 'Guardar precios', exact: true }).click();
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('miniComidaV1')).orders[0].price === 225);
+    await page.locator('#comida-history-price-0').waitFor({ state: 'hidden' });
+    await page.locator('#comida-note').fill('Sin ensalada');
+    await page.getByRole('button', { name: 'Listo', exact: true }).click();
+    await page.locator('#comida-sheet').waitFor({ state: 'hidden' });
+    const state = await saved(page);
+    assert.deepEqual(state.orders.map(order => order.day), [earlier]);
+    assert.equal(state.orders[0].price, 225);
+    assert.equal(state.dishes[0].price, 300);
+    assert.equal(state.notes[`u1@${earlier}`], 'Sin ensalada');
+    assert.equal(state.periods[0].start, earlier);
+    await page.getByRole('button', { name: 'Facturación' }).click();
+    assert.match(await page.locator(`.comida-bars [data-day="${earlier}"]`).getAttribute('title'), /Personal RD\$225/);
+    assert.deepEqual(errors, []);
+  } finally {
+    await context.close();
+  }
+});
+
+test('the food canvas and orange numbers are readable in all five themes', async () => {
+  const { context, page } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida',
+      dishes: [{ id: 'd1', name: 'Pollo', emoji: '🍗', price: 250, cost: 140, onMenu: true }]
+    }
+  });
+  const luminance = rgb => rgb.match(/\d+/g).slice(0, 3).map(channel => {
+    const value = Number(channel) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  }).reduce((l, value, i) => l + value * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => {
+    const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  try {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.addStyleTag({ content: 'body { transition: none !important; }' });
+    for (const theme of ['dark', 'light', 'contrast', 'ocean', 'sol']) {
+      await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+      const attendance = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+      await page.click('#nav-comida');
+      const colors = await page.evaluate(() => {
+        const style = selector => getComputedStyle(document.querySelector(selector));
+        return {
+          canvas: style('body').backgroundColor,
+          contentBackground: style('#comida-view .dashboard-panel').backgroundColor,
+          surface: style('#comida-view .stat-card').backgroundColor,
+          rosterSurface: style('#users-container .user-card').backgroundColor,
+          count: style('#comida-view .stat-value').color,
+          number: style('#comida-view .comida-avatar').color,
+          numberBackground: style('#comida-view .comida-avatar').backgroundColor,
+          quantity: style('#comida-view .comida-step-n').color,
+          orderButton: style('#comida-view .comida-send').backgroundColor,
+          orderButtonText: style('#comida-view .comida-send').color
+        };
+      });
+      assert.notEqual(colors.canvas, attendance, theme);
+      assert.notEqual(colors.canvas, colors.surface, theme);
+      assert.equal(colors.contentBackground, 'rgba(0, 0, 0, 0)', theme);
+      assert.equal(colors.surface, colors.rosterSurface, theme);
+      const [red, green, blue] = colors.canvas.match(/\d+/g).slice(0, 3).map(Number);
+      assert.ok(red > green && green >= blue, `${theme}: warm canvas`);
+      assert.equal(colors.count, colors.number, theme);
+      assert.equal(colors.count, colors.quantity, theme);
+      assert.ok(contrast(colors.count, colors.surface) >= 4.5, `${theme}: counts`);
+      assert.ok(contrast(colors.number, colors.numberBackground) >= 4.5, `${theme}: employee number`);
+      assert.ok(contrast(colors.orderButtonText, colors.orderButton) >= 4.5, `${theme}: send button`);
+      await page.click('#nav-attendance');
+      assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), attendance, theme);
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+for (const fallback of [false, true]) test(`orders from two open tabs survive with ${fallback ? 'IndexedDB' : 'Web Locks'}, and the counter keeps focus`, async () => {
+  const { context, page } = await device('dark', {
+    comida: { schemaVersion: 1, navSlot: 'comida', dishes: [{ id: 'd', name: 'Pollo', emoji: '🍗', price: 250, cost: 120, onMenu: true }] }
+  });
+  try {
+    if (fallback) {
+      await context.addInitScript(() => { Object.defineProperty(navigator, 'locks', { value: undefined }); });
+      await page.reload({ waitUntil: 'networkidle' });
+    }
+    const other = await context.newPage();
+    await other.goto(base, { waitUntil: 'networkidle' });
+    await page.click('#nav-comida');
+    await other.click('#nav-comida');
+    const add = page.locator('[data-person="u1"]');
+    await add.focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('miniComidaV1'))?.orders?.length === 2);
+    assert.equal(await add.evaluate(button => button === document.activeElement), true);
+    await Promise.all([add.click(), other.click('[data-person="u2"]')]);
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('miniComidaV1'))?.orders?.length === 4);
+    assert.deepEqual((await saved(page)).orders.map(order => order.personId).sort(), ['u1', 'u1', 'u1', 'u2']);
+    await other.waitForFunction(() => document.querySelector('[data-comida-roll="plates"]').getAttribute('aria-label') === '4');
+  } finally { await context.close(); }
+});
+
+test('closing and kitchen messages cover workers outside the selected site', async () => {
+  const today = keyOf(new Date());
+  const { context, page } = await device('dark', {
+    users: [{ id: 'u1', name: 'Juan Pérez', number: '1', workContextId: 'a' }, { id: 'u2', name: 'María Gómez', number: '2', workContextId: 'b' }],
+    workContexts: [{ id: 'a', name: 'Obra A', type: 'project' }, { id: 'b', name: 'Obra B', type: 'project' }], activeContext: 'a',
+    comida: {
+      schemaVersion: 1, navSlot: 'comida', dishes: [{ id: 'd', name: 'Pollo', emoji: '🍗', price: 300, cost: 120, onMenu: true }],
+      orders: [{ id: 'o', personId: 'u2', dishId: 'd', dishName: 'Pollo', dishEmoji: '🍗', price: 300, cost: 120, day: today }],
+      notes: { [`u2@${today}`]: 'Sin ensalada' }
+    }
+  });
+  try {
+    await page.click('#nav-comida');
+    assert.equal(await page.getByRole('button', { name: 'Pedido de María Gómez' }).isVisible(), false);
+    await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+    assert.match(await page.locator('#comida-sheet .comida-msg').innerText(), /María Gómez: Sin ensalada/);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Facturación' }).click();
+    assert.match(await page.locator('.comida-debtor').innerText(), /María Gómez.*RD\$300/s);
+    await page.getByRole('button', { name: 'Cerrar período', exact: true }).click();
+    assert.match(await page.locator('#comida-sheet .comida-note').innerText(), /Quedan RD\$300 por cobrar/);
+  } finally { await context.close(); }
+});
+
+test('a changed note requires a fresh kitchen message and a paid correction shows credit', async () => {
+  const today = keyOf(new Date());
+  const { context, page } = await device('dark', {
+    comida: {
+      schemaVersion: 1, navSlot: 'comida', dishes: [{ id: 'd', name: 'Pollo', emoji: '🍗', price: 300, cost: 120, onMenu: true }],
+      orders: [{ id: 'o', personId: 'u1', dishId: 'd', dishName: 'Pollo', dishEmoji: '🍗', price: 300, cost: 120, day: today }],
+      payments: [{ id: 'p', personId: 'u1', amount: 300, day: today }], notes: { [`u1@${today}`]: 'Sin ensalada' }
+    }
+  });
+  try {
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => {} } }));
+    await page.click('#nav-comida');
+    const sheet = page.locator('#comida-sheet');
+    await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+    await sheet.getByRole('button', { name: 'Copiar', exact: true }).click();
+    await sheet.getByRole('button', { name: 'Ya lo envié' }).click();
+    await sheet.waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: 'Pedido de Juan Pérez' }).click();
+    await sheet.locator('#comida-note').fill('Sin sal');
+    await sheet.getByRole('button', { name: 'Listo', exact: true }).click();
+    await sheet.waitFor({ state: 'hidden' });
+    assert.match(await page.locator('#comida-view .comida-note').innerText(), /notas actualizadas/);
+    await page.getByRole('button', { name: 'Enviar Pedido' }).click();
+    assert.match(await sheet.locator('.comida-msg').innerText(), /Sin sal/);
+    assert.equal(await sheet.getByRole('button', { name: 'Ya lo envié' }).isVisible(), false);
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Quitar un plato a Juan Pérez' }).click();
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('miniComidaV1')).orders.length === 0);
+    await page.getByRole('button', { name: 'Facturación' }).click();
+    await page.locator('.comida-debtor', { hasText: 'Saldo a favor' }).click();
+    assert.equal(await sheet.locator('.comida-total .comida-roll').getAttribute('aria-label'), 'RD$300');
+    await sheet.getByRole('button', { name: 'Enviar cuenta' }).click();
+    assert.match(await sheet.locator('.comida-msg').innerText(), /Saldo a favor: RD\$300/);
+  } finally { await context.close(); }
+});
+
+test('a quota failure leaves the food backup unapplied and can be retried', async () => {
+  const { context, page } = await device('dark', { comida: { schemaVersion: 1, navSlot: 'comida' } });
+  try {
+    const payload = await page.evaluate(() => {
+      const backup = buildMiniBackupData();
+      backup.users[0].name = 'Nombre restaurado';
+      backup.comida = { ...window.ComidaUI.exportBackup(), clients: [{ id: 'c1', num: 'C01', name: 'Cliente restaurado', ref: '' }] };
+      openModal('modal-restore-backup');
+      return JSON.stringify(backup);
+    });
+    await page.locator('#restore-backup-textarea').fill(payload);
+    await page.evaluate(() => {
+      window.realStoreWrite = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'miniComidaV1') throw new DOMException('Cuota de prueba', 'QuotaExceededError');
+        return window.realStoreWrite.call(this, key, value);
+      };
+    });
+    const restore = page.locator('#btn-do-restore');
+    await restore.click();
+    await page.waitForFunction(() => document.getElementById('restore-validation-msg').textContent.includes('Error al restaurar'));
+    assert.equal(await page.evaluate(() => employeeRepository.getById('u1').name), 'Juan Pérez');
+    assert.equal((await saved(page)).clients?.length || 0, 0);
+    await page.evaluate(() => { Storage.prototype.setItem = window.realStoreWrite; });
+    await restore.click();
+    await page.waitForFunction(() => document.getElementById('restore-validation-msg').textContent.includes('Respaldo restaurado'));
+    assert.equal(await page.evaluate(() => employeeRepository.getById('u1').name), 'Nombre restaurado');
+    assert.equal((await saved(page)).clients[0].name, 'Cliente restaurado');
+  } finally { await context.close(); }
 });

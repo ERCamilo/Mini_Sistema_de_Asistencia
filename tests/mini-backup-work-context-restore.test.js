@@ -8,7 +8,8 @@ test('Mini backup restore accepts canonical workContexts snapshot including empt
   assert.match(html, /parsed\.workContexts && typeof parsed\.workContexts === 'object'/);
   assert.match(html, /Array\.isArray\(parsed\.workContexts\.contexts\)/);
   assert.match(html, /workContextsSnapshot = \{/);
-  assert.match(html, /window\.workContextManager\.importSnapshot\(workContextsSnapshot\)/);
+  assert.match(html, /workContexts: workContextsSnapshot \}/);
+  assert.match(html, /window\.workContextManager\?\.importSnapshot\(state\.workContexts\)/);
 });
 
 test('Mini backup restore keeps legacy workContexts array compatibility by normalizing it', () => {
