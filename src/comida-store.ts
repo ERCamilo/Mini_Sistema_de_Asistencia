@@ -176,6 +176,23 @@ interface ComidaStoreLedger {
     return { ...state, orders: state.orders.filter((_, i) => i !== index) };
   }
 
+  function setHistoricPrices(state: ComidaStoreState, personId: string, day: string, today: string, prices: { id: string; previous: number; price: number }[]): ComidaStoreState {
+    requireOpenDay(state, day);
+    if (day >= today) throw new Error('Elige una fecha anterior para corregir el precio histórico.');
+    const updates = new Map<string, number>();
+    for (const entry of prices) {
+      if (!Number.isSafeInteger(entry.price) || entry.price < 0) throw new Error('Escribe un precio entero de cero o más.');
+      const order = state.orders.find(item => item.id === entry.id && item.day === day && item.personId === personId);
+      if (!order || order.price !== entry.previous) throw new Error('El pedido cambió. Vuelve a abrirlo para revisar sus precios.');
+      if (order.price !== entry.price) updates.set(order.id, entry.price);
+    }
+    if (!updates.size) return state;
+    return { ...state, orders: state.orders.map(order => {
+      const price = updates.get(order.id);
+      return order.day === day && order.personId === personId && price !== undefined ? { ...order, price } : order;
+    }) };
+  }
+
   function repeatLastOrder(state: ComidaStoreState, personId: string, day: string, newId: () => string): ComidaStoreState {
     const previous = state.orders.filter(o => o.personId === personId && o.day < day).map(o => o.day).sort().pop();
     if (!previous) throw new Error('No hay un pedido anterior para repetir.');
@@ -184,8 +201,10 @@ interface ComidaStoreLedger {
   }
 
   function setNote(state: ComidaStoreState, personId: string, day: string, text: string): ComidaStoreState {
+    requireOpenDay(state, day);
     const notes = { ...state.notes };
     const clean = String(text || '').trim();
+    if ((notes[personId + '@' + day] || '') === clean) return state;
     if (clean) notes[personId + '@' + day] = clean;
     else delete notes[personId + '@' + day];
     return { ...state, notes };
@@ -253,8 +272,9 @@ interface ComidaStoreLedger {
     return { ...state, payments: [...state.payments, { id: input.id, personId: input.personId, amount: input.amount, day: input.day }] };
   }
 
-  function markSent(state: ComidaStoreState, day: string): ComidaStoreState {
-    return { ...state, sent: { ...state.sent, [day]: ledger().orderSignature(state.orders, day) } };
+  function markSent(state: ComidaStoreState, day: string, signature = ledger().orderSignature(state.orders, day)): ComidaStoreState {
+    requireOpenDay(state, day);
+    return { ...state, sent: { ...state.sent, [day]: signature } };
   }
 
   function closePeriod(state: ComidaStoreState, today: string, nextId: string): ComidaStoreState {
@@ -275,7 +295,7 @@ interface ComidaStoreLedger {
   }
 
   return {
-    emptyState, normalizeState, addOrder, removeLastOrder, repeatLastOrder, setNote, addClient, setPersonPaused, saveDish, setDishOnMenu,
+    emptyState, normalizeState, addOrder, removeLastOrder, setHistoricPrices, repeatLastOrder, setNote, addClient, setPersonPaused, saveDish, setDishOnMenu,
     addCategory, removeCategory, savePurchase, removePurchase, addPayment, markSent, closePeriod, setNavSlot,
     setWithPrices, hasDebt
   };

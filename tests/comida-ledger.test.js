@@ -101,6 +101,21 @@ test('a price change for the same dish counts as a change', () => {
   assert.equal(Ledger.changesSinceSent(sent, [order('a', 'e1', 'd1', 'Pollo', 275, 'D')], 'D').changed, true);
 });
 
+test('a kitchen resend detects added, changed and removed notes independently of plates', () => {
+  const notes = [{ name: 'Ana', text: 'Sin ensalada' }];
+  const sent = Ledger.kitchenSignature(orders, '2026-11-02', notes);
+  assert.equal(Ledger.changesSinceSent(sent, orders, '2026-11-02', notes).changed, false);
+  for (const current of [[], [{ name: 'Ana', text: 'Sin sal' }]]) {
+    assert.deepEqual(Ledger.changesSinceSent(sent, orders, '2026-11-02', current), { added: 0, removed: 0, changed: true, notesChanged: true });
+  }
+  assert.equal(Ledger.changesSinceSent(Ledger.orderSignature(orders, '2026-11-02'), orders, '2026-11-02', notes).notesChanged, true);
+});
+
+test('account balances include orders outside the current roster and credit after corrections', () => {
+  const balances = Ledger.accountBalances(orders, [pay('p', 'e2', 300, '2026-11-05'), pay('q', 'historic', 400, '2026-11-05')]);
+  assert.deepEqual([...balances], [['e1', 850], ['e2', -50], ['historic', -400]]);
+});
+
 test('closing a period includes today and opens the next one tomorrow', () => {
   const periods = [{ id: 'p1', start: '2026-10-27', end: null }];
   const next = Ledger.closePeriod(periods, '2026-11-16', 'p2');
@@ -158,6 +173,18 @@ test('daily sales split clients and staff and keep empty days in the period', ()
     { day: '2026-11-02', clients: 200, staff: 0 }
   ]);
   assert.deepEqual(Ledger.dailySales(sales, clients, '2026-11-03', '2026-11-02'), []);
+});
+
+test('weekly sales start a new bucket on Monday and preserve partial weeks', () => {
+  const days = [
+    { day: '2026-11-01', clients: 350, staff: 250 },
+    { day: '2026-11-02', clients: 0, staff: 30 },
+    { day: '2026-11-03', clients: 200, staff: 0 }
+  ];
+  assert.deepEqual(Ledger.weeklySales(days), [
+    { day: '2026-11-01', end: '2026-11-01', clients: 350, staff: 250 },
+    { day: '2026-11-02', end: '2026-11-03', clients: 200, staff: 30 }
+  ]);
 });
 
 test('period summary: sold, collected, purchases and profit = sold minus purchases', () => {

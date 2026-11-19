@@ -3,15 +3,16 @@
   "changelog": [
     {
       "version": "2.19.1",
-      "date": "2026-11-18",
+      "date": "2026-11-19",
       "title": "Calendario y ventas de Comida",
       "items": [
-        "Toca la fecha arriba en Pedidos para elegir un día en el calendario o volver a hoy.",
-        "Antes del primer cierre, puedes cargar pedidos de días anteriores a cuando empezaste a usar Comida.",
-        "En Facturación, distingue las ventas de clientes en naranja y las del personal en azul.",
+        "Toca la fecha arriba en Pedidos para elegir un día. Antes del primer cierre puedes cargar pedidos previos a tu primer uso de Comida.",
+        "Edita el precio de cada plato histórico en el período abierto y revisa los saldos a favor en Cuenta.",
+        "Explora las ventas por día o semana. Clientes se muestran en naranja y Personal en azul. El cierre incluye todas las obras.",
+        "Los pedidos guardados en distintas pestañas se conservan y Cocina avisa cuando cambian las notas enviadas.",
+        "Mini verifica el guardado de Comida al restaurar un archivo de respaldo.",
         "Desde Empleados, toca el icono de Comida para pausar o reactivar sus pedidos.",
-        "El fondo cálido y los números en naranja distinguen Comida de Asistencia.",
-        "Los títulos de las pantallas quedan centrados."
+        "El fondo cálido, los números en naranja y los títulos centrados facilitan reconocer cada pantalla."
       ]
     },
     {

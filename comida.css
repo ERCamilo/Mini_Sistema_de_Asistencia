@@ -100,13 +100,15 @@ body.comida-mode #section-title { color: var(--accent-color); }
 .comida-money { flex: none; font-weight: 800; padding-right: 6px; font-variant-numeric: tabular-nums; }
 
 .comida-calendar-nav { margin-bottom: 12px; }
-.comida-calendar-nav .cal-nav-btn { display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; }
+.comida-calendar-nav .cal-nav-btn, #modal-date-jump .cal-nav-btn { display: grid; place-items: center; width: 44px; height: 44px; cursor: pointer; }
 .comida-calendar-nav .cal-nav-btn:disabled { opacity: .45; cursor: default; }
 .comida-cal-month { text-transform: capitalize; }
-.comida-calendar-scroll { overflow-x: auto; margin-bottom: 12px; }
-.comida-calendar { grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 4px; margin-bottom: 0; }
+.comida-calendar-scroll { margin-bottom: 12px; }
+.calendar-grid.comida-calendar, #datejump-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.calendar-grid.comida-calendar { margin-bottom: 0; }
 .comida-calendar .cal-header { margin-bottom: 4px; }
-.comida-calendar .cal-day { min-height: 44px; color: var(--comida-number); }
+.comida-calendar .cal-day, #datejump-grid .cal-day { aspect-ratio: auto; min-width: 0; min-height: 44px; padding: 0; }
+.comida-calendar .cal-day { color: var(--comida-number); }
 .comida-calendar button { cursor: pointer; }
 .comida-calendar .cal-day.has-data { background: color-mix(in srgb, var(--accent-color) 24%, var(--card-bg)); }
 .comida-calendar .cal-day[aria-pressed="true"] { border: 2px solid var(--accent-color); font-weight: 800; }
@@ -117,7 +119,8 @@ body.comida-mode #modal-date-jump .dj-selected { color: var(--comida-on-accent);
 .comida-calendar-order { display: flex; justify-content: space-between; gap: 8px; }
 .comida-calendar-order b:last-child { flex: none; }
 @media (max-width: 374px) {
-  .comida-calendar-scroll { margin-inline: -8px; }
+  .comida-calendar-scroll, #datejump-grid { margin-inline: -12px; }
+  .calendar-grid.comida-calendar, #datejump-grid { column-gap: 2px; }
 }
 
 /* contador − 0 + : el − se apaga en 0; el + toma el acento cuando la persona ya pidió */
@@ -128,6 +131,7 @@ body.comida-mode #modal-date-jump .dj-selected { color: var(--comida-on-accent);
 .comida-step button:active:not(:disabled) { transform: scale(.9); }
 .comida-step button:disabled { color: var(--text-muted); opacity: .45; cursor: default; }
 .comida-step-n { min-width: 34px; display: flex; justify-content: center; font-weight: 800; font-size: 15px; }
+.comida-step-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .comida-step.has .comida-step-plus { background: var(--accent-color); color: var(--comida-on-accent); }
 .comida-float { position: absolute; right: 4px; top: -6px; font-size: 13px; font-weight: 800; color: var(--accent-color); pointer-events: none; animation: comidaFloat .85s ease-out forwards; }
 @keyframes comidaFloat { 0% { opacity: 0; transform: translateY(6px); } 20% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-30px); } }
@@ -139,6 +143,7 @@ body.comida-mode #modal-date-jump .dj-selected { color: var(--comida-on-accent);
 .comida-note { display: flex; align-items: center; gap: 8px; border-radius: 12px; padding: 10px 12px; font-size: 13px; font-weight: 600; border: 1px solid var(--border-color); background: var(--card-bg); }
 .comida-note.is-warn { border-color: var(--warning-color); color: var(--warning-color); }
 .comida-note.is-ok { color: var(--success-color); }
+.comida-kitchen-status:empty, [data-comida-historic]:empty { display: none; }
 .comida-empty { display: grid; gap: 4px; text-align: center; color: var(--text-muted); padding: 20px 12px; border: 1px dashed var(--border-color); border-radius: 16px; }
 .comida-empty b { color: var(--text-color); }
 .comida-hint { font-size: 12px; color: var(--text-muted); margin: 0; }
@@ -205,17 +210,26 @@ body.comida-mode #modal-date-jump .dj-selected { color: var(--comida-on-accent);
 
 /* facturación */
 .comida-sales { min-width: 0; }
+.comida-chart-modes { justify-content: flex-start; }
 .comida-sales-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; }
 .comida-sales-legend > span { display: flex; align-items: center; gap: 6px; }
 .comida-sales-legend i { width: 12px; height: 12px; border-radius: 3px; }
 .comida-sales-client { background: var(--comida-accent); }
 .comida-sales-staff { background: var(--comida-sales-blue); }
-.comida-bars { height: 84px; min-width: 0; overflow-x: auto; display: flex; align-items: flex-end; gap: 2px; }
+.comida-bars { height: 84px; min-width: 0; overflow-x: auto; display: flex; align-items: flex-end; gap: 2px; cursor: pointer; }
+.comida-bars:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .comida-sale-bar { display: flex; flex: 1 0 2px; flex-direction: column; overflow: hidden; border-radius: 3px 3px 0 0; transform-origin: bottom; animation: comidaGrow .5s cubic-bezier(.22, 1.32, .28, 1) both; }
 .comida-sale-bar > span { flex-basis: 0; }
 .comida-sale-bar.is-zero { background: var(--border-color); }
+.comida-sale-bar.is-selected { outline: 2px solid var(--text-color); outline-offset: -2px; }
 @keyframes comidaGrow { from { transform: scaleY(0); } to { transform: none; } }
+.comida-sale-selection { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 4px; }
+.comida-sale-selection button:disabled { opacity: .45; cursor: default; }
+.comida-sale-values { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.comida-sale-date { flex-basis: 100%; }
 .comida-sales-summary { min-height: 44px; line-height: 44px; cursor: pointer; font-size: 13px; font-weight: 700; }
+.comida-history-price-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(100px, 35%); align-items: center; gap: 8px; margin-top: 8px; }
+.comida-history-price-row input { text-align: right; }
 .comida-sales-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .comida-sales-table th, .comida-sales-table td { padding: 6px 4px; border-top: 1px solid var(--border-color); text-align: right; overflow-wrap: anywhere; }
 .comida-sales-table th:first-child { text-align: left; }

@@ -96,6 +96,19 @@ test('a backdated order extends the first period and is included in its sales', 
   assert.throws(() => Store.addOrder(closed, { ...earlier, id: 'o2', day: '2026-10-27' }), /cerrado/);
 });
 
+test('correcting a historical order changes only its saved price and respects period locks', () => {
+  const input = { id: 'o1', personId: 'e1', dishId: 'd1', day: '2026-11-02' };
+  const old = Store.addOrder(base(), input);
+  const prices = [{ id: 'o1', previous: 250, price: 180 }];
+  const changed = Store.setHistoricPrices(old, 'e1', input.day, '2026-11-03', prices);
+  assert.equal(changed.orders[0].price, 180);
+  assert.equal(changed.orders[0].cost, old.orders[0].cost);
+  assert.equal(changed.dishes[0].price, 250);
+  assert.throws(() => Store.setHistoricPrices(changed, 'e1', input.day, '2026-11-03', prices), /cambió/);
+  assert.throws(() => Store.setHistoricPrices(old, 'e1', input.day, input.day, prices), /anterior/);
+  assert.throws(() => Store.setHistoricPrices(Store.closePeriod(old, '2026-11-02', 'p2'), 'e1', input.day, '2026-11-03', prices), /cerrado/);
+});
+
 test('an order needs a dish that exists', () => {
   assert.throws(() => Store.addOrder(base(), { id: 'o1', personId: 'e1', dishId: 'dX', day: '2026-11-02' }), /plato/);
 });

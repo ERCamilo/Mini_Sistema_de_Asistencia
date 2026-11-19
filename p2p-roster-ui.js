@@ -2645,7 +2645,7 @@
         if (!ok) return;
       }
       try {
-        root.restoreMiniBackupData(parsed, { stagedTransferId: transferId });
+        await root.restoreMiniBackupData(parsed, { stagedTransferId: transferId });
       } catch (err) {
         return renderError(err.message || String(err));
       }

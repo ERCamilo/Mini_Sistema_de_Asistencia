@@ -26,6 +26,14 @@
         const paid = sumOf(payments.filter(p => p.personId === personId), p => p.amount);
         return bought - paid;
     }
+    function accountBalances(orders, payments) {
+        const balances = new Map();
+        for (const order of orders)
+            balances.set(order.personId, (balances.get(order.personId) || 0) + checkAmount(order.price));
+        for (const payment of payments)
+            balances.set(payment.personId, (balances.get(payment.personId) || 0) - checkAmount(payment.amount));
+        return balances;
+    }
     // Oldest day first; orders of the same day keep the order they were entered in.
     function oldestFirst(orders) {
         return orders.map((order, index) => ({ order, index }))
@@ -85,8 +93,23 @@
             counts.set(entry, (counts.get(entry) || 0) + 1);
         return counts;
     }
-    function changesSinceSent(sentSignature, orders, day) {
-        const before = countEntries(sentSignature);
+    function kitchenSignature(orders, day, notes) {
+        return JSON.stringify([orderSignature(orders, day), notes.map(({ name, text }) => JSON.stringify([name, text])).sort()]);
+    }
+    function changesSinceSent(sentSignature, orders, day, notes) {
+        let previousOrders = sentSignature;
+        let previousNotes = [];
+        if (sentSignature.startsWith('[')) {
+            try {
+                const [savedOrders, savedNotes] = JSON.parse(sentSignature);
+                if (typeof savedOrders === 'string' && Array.isArray(savedNotes)) {
+                    previousOrders = savedOrders;
+                    previousNotes = savedNotes;
+                }
+            }
+            catch { /* legacy signatures are not JSON */ }
+        }
+        const before = countEntries(previousOrders);
         const now = countEntries(orderSignature(orders, day));
         let added = 0;
         let removed = 0;
@@ -97,7 +120,9 @@
             else
                 removed -= delta;
         }
-        return { changed: added + removed > 0, added, removed };
+        const currentNotes = notes === null || notes === void 0 ? void 0 : notes.map(({ name, text }) => JSON.stringify([name, text])).sort();
+        const notesChanged = currentNotes && JSON.stringify(previousNotes) !== JSON.stringify(currentNotes);
+        return { changed: added + removed > 0 || !!notesChanged, added, removed, ...(notesChanged ? { notesChanged } : {}) };
     }
     function addDays(day, amount) {
         const [year, month, date] = day.split('-').map(Number);
@@ -155,9 +180,24 @@
         }
         return [...byDay.values()];
     }
+    function weeklySales(days) {
+        const weeks = [];
+        for (const day of days) {
+            const week = weeks[weeks.length - 1];
+            if (!week || new Date(day.day + 'T12:00:00Z').getUTCDay() === 1) {
+                weeks.push({ ...day, end: day.day });
+            }
+            else {
+                week.end = day.day;
+                week.clients += day.clients;
+                week.staff += day.staff;
+            }
+        }
+        return weeks;
+    }
     return {
-        REMIND_AFTER_DAYS, balance, pendingAccount, kitchenLines, formatMoney, formatKitchenOrder,
-        orderSignature, changesSinceSent, ensureOpenPeriod, closePeriod, isDayLocked, periodDay,
-        shouldRemindClose, periodSummary, dailySales
+        REMIND_AFTER_DAYS, balance, accountBalances, pendingAccount, kitchenLines, formatMoney, formatKitchenOrder,
+        orderSignature, kitchenSignature, changesSinceSent, ensureOpenPeriod, closePeriod, isDayLocked, periodDay,
+        shouldRemindClose, periodSummary, dailySales, weeklySales
     };
 });

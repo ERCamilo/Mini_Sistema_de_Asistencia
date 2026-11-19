@@ -60,6 +60,7 @@ interface ComidaChanges {
   changed: boolean;
   added: number;
   removed: number;
+  notesChanged?: boolean;
 }
 
 interface ComidaPeriodSummary {
@@ -73,6 +74,10 @@ interface ComidaDailySale {
   day: string;
   clients: number;
   staff: number;
+}
+
+interface ComidaSaleRange extends ComidaDailySale {
+  end: string;
 }
 
 (function exposeComidaLedger(root: any, factory: () => unknown) {
@@ -96,6 +101,13 @@ interface ComidaDailySale {
     const bought = sumOf(orders.filter(o => o.personId === personId), o => o.price);
     const paid = sumOf(payments.filter(p => p.personId === personId), p => p.amount);
     return bought - paid;
+  }
+
+  function accountBalances(orders: ComidaOrder[], payments: ComidaPayment[]): Map<string, number> {
+    const balances = new Map<string, number>();
+    for (const order of orders) balances.set(order.personId, (balances.get(order.personId) || 0) + checkAmount(order.price));
+    for (const payment of payments) balances.set(payment.personId, (balances.get(payment.personId) || 0) - checkAmount(payment.amount));
+    return balances;
   }
 
   // Oldest day first; orders of the same day keep the order they were entered in.
@@ -161,8 +173,23 @@ interface ComidaDailySale {
     return counts;
   }
 
-  function changesSinceSent(sentSignature: string, orders: ComidaOrder[], day: string): ComidaChanges {
-    const before = countEntries(sentSignature);
+  function kitchenSignature(orders: ComidaOrder[], day: string, notes: ComidaKitchenNote[]): string {
+    return JSON.stringify([orderSignature(orders, day), notes.map(({ name, text }) => JSON.stringify([name, text])).sort()]);
+  }
+
+  function changesSinceSent(sentSignature: string, orders: ComidaOrder[], day: string, notes?: ComidaKitchenNote[]): ComidaChanges {
+    let previousOrders = sentSignature;
+    let previousNotes: string[] = [];
+    if (sentSignature.startsWith('[')) {
+      try {
+        const [savedOrders, savedNotes] = JSON.parse(sentSignature);
+        if (typeof savedOrders === 'string' && Array.isArray(savedNotes)) {
+          previousOrders = savedOrders;
+          previousNotes = savedNotes;
+        }
+      } catch { /* legacy signatures are not JSON */ }
+    }
+    const before = countEntries(previousOrders);
     const now = countEntries(orderSignature(orders, day));
     let added = 0;
     let removed = 0;
@@ -171,7 +198,9 @@ interface ComidaDailySale {
       if (delta > 0) added += delta;
       else removed -= delta;
     }
-    return { changed: added + removed > 0, added, removed };
+    const currentNotes = notes?.map(({ name, text }) => JSON.stringify([name, text])).sort();
+    const notesChanged = currentNotes && JSON.stringify(previousNotes) !== JSON.stringify(currentNotes);
+    return { changed: added + removed > 0 || !!notesChanged, added, removed, ...(notesChanged ? { notesChanged } : {}) };
   }
 
   function addDays(day: string, amount: number): string {
@@ -236,9 +265,24 @@ interface ComidaDailySale {
     return [...byDay.values()];
   }
 
+  function weeklySales(days: ComidaDailySale[]): ComidaSaleRange[] {
+    const weeks: ComidaSaleRange[] = [];
+    for (const day of days) {
+      const week = weeks[weeks.length - 1];
+      if (!week || new Date(day.day + 'T12:00:00Z').getUTCDay() === 1) {
+        weeks.push({ ...day, end: day.day });
+      } else {
+        week.end = day.day;
+        week.clients += day.clients;
+        week.staff += day.staff;
+      }
+    }
+    return weeks;
+  }
+
   return {
-    REMIND_AFTER_DAYS, balance, pendingAccount, kitchenLines, formatMoney, formatKitchenOrder,
-    orderSignature, changesSinceSent, ensureOpenPeriod, closePeriod, isDayLocked, periodDay,
-    shouldRemindClose, periodSummary, dailySales
+    REMIND_AFTER_DAYS, balance, accountBalances, pendingAccount, kitchenLines, formatMoney, formatKitchenOrder,
+    orderSignature, kitchenSignature, changesSinceSent, ensureOpenPeriod, closePeriod, isDayLocked, periodDay,
+    shouldRemindClose, periodSummary, dailySales, weeklySales
   };
 });
