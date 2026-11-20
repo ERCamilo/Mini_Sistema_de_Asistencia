@@ -8187,6 +8187,7 @@
             try {
                 const parsed = JSON.parse(raw);
                 if (window.AttendanceArchive.isArchiveFile(parsed)) {
+                    window.MiniBackupSummary.validateAttendance(parsed.attendance);
                     const days = Object.keys(parsed.attendance).length;
                     ta.style.borderColor = 'var(--success-color)';
                     msg.style.color = 'var(--success-color)';
@@ -8298,6 +8299,7 @@
         // An archive file ("Archivar meses antiguos") is merged back: it adds the
         // archived months and missing employees, never replaces current data.
         function mergeArchiveFile(parsed) {
+            window.MiniBackupSummary.validateAttendance(parsed.attendance);
             const known = new Set(users.map(u => String(u.id)));
             const missing = (Array.isArray(parsed.users) ? parsed.users : []).filter(u => u && u.id && !known.has(String(u.id)));
             if (missing.length) users = users.concat(missing);

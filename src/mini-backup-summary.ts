@@ -33,6 +33,15 @@ interface MiniBackupSummaryResult {
     return Array.isArray(value) ? value : [];
   }
 
+  function validateAttendance(attendance: unknown): void {
+    if (!isPlainObject(attendance) || !Object.entries(attendance).every(([day, records]) => {
+      return /^\d{4}-\d{2}-\d{2}$/.test(day) && isPlainObject(records)
+        && Object.keys(records).every(id => !Object.prototype.hasOwnProperty.call(Object.prototype, id));
+    })) {
+      throw new Error('La asistencia no es válida.');
+    }
+  }
+
   function summarize(parsed: unknown, { allowComida = false } = {}): MiniBackupSummaryResult {
     const data = isPlainObject(parsed) ? parsed : {};
     const employees = Array.isArray(data.users) ? data.users.length : 0;
@@ -80,9 +89,7 @@ interface MiniBackupSummaryResult {
         throw new Error('La lista de ' + label + ' no es válida.');
       }
     }
-    if (parsed.attendance !== undefined && (!isPlainObject(parsed.attendance) || !Object.values(parsed.attendance).every(isPlainObject))) {
-      throw new Error('La asistencia no es válida.');
-    }
+    if (parsed.attendance !== undefined) validateAttendance(parsed.attendance);
     if (parsed.settings !== undefined && (!isPlainObject(parsed.settings)
       || !Object.values(parsed.settings).every(value => value === null || typeof value === 'string'))) {
       throw new Error('Los ajustes no son válidos.');
@@ -108,5 +115,5 @@ interface MiniBackupSummaryResult {
     return summarize(parsed, { allowComida });
   }
 
-  return { summarize, validate };
+  return { summarize, validate, validateAttendance };
 });

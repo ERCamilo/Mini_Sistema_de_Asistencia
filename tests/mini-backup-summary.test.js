@@ -32,6 +32,8 @@ test('validation rejects incompatible, malformed or foreign backups before showi
   assert.throws(() => MiniBackupSummary.validate({ schemaVersion: 2, users: [] }), /versión/);
   assert.throws(() => MiniBackupSummary.validate({ schema: 'sa-backup/v1', users: [] }), /Mini/);
   assert.throws(() => MiniBackupSummary.validate({ users: [{ id: 'u1' }], settings: [] }), /ajustes/);
+  assert.throws(() => MiniBackupSummary.validate({ attendance: { sinFecha: { u1: 'present' } } }), /asistencia/);
+  assert.throws(() => MiniBackupSummary.validate({ attendance: { '2026-11-19': { constructor: 'present' } } }), /asistencia/);
   assert.throws(() => MiniBackupSummary.validate({ users: [], comida: { orders: {} } }, { allowComida: true }), /Comida/);
   assert.throws(() => MiniBackupSummary.validate({ users: [], comida: { schemaVersion: 2 } }, { allowComida: true }), /versión/);
   assert.equal(MiniBackupSummary.validate({ users: [{ id: 'u1' }] }).isEmpty, false);
