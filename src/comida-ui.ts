@@ -64,7 +64,6 @@ type ComidaUiMessage = { body: string; signature?: string };
   let repo: {
     load(fallback?: ComidaStoreState): ComidaStoreState;
     update(change: ComidaUiMutation): Promise<ComidaStoreState>;
-    restore(next: ComidaStoreState, applyOther: () => void): Promise<ComidaStoreState>;
   } | null = null;
   let state: ComidaStoreState | null = null;
   const view = { tab: 'pedidos', day: '', dishId: '', query: '', onlyMissing: false, billFilter: 'todos', supplyId: '', editPurchase: '', deleteSupplies: false, salesByWeek: false, salesDate: '' };
@@ -1091,12 +1090,11 @@ type ComidaUiMessage = { body: string; signature?: string };
     return repo?.load(state ?? undefined) || state;
   }
 
-  async function importBackup(section: unknown, applyOther: () => void): Promise<void> {
+  async function importBackup(section: unknown): Promise<void> {
     if (!host || !repo) throw new Error('Comida todavía no está lista para restaurarse.');
     const next = g.ComidaRepository.parseBackup(section, host.today(), newId());
-    const restored = await repo.restore(next, applyOther);
+    const restored = await repo.update(() => next);
     state = repo.load(restored);
-    render();
   }
 
   // The bar space that used to hold Reportes shows an empty slot until the user picks.

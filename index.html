@@ -3117,7 +3117,7 @@
                             <span style="font-size: 24px;"><span class="ic" data-icon="backup"></span></span>
                             <div>
                                 <div style="font-weight: 600; color: var(--text-color);">Respaldo completo (JSON)</div>
-                                <div style="font-size: 12px; color: var(--text-muted);">Descargar empleados, asistencias, solicitudes y ajustes</div>
+                                <div style="font-size: 12px; color: var(--text-muted);">Incluye empleados, asistencia, obras, solicitudes, ajustes y Comida</div>
                             </div>
                         </button>
                         <button type="button" class="export-option" id="btn-archive-months" onclick="openArchiveModal()">
@@ -3386,10 +3386,10 @@
             <button type="button" class="btn-full btn-secondary" onclick="document.getElementById('restore-file-input').click()"><span class="ic" data-icon="restore"></span> Elegir archivo .json</button>
             <textarea id="restore-backup-textarea" placeholder="...o pegá aquí el JSON de respaldo"
                 style="width:100%;min-height:150px;resize:vertical;background:var(--input-bg);color:var(--text-color);border:2px solid var(--border-color);border-radius:12px;padding:12px;font-size:13px;font-family:monospace;line-height:1.5;outline:none;box-sizing:border-box;"
-                oninput="validateRestoreTextarea(this)"
-                onpaste="setTimeout(function(){validateRestoreTextarea(document.getElementById('restore-backup-textarea'))},50)"></textarea>
-            <div id="restore-validation-msg"
+                oninput="validateRestoreTextarea(this)"></textarea>
+            <div id="restore-validation-msg" role="status"
                 style="font-size:13px;min-height:20px;margin:8px 0;padding-left:4px;font-weight:600;"></div>
+            <button type="button" id="btn-download-before-restore" class="btn-full btn-secondary" onclick="downloadJSON()" hidden>Descargar mi respaldo actual</button>
             <button type="button" id="btn-do-restore" data-ready="no"
                 style="width:100%;padding:16px;border-radius:16px;border:none;background:var(--accent-color);color:#fff;font-size:16px;font-weight:600;cursor:pointer;opacity:0.4;"
                 onclick="doRestoreBackup()">Restaurar</button>
@@ -8084,6 +8084,8 @@
         };
 
         const BACKUP_SETTINGS_KEYS = ['appTheme', 'iconStyle', 'checkMode', 'reminderConfig', 'expectedHoursPerDay', 'mini_employee_report_v1'];
+        let backupRestoreInProgress = false;
+        let backupFileReader = null;
 
         // Single source of truth for Mini backups (file download and P2P send).
         function buildMiniBackupData() {
@@ -8102,12 +8104,15 @@
         function downloadJSON() {
             const data = buildMiniBackupData();
             // Comida travels only in the backup file, never in P2P or SA transfers.
-            if (window.ComidaUI && window.ComidaUI.exportBackup()) data.comida = window.ComidaUI.exportBackup();
+            const comida = window.ComidaUI?.exportBackup();
+            if (comida) data.comida = comida;
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
+            const url = URL.createObjectURL(blob);
+            a.href = url;
             a.download = 'backup_asistencia_' + selectedDate + '.json';
             a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
         // Re-aplica en vivo la config restaurada desde un respaldo (sin recargar)
@@ -8126,22 +8131,32 @@
             const file = event.target.files && event.target.files[0];
             event.target.value = '';
             if (!file) return;
+            const ta = document.getElementById('restore-backup-textarea');
+            const modal = document.getElementById('modal-restore-backup');
+            delete ta.dataset.transferId;
+            delete modal.dataset.transferId;
+            ta.value = '';
+            validateRestoreTextarea(ta);
+            document.getElementById('restore-validation-msg').textContent = 'Leyendo respaldo…';
             const reader = new FileReader();
+            backupFileReader = reader;
             reader.onload = () => {
-                const ta = document.getElementById('restore-backup-textarea');
-                const modal = document.getElementById('modal-restore-backup');
-                if (ta && ta.dataset) delete ta.dataset.transferId;
-                if (modal && modal.dataset) delete modal.dataset.transferId;
+                if (backupFileReader !== reader) return;
+                backupFileReader = null;
                 ta.value = reader.result;
                 validateRestoreTextarea(ta);
             };
             reader.onerror = () => {
-                document.getElementById('restore-validation-msg').innerHTML = '&#x274C; No se pudo leer el archivo.';
+                if (backupFileReader !== reader) return;
+                backupFileReader = null;
+                document.getElementById('restore-validation-msg').textContent = 'No se pudo leer el archivo.';
             };
             reader.readAsText(file);
         };
 
         window.openImportBackupModal = () => {
+            backupFileReader?.abort();
+            backupFileReader = null;
             closeModal('export-menu');
             const ta = document.getElementById('restore-backup-textarea');
             const modal = document.getElementById('modal-restore-backup');
@@ -8150,14 +8165,19 @@
             if (ta && ta.dataset) delete ta.dataset.transferId;
             if (modal && modal.dataset) delete modal.dataset.transferId;
             ta.value = ''; ta.style.borderColor = ''; msg.innerHTML = '';
+            document.getElementById('btn-download-before-restore').hidden = true;
             btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
             btn.setAttribute('data-ready', 'no');
             openModal('modal-restore-backup');
         }
 
         window.validateRestoreTextarea = (ta) => {
+            backupFileReader?.abort();
+            backupFileReader = null;
             const msg = document.getElementById('restore-validation-msg');
             const btn = document.getElementById('btn-do-restore');
+            const downloadCurrent = document.getElementById('btn-download-before-restore');
+            downloadCurrent.hidden = true;
             const raw = ta.value.trim();
             if (!raw) {
                 ta.style.borderColor = ''; msg.innerHTML = '';
@@ -8170,76 +8190,97 @@
                     const days = Object.keys(parsed.attendance).length;
                     ta.style.borderColor = 'var(--success-color)';
                     msg.style.color = 'var(--success-color)';
-                    msg.innerHTML = '&#x1F4E6; Meses archivados: ' + days + ' días (' + (parsed.range?.from || '?') + ' – ' + (parsed.range?.to || '?') + '). Se agregan sin borrar nada.';
+                    msg.textContent = 'Meses archivados: ' + days + ' días (' + (parsed.range?.from || '?') + ' – ' + (parsed.range?.to || '?') + '). Se agregan sin borrar nada.';
                     btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                     btn.setAttribute('data-ready', 'yes');
                     return;
                 }
-                const summary = window.MiniBackupSummary.summarize(parsed);
-                if (summary.isEmpty) throw new Error('El respaldo no tiene empleados ni asistencia. Restaurarlo borraría tus datos.');
-                const hasReqs = summary.requests > 0;
+                const summary = window.MiniBackupSummary.validate(parsed, { allowComida: true });
+                if (summary.isEmpty) throw new Error('El respaldo está vacío. Elige un archivo con datos.');
                 ta.style.borderColor = 'var(--success-color)';
                 msg.style.color = 'var(--success-color)';
-                const hasSettings = parsed.settings && typeof parsed.settings === 'object' && Object.keys(parsed.settings).length > 0;
-                const workContextList = Array.isArray(parsed.workContexts)
-                    ? parsed.workContexts
-                    : (parsed.workContexts && Array.isArray(parsed.workContexts.contexts) ? parsed.workContexts.contexts : []);
-                const hasCtx = workContextList.length > 0;
-                msg.innerHTML = '&#x2705; ' + summary.employees + ' empleados, ' + summary.attendanceDays + ' días de asistencia' + (hasReqs ? ', ' + parsed.requests.length + ' solicitudes' : '') + (hasCtx ? ', ' + workContextList.length + ' obras' : '') + (hasSettings ? ' + ajustes.' : '.');
+                const sections = [];
+                const count = (amount, singular, plural = singular + 's') => amount + ' ' + (amount === 1 ? singular : plural);
+                if (parsed.users !== undefined) sections.push(count(summary.employees, 'empleado'));
+                if (parsed.attendance !== undefined) sections.push(count(summary.attendanceDays, 'día') + ' de asistencia');
+                if (parsed.requests !== undefined) sections.push(count(summary.requests, 'solicitud', 'solicitudes'));
+                if (parsed.workContexts !== undefined) sections.push(count(summary.workContexts, 'obra'));
+                if (summary.hasSettings) sections.push('ajustes');
+                const food = summary.comida;
+                const foodSummary = food
+                    ? `Comida incluye ${count(food.clients, 'cliente')}, ${count(food.orders, 'pedido')}, ${count(food.payments, 'pago')} y ${count(food.closedPeriods, 'cierre')}.`
+                    : 'Los datos de Comida de este Mini se conservan.';
+                msg.textContent = (sections.length ? sections.join(' · ') + '. ' : '') + foodSummary;
+                downloadCurrent.hidden = false;
                 btn.style.opacity = '1'; btn.style.cursor = 'pointer';
                 btn.setAttribute('data-ready', 'yes');
             } catch (err) {
                 ta.style.borderColor = 'var(--danger-color)';
                 msg.style.color = 'var(--danger-color)';
-                msg.innerHTML = '&#x274C; ' + err.message;
+                msg.textContent = err.message;
                 btn.style.opacity = '0.4'; btn.style.cursor = 'not-allowed';
                 btn.setAttribute('data-ready', 'no');
             }
         }
 
-        // Validates and atomically restores a parsed Mini backup (file textarea or P2P review).
-        function applyBackupRestore(parsed) {
-            if (parsed.users !== undefined && !Array.isArray(parsed.users)) throw new Error('La lista de empleados no es válida');
-            if (parsed.attendance !== undefined && (!parsed.attendance || typeof parsed.attendance !== 'object' || Array.isArray(parsed.attendance))) throw new Error('La asistencia no es válida');
-            if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) throw new Error('Los ajustes no son válidos');
-            if (parsed.requests !== undefined && !Array.isArray(parsed.requests)) throw new Error('Las solicitudes no son válidas');
-            if (parsed.templates !== undefined && !Array.isArray(parsed.templates)) throw new Error('Las plantillas no son válidas');
-            let workContextsSnapshot = null;
-            if (parsed.workContexts !== undefined) {
-                if (Array.isArray(parsed.workContexts)) {
-                    workContextsSnapshot = { schemaVersion: 1, contexts: parsed.workContexts, activeContextId: null };
-                } else if (parsed.workContexts && typeof parsed.workContexts === 'object' && !Array.isArray(parsed.workContexts) && Array.isArray(parsed.workContexts.contexts)) {
-                    const activeId = parsed.workContexts.activeContextId;
-                    if (activeId !== undefined && activeId !== null && typeof activeId !== 'string') throw new Error('Las obras y cuadrillas no son válidas');
-                    workContextsSnapshot = {
-                        schemaVersion: Number.isSafeInteger(parsed.workContexts.schemaVersion) ? parsed.workContexts.schemaVersion : 1,
-                        contexts: parsed.workContexts.contexts,
-                        activeContextId: activeId ?? null
-                    };
-                } else {
-                    throw new Error('Las obras y cuadrillas no son válidas');
-                }
+        async function applyBackupRestore(parsed, { allowComida = false } = {}) {
+            if (backupRestoreInProgress) throw new Error('Ya se está restaurando un respaldo.');
+            if (window.MiniBackupSummary.validate(parsed, { allowComida }).isEmpty) {
+                throw new Error('El respaldo está vacío. Elige una copia con datos.');
             }
+            backupRestoreInProgress = true;
+            try {
+                await localPersistenceReady;
+                await restoreBackupSections(parsed);
+            } finally {
+                backupRestoreInProgress = false;
+            }
+        }
+
+        async function restoreBackupSections(parsed) {
+            const workContextsSnapshot = Array.isArray(parsed.workContexts)
+                ? { schemaVersion: 1, contexts: parsed.workContexts, activeContextId: null }
+                : parsed.workContexts;
             const imported = fieldRequestsRepository.importCollections(Array.isArray(parsed.requests) ? parsed.requests : requests, Array.isArray(parsed.templates) ? parsed.templates : requestTemplates);
             imported.templates.forEach(template => { if (!template || !template.id || !template.name || !Array.isArray(template.fields)) throw new Error('El respaldo contiene una plantilla inválida'); });
-            // A backup without "comida" (older files, P2P) leaves Comida as it is.
-            const comidaRestore = parsed.comida !== undefined ? window.ComidaRepository.parseBackup(parsed.comida, todayDateKey(), 'cm' + Date.now().toString(36)) : null;
-            const applyOther = () => {
-                const previousSettings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
-                const previousState = { users, attendance: attendanceData, requests, templates: requestTemplates, settings: previousSettings, workContexts: workContextsSnapshot && window.workContextManager?.exportSnapshot() };
-                const candidateState = { users: Array.isArray(parsed.users) ? parsed.users : users, attendance: parsed.attendance || attendanceData, requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)), templates: imported.templates, settings: { ...previousSettings, ...(parsed.settings || {}) }, workContexts: workContextsSnapshot };
-                fieldRequestsRepository.runAtomicRestore(previousState, candidateState, state => {
-                    users = state.users; attendanceRepository.importBatch(state.attendance, 'replace'); attendanceData = attendanceRepository.getAll(); requests = state.requests; requestTemplates = state.templates;
-                    BACKUP_SETTINGS_KEYS.forEach(key => state.settings[key] === null ? localStorage.removeItem(key) : localStorage.setItem(key, state.settings[key]));
-                    if (state.workContexts) window.workContextManager?.importSnapshot(state.workContexts);
-                    applyRestoredSettings();
-                }, () => saveData({ strict: !!comidaRestore }));
+            const settings = Object.fromEntries(BACKUP_SETTINGS_KEYS.map(key => [key, localStorage.getItem(key)]));
+            const previous = {
+                users, requests, templates: requestTemplates, settings,
+                attendanceSnapshot: parsed.attendance && attendanceRepository.exportSnapshot(),
+                workContexts: workContextsSnapshot && window.workContextManager?.exportSnapshot()
             };
-            if (comidaRestore) {
-                if (!window.ComidaUI) throw new Error('Comida todavía no está lista para restaurarse.');
-                return window.ComidaUI.importBackup(comidaRestore, applyOther).then(updateNavSlot);
-            }
-            applyOther();
+            const candidate = {
+                users: parsed.users ?? users,
+                requests: imported.requests.map(request => window.FieldRequests.normalizeRequest(request)),
+                templates: imported.templates,
+                settings: { ...settings, ...parsed.settings },
+                workContexts: workContextsSnapshot
+            };
+            await fieldRequestsRepository.runAtomicRestore(previous, candidate, state => {
+                users = state.users; requests = state.requests; requestTemplates = state.templates;
+                if (state.attendanceSnapshot) attendanceRepository.restoreSnapshot(state.attendanceSnapshot);
+                else if (state === candidate && parsed.attendance) {
+                    attendanceRepository.importBatch(parsed.attendance, 'replace', { preserveTimestamps: true });
+                }
+                BACKUP_SETTINGS_KEYS.forEach(key => {
+                    if (state.settings[key] === localStorage.getItem(key)) return;
+                    if (state.settings[key] === null) localStorage.removeItem(key);
+                    else localStorage.setItem(key, state.settings[key]);
+                });
+                if (state.workContexts) window.workContextManager?.importSnapshot(state.workContexts);
+            }, async state => {
+                saveData({ strict: true });
+                const dayStore = attendanceStorage.current();
+                await Promise.all([localDbWriteQueue, dayStore.flush?.()]);
+                if (dayStore.isPersisted && !dayStore.isPersisted()) throw new Error('No se pudo guardar la asistencia. Intenta de nuevo.');
+                if (state === candidate && parsed.comida !== undefined) {
+                    if (!window.ComidaUI) throw new Error('Comida todavía no está lista para restaurarse.');
+                    await window.ComidaUI.importBackup(parsed.comida);
+                }
+            });
+            applyRestoredSettings();
+            updateNavSlot();
+            window.ComidaUI?.render();
         }
 
         function clearStagedBackup(stagedTransferId) {
@@ -8268,9 +8309,6 @@
 
         // Used by the P2P backup review screen (cards instead of raw JSON).
         window.restoreMiniBackupData = async (parsed, options = {}) => {
-            if (window.MiniBackupSummary.summarize(parsed).isEmpty) {
-                throw new Error('El respaldo no tiene empleados ni asistencia. Restaurarlo borraría tus datos.');
-            }
             await applyBackupRestore(parsed);
             clearStagedBackup(options.stagedTransferId);
             renderList(); renderEmployeesList(); renderRequestsDashboard(); renderWorkContextBar();
@@ -8293,7 +8331,9 @@
                     showToast('Se agregaron ' + merged.days + ' días archivados' + (merged.employeesAdded ? ' y ' + merged.employeesAdded + ' empleados' : '') + '.');
                     return;
                 }
-                await applyBackupRestore(parsed);
+                const ok = await showConfirm('Los datos de este Mini se reemplazarán en las secciones incluidas en el archivo. Puedes cancelar para descargar primero tu respaldo actual.', { title: '¿Restaurar respaldo?', confirmText: 'Restaurar', danger: true });
+                if (!ok) return;
+                await applyBackupRestore(parsed, { allowComida: true });
                 if (stagedTransferId) {
                     clearStagedBackup(stagedTransferId);
                     if (ta && ta.dataset) delete ta.dataset.transferId;
@@ -8302,12 +8342,14 @@
                 closeModal('modal-restore-backup');
                 renderList(); renderEmployeesList(); renderRequestsDashboard(); renderWorkContextBar();
                 document.getElementById('restore-validation-msg').innerHTML = '&#x2705; Respaldo restaurado.';
+                showToast('Respaldo restaurado.');
             } catch (err) {
                 const status = document.getElementById('restore-validation-msg');
                 status.style.color = 'var(--danger-color)';
                 status.textContent = 'Error al restaurar. ' + err.message;
             } finally {
                 btn.disabled = false;
+                if (modal.classList.contains('active')) btn.focus();
             }
         }
 

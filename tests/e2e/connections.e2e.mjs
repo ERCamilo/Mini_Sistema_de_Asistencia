@@ -339,7 +339,11 @@ async function openApplication(width, theme, seedUsers) {
     const page = await context.newPage(), errors = [];
     page.setDefaultTimeout(5000);
     page.on('pageerror', error => errors.push(error.message));
-    if (seedUsers) await context.addInitScript(value => localStorage.setItem('users', JSON.stringify(value)), seedUsers);
+    if (seedUsers) await context.addInitScript(value => {
+      if (sessionStorage.getItem('test-users-seeded')) return;
+      localStorage.setItem('users', JSON.stringify(value));
+      sessionStorage.setItem('test-users-seeded', 'true');
+    }, seedUsers);
     await page.goto(base + '/');
     await page.locator('#mini-welcome-name').fill('Synthetic usability test');
     await page.getByRole('button', { name: 'Continuar', exact: true }).click();
@@ -664,6 +668,265 @@ test('full app restore confirmation: accessible name and description, Cancel pre
     assert.equal(await page.locator('[data-apply-backup]').isVisible(), true);
     assert.deepEqual(errors, []);
   } finally { await context.close(); }
+});
+
+const backupDate = '2026-10-21';
+const backupWorker = { id: 'source-worker', name: 'Ana de prueba', number: '27', workContextId: 'test-site' };
+const backupRecord = { status: 'present', hours: 7, localOnly: true, schemaVersion: 1, createdAt: backupDate + 'T12:00:00Z', updatedAt: backupDate + 'T13:00:00Z' };
+const backupData = {
+  users: [backupWorker],
+  attendance: { [backupDate]: { [backupWorker.id]: backupRecord } },
+  requests: [{ id: 'test-request', title: 'Prueba de restauración', fields: [] }],
+  templates: [{ id: 'test-template', name: 'Plantilla de prueba', fields: [] }],
+  workContexts: { schemaVersion: 1, activeContextId: 'test-site', contexts: [{ id: 'test-site', name: 'Obra de prueba', type: 'project', schemaVersion: 1 }] },
+  settings: { appTheme: 'light' }
+};
+const comidaData = {
+  schemaVersion: 1, navSlot: 'comida',
+  clients: [{ id: 'test-client', num: 'C01', name: 'Cliente de prueba', ref: '' }],
+  orders: [{ id: 'test-order', personId: 'test-client', dishId: 'test-dish', dishName: 'Almuerzo', dishEmoji: '🍲', price: 250, cost: 100, day: backupDate }],
+  payments: [{ id: 'test-payment', personId: 'test-client', amount: 100, day: backupDate }],
+  periods: [{ id: 'test-closed', start: '2026-10-01', end: backupDate }, { id: 'test-open', start: '2026-10-22', end: null }]
+};
+
+async function coreBackup(page) {
+  const { exportedAt: _exportedAt, ...backup } = await page.evaluate(() => buildMiniBackupData());
+  return backup;
+}
+
+async function waitForStorage(page) {
+  await page.waitForFunction(() => document.querySelector('#storage-mode-hint')?.textContent.includes('días guardados'));
+}
+
+async function openDataSettings(page) {
+  await page.locator('#nav-more').click();
+  await page.locator('#btn-more-tab-data').click();
+}
+
+async function loadBackupFile(page, buffer) {
+  await openDataSettings(page);
+  await page.getByRole('button', { name: /Restaurar respaldo \(JSON\)/ }).click();
+  await page.locator('#restore-file-input').setInputFiles({ name: 'prueba.json', mimeType: 'application/json', buffer });
+}
+
+async function confirmRestore(page, selector = '#btn-do-restore') {
+  await page.locator(selector).click();
+  await page.locator('#confirm-ok').click();
+}
+
+test('file backup round trip restores attendance, site, requests, settings and Comida on a phone-sized browser', async () => {
+  const source = await openApplication(390, 'light');
+  const target = await openApplication(320, 'dark', [{ id: 'local', name: 'Personal local', number: '3' }]);
+  try {
+    await source.page.evaluate(async ({ backupData, comidaData }) => {
+      await restoreMiniBackupData(backupData);
+      await ComidaUI.importBackup(comidaData);
+    }, { backupData, comidaData });
+    const before = await coreBackup(target.page);
+    await openDataSettings(source.page);
+    const downloaded = source.page.waitForEvent('download');
+    await source.page.locator('#btn-download-backup').click();
+    const file = await downloaded;
+    assert.match(file.suggestedFilename(), /^backup_asistencia_.*\.json$/);
+    const buffer = await readFile(await file.path());
+    const data = JSON.parse(buffer);
+    assert.equal(data.comida.orders[0].day, backupDate);
+
+    await loadBackupFile(target.page, buffer);
+    await target.page.getByText(/1 pedido, 1 pago y 1 cierre/).waitFor();
+    await target.page.locator('#btn-download-before-restore').waitFor();
+    await target.page.locator('#btn-do-restore').click();
+    await target.page.locator('#confirm-cancel').click();
+    assert.deepEqual(await coreBackup(target.page), before);
+
+    await confirmRestore(target.page);
+    await target.page.locator('#modal-restore-backup').waitFor({ state: 'hidden' });
+    const restoredFood = await target.page.evaluate(() => ComidaUI.exportBackup());
+    assert.deepEqual(restoredFood, data.comida);
+    assert.equal(await target.page.evaluate(() => {
+      const food = ComidaUI.exportBackup();
+      return ComidaLedger.balance(food.orders, food.payments, 'test-client');
+    }), 150);
+    assert.deepEqual(await coreBackup(target.page), await coreBackup(source.page));
+
+    await target.page.reload();
+    await waitForStorage(target.page);
+    assert.deepEqual(await coreBackup(target.page), await coreBackup(source.page));
+    assert.deepEqual(await target.page.evaluate(() => ComidaUI.exportBackup()), data.comida);
+    await loadBackupFile(target.page, buffer);
+    await confirmRestore(target.page);
+    await target.page.locator('#modal-restore-backup').waitFor({ state: 'hidden' });
+    assert.deepEqual(await coreBackup(target.page), await coreBackup(source.page), 'restoring the same file keeps record timestamps');
+    assert.deepEqual(await target.page.evaluate(() => ComidaUI.exportBackup()), data.comida);
+    assert.deepEqual([...source.errors, ...target.errors], []);
+  } finally { await Promise.all([source.context.close(), target.context.close()]); }
+});
+
+test('a Comida-only file and an older Mini file restore independently', async () => {
+  const { context, page, errors } = await openApplication(390, 'light');
+  try {
+    await loadBackupFile(page, Buffer.from(JSON.stringify({ users: [], attendance: {}, comida: comidaData })));
+    await confirmRestore(page);
+    await page.locator('#modal-restore-backup').waitFor({ state: 'hidden' });
+    const food = await page.evaluate(() => ComidaUI.exportBackup());
+    assert.equal(food.orders.length, 1);
+    const older = { users: [backupWorker], attendance: { [backupDate]: { [backupWorker.id]: 'present' } }, workContexts: backupData.workContexts.contexts };
+    await loadBackupFile(page, Buffer.from(JSON.stringify(older)));
+    await page.getByText('Los datos de Comida de este Mini se conservan.', { exact: false }).waitFor();
+    await confirmRestore(page);
+    await page.locator('#modal-restore-backup').waitFor({ state: 'hidden' });
+    assert.equal((await coreBackup(page)).attendance[backupDate][backupWorker.id].hours, 8);
+    assert.deepEqual(await page.evaluate(() => ComidaUI.exportBackup()), food);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+test('an IndexedDB restore failure rolls back the previous data and keeps the file ready to retry', async () => {
+  const { context, page, errors } = await openApplication(375, 'light', [{ id: 'local', name: 'Personal local', number: '3' }]);
+  try {
+    await page.evaluate(async () => {
+      attendanceRepository.setRecord('local', '2026-10-20', 'present', 5);
+      await attendanceStorage.current().flush();
+      window.originalTransaction = IDBDatabase.prototype.transaction;
+      IDBDatabase.prototype.transaction = function (stores, mode, ...options) {
+        if (this.name === 'mini-data' && mode === 'readwrite') throw new DOMException('Fallo de prueba', 'QuotaExceededError');
+        return window.originalTransaction.call(this, stores, mode, ...options);
+      };
+    });
+    const before = await coreBackup(page);
+    const previousFood = await page.evaluate(() => localStorage.getItem('miniComidaV1'));
+    await loadBackupFile(page, Buffer.from(JSON.stringify({ ...backupData, comida: comidaData })));
+    await confirmRestore(page);
+    await page.getByText('Error al restaurar. No se pudo guardar la asistencia.', { exact: false }).waitFor();
+    assert.deepEqual(await coreBackup(page), before);
+    assert.equal(await page.evaluate(() => localStorage.getItem('miniComidaV1')), previousFood);
+    await page.evaluate(() => { IDBDatabase.prototype.transaction = window.originalTransaction; });
+    await confirmRestore(page);
+    await page.locator('#modal-restore-backup').waitFor({ state: 'hidden' });
+    await page.reload();
+    await waitForStorage(page);
+    assert.deepEqual((await coreBackup(page)).attendance, backupData.attendance);
+    assert.equal((await page.evaluate(() => ComidaUI.exportBackup())).orders.length, 1);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
+async function localDataChannel(source, target) {
+  // Exchange host-only SDP locally. The browser still sends the payload over native WebRTC.
+  const describe = async (page, remote) => page.evaluate(async remote => {
+    const peer = new RTCPeerConnection({ iceServers: [] });
+    window.backupTestPeer = peer;
+    if (remote) {
+      peer.ondatachannel = event => { window.backupTestChannel = event.channel; };
+      await peer.setRemoteDescription(remote);
+    } else {
+      window.backupTestChannel = peer.createDataChannel('mini-backup-test');
+    }
+    await peer.setLocalDescription(await (remote ? peer.createAnswer() : peer.createOffer()));
+    if (peer.iceGatheringState !== 'complete') await new Promise(resolve => {
+      peer.addEventListener('icegatheringstatechange', function completed() {
+        if (peer.iceGatheringState !== 'complete') return;
+        peer.removeEventListener('icegatheringstatechange', completed);
+        resolve();
+      });
+    });
+    return peer.localDescription.toJSON();
+  }, remote);
+  const answer = await describe(target, await describe(source, null));
+  await source.evaluate(answer => backupTestPeer.setRemoteDescription(answer), answer);
+  for (const page of [source, target]) {
+    await page.waitForFunction(() => window.backupTestChannel?.readyState === 'open');
+    await page.evaluate(() => {
+      backupTestChannel.binaryType = 'arraybuffer';
+      SaMiniP2P.markChannelAuthenticated(backupTestChannel);
+    });
+  }
+}
+
+test('a multi-chunk direct backup between two browser profiles can be declined, deduplicated and restored', { timeout: 30000 }, async () => {
+  const source = await openApplication(390, 'light');
+  const target = await openApplication(375, 'dark', [{ id: 'local', name: 'Personal local', number: '3' }]);
+  try {
+    await source.page.evaluate(async ({ backupData, backupRecord, backupWorker, comidaData }) => {
+      for (let i = 0; i < 400; i += 1) {
+        const date = new Date(Date.UTC(2025, 0, 1 + i)).toISOString().slice(0, 10);
+        backupData.attendance[date] = { [backupWorker.id]: backupRecord };
+      }
+      await restoreMiniBackupData(backupData);
+      await ComidaUI.importBackup(comidaData);
+    }, { backupData, backupRecord, backupWorker, comidaData });
+    const localFood = await target.page.evaluate(async () => {
+      const food = { ...ComidaUI.exportBackup(), clients: [{ id: 'local-client', num: 'C01', name: 'Cliente local', ref: '' }] };
+      await ComidaUI.importBackup(food);
+      return ComidaUI.exportBackup();
+    });
+    await localDataChannel(source.page, target.page);
+    await target.page.evaluate(() => {
+      const channel = backupTestChannel, core = SaMiniP2P, bridge = SaMiniP2PBackup;
+      let offeredSize;
+      window.acceptTestBackup = false;
+      P2PBackupConsent.bufferOffers(channel, core).release((offer, respond) => {
+        const accepted = window.acceptTestBackup;
+        if (accepted) offeredSize = offer.size;
+        respond(accepted);
+      });
+      const receive = core.createTransferReceiver({ channel,
+        onComplete(result) {
+          if (result.size !== offeredSize || result.schema !== 'mini-backup/v1') throw new Error('Respaldo distinto a la oferta');
+          const entry = { ...result, sourceApp: 'mini', sourcePeerId: 'test-peer', sourcePeerName: 'Mini emisor' };
+          bridge.parseStagedMiniBackup(entry);
+          bridge.backupStagedStore.stageBackup(entry);
+          bridge.sendBackupStagedAck(channel, { transferId: result.transferId, sha256: result.sha256, schema: result.schema });
+        }
+      });
+      channel.addEventListener('message', receive);
+    });
+    const offer = offerId => source.page.evaluate(async offerId => {
+      const bridge = SaMiniP2PBackup, core = SaMiniP2P, channel = backupTestChannel;
+      const payload = window.directTestPayload ??= await bridge.createMiniBackupPayload();
+      const decision = await P2PBackupConsent.requestConsent(channel, core,
+        { offerId, size: payload.size, schema: 'mini-backup/v1', senderName: 'Mini emisor' }, { timeoutMs: 5000 });
+      if (decision === 'accepted') await bridge.sendBackupOnChannel(channel, { bytes: payload.bytes, schema: 'mini-backup/v1', timeoutMs: 5000 });
+      return { decision, size: payload.size, includesComida: 'comida' in payload.data };
+    }, offerId);
+    const before = await coreBackup(target.page);
+    const declined = await offer('test-offer-declined');
+    assert.equal(declined.decision, 'declined');
+    assert.equal(declined.includesComida, false);
+    assert.ok(declined.size > 64 * 1024);
+    assert.equal(await target.page.evaluate(() => SaMiniP2PBackup.backupStagedStore.listStaged().length), 0);
+    await target.page.evaluate(() => { window.acceptTestBackup = true; });
+    assert.equal((await offer('test-offer-accepted')).decision, 'accepted');
+    assert.equal((await offer('test-offer-repeated')).decision, 'accepted');
+    assert.equal(await target.page.evaluate(() => SaMiniP2PBackup.backupStagedStore.listStaged().length), 1);
+    assert.deepEqual(await coreBackup(target.page), before);
+
+    await target.page.locator('#btn-attendance-link').click();
+    await target.page.locator('[data-connections-backups]').click();
+    await target.page.locator('[data-review-backup]:visible').click();
+    await target.page.getByText(/Comida se conserva en este Mini/).waitFor();
+    await target.page.evaluate(() => {
+      window.testOriginalWrite = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'users' && value.includes('source-worker')) throw new DOMException('Cuota de prueba', 'QuotaExceededError');
+        return window.testOriginalWrite.call(this, key, value);
+      };
+    });
+    await confirmRestore(target.page, '[data-apply-backup]');
+    await target.page.locator('[data-restore-error]').waitFor();
+    assert.deepEqual(await coreBackup(target.page), before);
+    assert.equal(await target.page.evaluate(() => SaMiniP2PBackup.backupStagedStore.listStaged().length), 1);
+    await target.page.evaluate(() => { Storage.prototype.setItem = window.testOriginalWrite; });
+    await confirmRestore(target.page, '[data-apply-backup]');
+    const success = target.page.locator('[data-mini-page-title]').filter({ hasText: 'Respaldo restaurado' });
+    const error = target.page.locator('[data-restore-error]:visible');
+    await success.or(error).waitFor();
+    assert.equal(await error.count(), 0, (await error.allTextContents()).join(' '));
+    assert.equal(await target.page.evaluate(() => SaMiniP2PBackup.backupStagedStore.listStaged().length), 0);
+    assert.deepEqual(await coreBackup(target.page), await coreBackup(source.page));
+    assert.deepEqual(await target.page.evaluate(() => ComidaUI.exportBackup()), localFood);
+    assert.deepEqual([...source.errors, ...target.errors], []);
+  } finally { await Promise.all([source.context.close(), target.context.close()]); }
 });
 
 async function confirmationContrast(page) {

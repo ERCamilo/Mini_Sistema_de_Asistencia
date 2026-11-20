@@ -100,11 +100,9 @@ test('the P2P responder opts in to the employee profile', () => {
   assert.match(source, /includeEmployeeProfile:\s*true/);
 });
 
-// Size of one attendance-response message for the worst allowed request (31 days x 500 rows).
-// WebRTC data channels interoperate safely up to ~64 KiB per message; Chrome's own limit is 256 KiB.
-// The response is sent as a single channel.send(), so this documents a real gap. It is a `todo`
-// until the response moves to the chunked transfer protocol (which needs SA to receive it too).
-test('a worst-case attendance response fits in one data channel message', { todo: 'send large responses through the chunked transfer protocol (needs SA support)' }, () => {
+// SA currently receives this response as a single JSON message. Native backup
+// transfers have independent framing and are not subject to this limit.
+test('a worst-case attendance response requests a shorter range when the data channel rejects the size', () => {
   const many = Array.from({ length: 500 }, (_, i) => ({ id: 'u' + i, name: 'Empleado Número ' + i, number: String(i + 1), position: 'Albañil', positionSaId: 'POS-1', sueldo: '1500', saEmployeeId: 'EMP-' + i }));
   const data = {};
   const days = [];
@@ -117,6 +115,24 @@ test('a worst-case attendance response fits in one data channel message', { todo
     { schema: 'attendance-request/v1', requestId: 'big', saProjectId: SA_PROJECT, fromDate: days[0], toDate: days[days.length - 1] },
     { employees: many, attendanceData: data, scope: SCOPE, deviceId: 'dev-1', rosterVersion: 'r1', includeEmployeeProfile: true }
   );
-  const bytes = Buffer.byteLength(JSON.stringify(response));
-  assert.ok(bytes <= 64 * 1024, `response is ${bytes} bytes (${(bytes / 1024).toFixed(0)} KiB)`);
+  assert.ok(Buffer.byteLength(JSON.stringify(response)) > 256 * 1024);
+  let handler;
+  const responses = [];
+  const channel = {
+    readyState: 'open',
+    addEventListener(type, listener) { handler = listener; },
+    send(text) {
+      if (Buffer.byteLength(text) > 256 * 1024) throw new TypeError('Message too large');
+      responses.push(JSON.parse(text));
+    }
+  };
+  AttendanceExport.attachAttendanceResponder(channel, { peerApp: 'sa' }, {
+    employees: many, attendanceData: data, scope: SCOPE, rosterVersion: 'r1',
+    includeEmployeeProfile: true, isChannelAuthenticated: () => true, expectedSaProjectId: SA_PROJECT
+  });
+  handler({ data: JSON.stringify({ schema: 'attendance-request/v1', requestId: 'big', saProjectId: SA_PROJECT, fromDate: days[0], toDate: days.at(-1) }) });
+  assert.deepEqual(responses, [{
+    schema: 'attendance-response/v1', requestId: 'big', saProjectId: SA_PROJECT, ok: false,
+    error: 'La asistencia supera el tamaño admitido por la conexión. Solicita un intervalo de fechas más corto desde SA.'
+  }]);
 });

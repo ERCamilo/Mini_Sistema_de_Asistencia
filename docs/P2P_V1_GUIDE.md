@@ -60,6 +60,10 @@ La bandeja y las decisiones de propuestas son locales al dispositivo/cuenta SA r
 1. **Envío**: Desde el Hub de Respaldos, selección del par destinatario y pulsación de `Enviar respaldo`. Se empaquetan los datos nativos de Mini y se transfieren por WebRTC con acuse de recibo autenticado (`backup-staged` o `backup-rejected`).
 2. **Recepción**: Almacenamiento en staging de memoria; generación de notificación visual de respaldo listo.
 
+Un respaldo directo entre Minis incluye empleados, asistencia, solicitudes, plantillas, obras y los ajustes exportables. Para trasladar pedidos, pagos y cierres de Comida, descarga **Respaldo completo (JSON)** en **Más → Datos** y restaura ese archivo en el otro Mini. Los archivos antiguos que no incluyen Comida conservan la que ya está en el dispositivo.
+
+Los respaldos viajan en fragmentos de WebRTC. La consulta directa de asistencia desde SA usa un mensaje JSON separado. Si excede el tamaño admitido por la conexión, Mini devuelve un aviso para pedir un intervalo más corto en SA. Admitir la respuesta fragmentada requiere actualizar ambas aplicaciones.
+
 ---
 
 ## 3. Alcance Deshabilitado y Endurecimiento Genérico (AC-6)
@@ -84,7 +88,7 @@ La bandeja y las decisiones de propuestas son locales al dispositivo/cuenta SA r
 
 | Origen → Destino | Esquema | Acción Permitida en Mini | Acción Prohibida |
 | :--- | :--- | :--- | :--- |
-| **Mini → Mini** | `mini-backup/v1` | **Revisar / Restaurar**<br>Carga el JSON en `modal-restore-backup`. Requiere confirmación explícita mediante `doRestoreBackup()`. | Restauración automática silenciosa sin confirmación del usuario. |
+| **Mini → Mini** | `mini-backup/v1` | **Revisar / Restaurar**<br>La pantalla de revisión muestra los datos e indica qué se reemplaza. La restauración exige confirmación explícita. | Restauración automática silenciosa sin confirmación del usuario. |
 | **SA → Mini** | `sa-backup/v1` | **Descargar / Guardar**<br>Descarga local del archivo JSON crudo con nombre seguro (`sa-backup-...json`). | **Restaurar o Importar** en Mini.<br>Mini no interpreta ni restaura esquemas administrativos de SA. |
 | **SA → SA** | `sa-backup/v1` | N/A (Operado en SA) | N/A |
 

@@ -6,7 +6,6 @@
 interface ComidaRepositoryStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
-  removeItem(key: string): void;
 }
 
 interface ComidaRepositoryOptions {
@@ -111,21 +110,7 @@ interface ComidaRepositoryStoreApi {
       });
     }
 
-    function restore(next: ComidaStoreState, applyOther: () => void): Promise<ComidaStoreState> {
-      return exclusive(() => {
-        const previous = options.storage.getItem(STORAGE_KEY);
-        write(next);
-        try { applyOther(); }
-        catch (error) {
-          if (previous === null) options.storage.removeItem(STORAGE_KEY);
-          else options.storage.setItem(STORAGE_KEY, previous);
-          throw error;
-        }
-        return next;
-      });
-    }
-
-    return { load, save, update, restore };
+    return { load, save, update };
   }
 
   // The "comida" section of a backup file: must be an object of a known version.

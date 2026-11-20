@@ -109,7 +109,7 @@
   }
 
   function assertBackupHasData(parsed) {
-    if (backupSummaryApi().summarize(parsed).isEmpty) {
+    if (backupSummaryApi().validate(parsed).isEmpty) {
       throw new Error('El respaldo no tiene empleados ni asistencia. No se envía ni se restaura para no borrar datos.');
     }
   }

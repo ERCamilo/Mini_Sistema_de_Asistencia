@@ -1001,13 +1001,12 @@
     function exportBackup() {
         return (repo === null || repo === void 0 ? void 0 : repo.load(state !== null && state !== void 0 ? state : undefined)) || state;
     }
-    async function importBackup(section, applyOther) {
+    async function importBackup(section) {
         if (!host || !repo)
             throw new Error('Comida todavía no está lista para restaurarse.');
         const next = g.ComidaRepository.parseBackup(section, host.today(), newId());
-        const restored = await repo.restore(next, applyOther);
+        const restored = await repo.update(() => next);
         state = repo.load(restored);
-        render();
     }
     // The bar space that used to hold Reportes shows an empty slot until the user picks.
     function chooseNavSlot() {

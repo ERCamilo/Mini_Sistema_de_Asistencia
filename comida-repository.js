@@ -96,24 +96,7 @@
                 return next;
             });
         }
-        function restore(next, applyOther) {
-            return exclusive(() => {
-                const previous = options.storage.getItem(STORAGE_KEY);
-                write(next);
-                try {
-                    applyOther();
-                }
-                catch (error) {
-                    if (previous === null)
-                        options.storage.removeItem(STORAGE_KEY);
-                    else
-                        options.storage.setItem(STORAGE_KEY, previous);
-                    throw error;
-                }
-                return next;
-            });
-        }
-        return { load, save, update, restore };
+        return { load, save, update };
     }
     // The "comida" section of a backup file: must be an object of a known version.
     function parseBackup(section, today, periodId) {

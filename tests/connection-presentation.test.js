@@ -5,6 +5,7 @@ test('a single title describes each connection stage, including native personal 
  assert.equal(describePage({task:'send',taskTitle:'Enviar asistencia'}).title,'Enviar asistencia');
  assert.equal(describePage({native:'personal-review',nativeTitle:'Revisa qué cambiará'}).title,'Actualizar personal');
  assert.equal(describePage({native:'personal-result'}).title,'Personal actualizado');
+ assert.equal(describePage({native:'backup-result'}).title,'Respaldo restaurado');
  assert.equal(describePage({native:'direct',nativeTitle:'Escanear QR de SA'}).title,'Escanear QR de SA');
  assert.equal(describePage({native:'direct'}).back,true);
 });

@@ -10,6 +10,7 @@ interface MiniBackupSummaryResult {
   requests: number;
   workContexts: number;
   hasSettings: boolean;
+  comida: { clients: number; orders: number; payments: number; closedPeriods: number } | null;
   isEmpty: boolean;
 }
 
@@ -28,7 +29,11 @@ interface MiniBackupSummaryResult {
     return 0;
   }
 
-  function summarize(parsed: unknown): MiniBackupSummaryResult {
+  function list(value: unknown): unknown[] {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function summarize(parsed: unknown, { allowComida = false } = {}): MiniBackupSummaryResult {
     const data = isPlainObject(parsed) ? parsed : {};
     const employees = Array.isArray(data.users) ? data.users.length : 0;
     let attendanceDays = 0;
@@ -41,6 +46,16 @@ interface MiniBackupSummaryResult {
       }
     }
     const requests = Array.isArray(data.requests) ? data.requests.length : 0;
+    const food = allowComida && isPlainObject(data.comida) ? data.comida : null;
+    const comida = food && {
+      clients: list(food.clients).length,
+      orders: list(food.orders).length,
+      payments: list(food.payments).length,
+      closedPeriods: list(food.periods).filter(period => isPlainObject(period) && typeof period.end === 'string').length
+    };
+    const hasFood = food && comida && (Object.values(comida).some(count => count > 0)
+      || ['dishes', 'categories', 'purchases', 'pausedPersonIds'].some(key => list(food[key]).length > 0)
+      || (isPlainObject(food.notes) && Object.keys(food.notes).length > 0));
     return {
       employees,
       attendanceDays,
@@ -48,9 +63,50 @@ interface MiniBackupSummaryResult {
       requests,
       workContexts: countWorkContexts(data.workContexts),
       hasSettings: isPlainObject(data.settings) && Object.keys(data.settings).length > 0,
-      isEmpty: employees === 0 && attendanceRecords === 0 && requests === 0
+      comida,
+      isEmpty: employees === 0 && attendanceRecords === 0 && requests === 0 && !hasFood
     };
   }
 
-  return { summarize };
+  function validate(parsed: unknown, { allowComida = false } = {}) {
+    if (!isPlainObject(parsed) || (parsed.schema !== undefined && parsed.schema !== 'mini-backup/v1')) {
+      throw new Error('El archivo no es un respaldo de Mini.');
+    }
+    if (parsed.schemaVersion !== undefined && parsed.schemaVersion !== 1) {
+      throw new Error('La versión del respaldo no es compatible. Actualiza Mini e inténtalo de nuevo.');
+    }
+    for (const [key, label] of [['users', 'empleados'], ['requests', 'solicitudes'], ['templates', 'plantillas']]) {
+      if (parsed[key] !== undefined && (!Array.isArray(parsed[key]) || !parsed[key].every(isPlainObject))) {
+        throw new Error('La lista de ' + label + ' no es válida.');
+      }
+    }
+    if (parsed.attendance !== undefined && (!isPlainObject(parsed.attendance) || !Object.values(parsed.attendance).every(isPlainObject))) {
+      throw new Error('La asistencia no es válida.');
+    }
+    if (parsed.settings !== undefined && (!isPlainObject(parsed.settings)
+      || !Object.values(parsed.settings).every(value => value === null || typeof value === 'string'))) {
+      throw new Error('Los ajustes no son válidos.');
+    }
+    if (parsed.workContexts !== undefined && !Array.isArray(parsed.workContexts)
+      && (!isPlainObject(parsed.workContexts) || !Array.isArray(parsed.workContexts.contexts)
+        || (parsed.workContexts.activeContextId != null && typeof parsed.workContexts.activeContextId !== 'string'))) {
+      throw new Error('Las obras y cuadrillas no son válidas.');
+    }
+    if (parsed.comida !== undefined) {
+      if (!allowComida) throw new Error('Comida se restaura mediante el archivo de respaldo.');
+      const food = parsed.comida;
+      if (!isPlainObject(food)
+        || ['clients', 'orders', 'payments', 'periods', 'dishes', 'categories', 'purchases', 'pausedPersonIds']
+          .some(key => food[key] !== undefined && !Array.isArray(food[key]))
+        || ['notes', 'sent'].some(key => food[key] !== undefined && !isPlainObject(food[key]))) {
+        throw new Error('Los datos de Comida del respaldo no son válidos.');
+      }
+      if (food.schemaVersion !== undefined && food.schemaVersion !== 1) {
+        throw new Error('El respaldo de Comida es de una versión más nueva. Actualiza Mini.');
+      }
+    }
+    return summarize(parsed, { allowComida });
+  }
+
+  return { summarize, validate };
 });

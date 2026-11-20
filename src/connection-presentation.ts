@@ -68,7 +68,7 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
   if(s.home)return {key:'home',title:'Conexiones',back:false};
   if((s.task==='invitation'||s.task==='link')&&s.linkPhase)return {key:s.linkPhase==='linked'?'linked':s.linkPhase==='preview'?'confirm':'invitation',title:s.linkPhase==='linked'?'Dispositivo vinculado':s.linkPhase==='preview'?'Confirmar vínculo':'Vincular con mi obra',back:true};
   if(s.task)return {key:s.task,title:s.taskTitle||'Conexiones',back:true};
-  const titles:Record<string,string>={'personal-review':'Actualizar personal','personal-result':'Personal actualizado','personal-received':'Personal recibido'};
+  const titles:Record<string,string>={'personal-review':'Actualizar personal','personal-result':'Personal actualizado','personal-received':'Personal recibido','backup-result':'Respaldo restaurado'};
   return {key:s.native||'direct',title:titles[s.native||'']||s.nativeTitle||'Conexión directa',back:true};
  }
  /** The three real links, in the order shown by Vincular. One tap on each enters its flow. */
@@ -196,7 +196,14 @@ interface MiniPresentationOptions {shell:HTMLElement;body:HTMLElement;task:HTMLE
    const home=!o.shell.querySelector<HTMLElement>('[data-connections-home]')?.hidden;
    let snapshot:MiniPresentationSnapshot={home};
    if(!home&&!o.task.hidden){snapshot={task:o.task.dataset.screen,taskTitle:o.title.textContent||'',linkPhase:o.task.querySelector('#firebase-link-code')?d.getElementById('firebase-link-status')?.dataset.linkPhase:undefined};const review=o.task.querySelector<HTMLElement>('[data-organization-review]');if(snapshot.task==='members'&&review&&!review.hidden)snapshot={task:'shared-review',taskTitle:'Revisar asistencia'};if(d.getElementById('firebase-link-confirm')?.hidden===false&&o.task.querySelector('#firebase-link-confirm'))snapshot={task:'confirm',taskTitle:'Confirmar vínculo'};}
-   else if(!home){const native=o.body.querySelector('.mini-roster-review:not(.mini-backup-review)')?'personal-review':o.body.querySelector('.mini-roster-result')?'personal-result':o.body.querySelector('[data-review-roster]')?'personal-received':'direct';snapshot={native,nativeTitle:o.body.querySelector<HTMLElement>('[data-mini-title]')?.dataset.miniTitle||o.body.querySelector('h3')?.textContent||''};}
+   else if(!home){
+    let native='direct';
+    if(o.body.querySelector('[data-finish-restore]'))native='backup-result';
+    else if(o.body.querySelector('.mini-roster-review:not(.mini-backup-review)'))native='personal-review';
+    else if(o.body.querySelector('.mini-roster-result'))native='personal-result';
+    else if(o.body.querySelector('[data-review-roster]'))native='personal-received';
+    snapshot={native,nativeTitle:o.body.querySelector<HTMLElement>('[data-mini-title]')?.dataset.miniTitle||o.body.querySelector('h3')?.textContent||''};
+   }
    const page=describePage(snapshot);o.shell.dataset.miniConnectionPage=page.key;
    if(heading!.textContent!==page.title)heading!.textContent=page.title;
    back.hidden=!page.back||(!home&&o.task.hidden&&!o.body.querySelector('[data-back],[data-finish-roster]'));account.hidden=!home&&!!o.task.hidden;

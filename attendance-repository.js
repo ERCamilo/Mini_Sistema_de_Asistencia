@@ -263,7 +263,7 @@
         function clearAll() {
             persistAttendance({});
         }
-        function importBatch(incoming, mode = 'merge') {
+        function importBatch(incoming, mode = 'merge', { preserveTimestamps = false } = {}) {
             if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
                 throw new Error('Los datos de asistencia a importar deben ser un mapa de fechas a registros');
             }
@@ -301,7 +301,7 @@
                                     schemaVersion: CURRENT_SCHEMA_VERSION,
                                     localOnly: true,
                                     createdAt: (existing === null || existing === void 0 ? void 0 : existing.createdAt) || rec.createdAt || timestamp,
-                                    updatedAt: timestamp
+                                    updatedAt: preserveTimestamps && typeof rec.updatedAt === 'string' ? rec.updatedAt : timestamp
                                 };
                             }
                             if (item) {
@@ -372,6 +372,10 @@
         function getTombstones() {
             return loadTombstones().map(t => ({ ...t }));
         }
+        function restoreSnapshot(snapshot) {
+            persistAttendance(snapshot.attendance);
+            persistTombstones(snapshot.tombstones);
+        }
         function clearTombstones() {
             persistTombstones([]);
         }
@@ -387,6 +391,7 @@
             removeDays,
             importBatch,
             exportSnapshot,
+            restoreSnapshot,
             getTombstones,
             setDayPosition,
             clearTombstones

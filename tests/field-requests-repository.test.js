@@ -31,11 +31,15 @@ test('repository load degrades corrupt or invalid collections to empty arrays', 
   assert.deepEqual(repository.load(), { requests: [], templates: [] });
 });
 
-test('atomic restore rolls live state and persistence back after a later failure', () => {
+test('atomic restore rolls live state and persistence back after an asynchronous failure', async () => {
   const repository = Repository.createFieldRequestsRepository({ storage: storage() });
   const previous = { requests: [{ id: 'old' }], templates: [] };
   let live = previous; let attempts = 0;
-  assert.throws(() => repository.runAtomicRestore(previous, { requests: [{ id: 'new' }], templates: [] }, state => { live = state; }, () => { if (attempts++ === 0) throw new Error('late failure'); }));
+  await assert.rejects(() => repository.runAtomicRestore(previous, { requests: [{ id: 'new' }], templates: [] }, state => { live = state; }, async state => {
+    assert.equal(state, live);
+    await Promise.resolve();
+    if (attempts++ === 0) throw new Error('late failure');
+  }), /late failure/);
   assert.deepEqual(live, previous);
   assert.equal(attempts, 2);
 });
