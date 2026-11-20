@@ -63,7 +63,7 @@ test('edición posterior al compartido permanece pendiente y el respaldo incluye
    const saved=await page.evaluate(()=>buildMiniBackupData());assert.ok(saved.settings.mini_employee_report_v1);
    await page.click('#employee-report-refresh');assert.match(await preview(page),/900 → 1000/);
    // Exercise the real atomic backup restore with its exact report reference.
-   await page.evaluate(backup=>{localStorage.removeItem('mini_employee_report_v1');applyBackupRestore(backup);},saved);
+   await page.evaluate(async backup=>{localStorage.removeItem('mini_employee_report_v1');await applyBackupRestore(backup);},saved);
    await page.click('#employee-report-refresh');assert.match(await preview(page),/900 → 1000/);assert.deepEqual(errors,[]);
  }finally{await context.close();}
 });

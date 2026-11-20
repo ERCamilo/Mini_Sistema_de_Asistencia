@@ -5,18 +5,16 @@ const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 test('Mini backup restore accepts canonical workContexts snapshot including empty contexts', () => {
-  assert.match(html, /parsed\.workContexts && typeof parsed\.workContexts === 'object'/);
-  assert.match(html, /Array\.isArray\(parsed\.workContexts\.contexts\)/);
-  assert.match(html, /workContextsSnapshot = \{/);
-  assert.match(html, /workContexts: workContextsSnapshot \}/);
+  const summary = require('../mini-backup-summary.js');
+  assert.equal(summary.validate({ users: [{ id: 'u1' }], workContexts: { contexts: [], activeContextId: null } }).workContexts, 0);
+  assert.match(html, /workContexts: workContextsSnapshot/);
   assert.match(html, /window\.workContextManager\?\.importSnapshot\(state\.workContexts\)/);
 });
 
 test('Mini backup restore keeps legacy workContexts array compatibility by normalizing it', () => {
-  assert.match(html, /Array\.isArray\(parsed\.workContexts\)[\s\S]*?workContextsSnapshot = \{ schemaVersion: 1, contexts: parsed\.workContexts, activeContextId: null \}/);
+  assert.match(html, /Array\.isArray\(parsed\.workContexts\)\s*\? \{ schemaVersion: 1, contexts: parsed\.workContexts, activeContextId: null \}/);
 });
 
 test('backup preview counts contexts from canonical snapshot instead of requiring a root array', () => {
-  assert.match(html, /parsed\.workContexts && Array\.isArray\(parsed\.workContexts\.contexts\) \? parsed\.workContexts\.contexts : \[\]/);
-  assert.match(html, /workContextList\.length/);
+  assert.match(html, /count\(summary\.workContexts, 'obra'\)/);
 });

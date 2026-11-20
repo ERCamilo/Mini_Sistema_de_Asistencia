@@ -1,6 +1,16 @@
 {
-  "version": "2.19.1",
+  "version": "2.19.2",
   "changelog": [
+    {
+      "version": "2.19.2",
+      "date": "2026-11-19",
+      "title": "Respaldos con revisión y confirmación",
+      "items": [
+        "Antes de restaurar un archivo puedes ver qué incluye y descargar una copia de tus datos actuales.",
+        "Puedes restaurar un archivo con datos de Comida aunque no tenga personal ni asistencia. Usa el archivo .json para llevar los pedidos, pagos y cierres a otro Mini.",
+        "Mini confirma la restauración después de guardar la asistencia. Si falla, puedes reintentar desde la misma pantalla."
+      ]
+    },
     {
       "version": "2.19.1",
       "date": "2026-11-19",

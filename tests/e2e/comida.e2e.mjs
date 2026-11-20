@@ -625,11 +625,13 @@ test('a quota failure leaves the food backup unapplied and can be retried', asyn
     });
     const restore = page.locator('#btn-do-restore');
     await restore.click();
+    await page.locator('#confirm-ok').click();
     await page.waitForFunction(() => document.getElementById('restore-validation-msg').textContent.includes('Error al restaurar'));
     assert.equal(await page.evaluate(() => employeeRepository.getById('u1').name), 'Juan Pérez');
     assert.equal((await saved(page)).clients?.length || 0, 0);
     await page.evaluate(() => { Storage.prototype.setItem = window.realStoreWrite; });
     await restore.click();
+    await page.locator('#confirm-ok').click();
     await page.waitForFunction(() => document.getElementById('restore-validation-msg').textContent.includes('Respaldo restaurado'));
     assert.equal(await page.evaluate(() => employeeRepository.getById('u1').name), 'Nombre restaurado');
     assert.equal((await saved(page)).clients[0].name, 'Cliente restaurado');

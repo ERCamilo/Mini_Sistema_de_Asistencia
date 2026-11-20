@@ -45,14 +45,14 @@
         function importCollections(requests, templates) {
             return validateCollections(requests, templates);
         }
-        function runAtomicRestore(previous, candidate, apply, persist) {
+        async function runAtomicRestore(previous, candidate, apply, persist) {
             try {
                 apply(candidate);
-                persist();
+                await persist(candidate);
             }
             catch (error) {
                 apply(previous);
-                persist();
+                await persist(previous);
                 throw error;
             }
         }

@@ -52,9 +52,15 @@ interface FieldRequestsStorage {
       return validateCollections(requests, templates);
     }
 
-    function runAtomicRestore(previous: unknown, candidate: unknown, apply: (state: any) => void, persist: () => void) {
-      try { apply(candidate); persist(); }
-      catch (error) { apply(previous); persist(); throw error; }
+    async function runAtomicRestore<T>(previous: T, candidate: T, apply: (state: T) => void, persist: (state: T) => Promise<void>) {
+      try {
+        apply(candidate);
+        await persist(candidate);
+      } catch (error) {
+        apply(previous);
+        await persist(previous);
+        throw error;
+      }
     }
 
     return { load, save, validateCollections, exportCollections, importCollections, runAtomicRestore };

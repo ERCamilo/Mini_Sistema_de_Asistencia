@@ -58,7 +58,7 @@
             return { key: s.linkPhase === 'linked' ? 'linked' : s.linkPhase === 'preview' ? 'confirm' : 'invitation', title: s.linkPhase === 'linked' ? 'Dispositivo vinculado' : s.linkPhase === 'preview' ? 'Confirmar vínculo' : 'Vincular con mi obra', back: true };
         if (s.task)
             return { key: s.task, title: s.taskTitle || 'Conexiones', back: true };
-        const titles = { 'personal-review': 'Actualizar personal', 'personal-result': 'Personal actualizado', 'personal-received': 'Personal recibido' };
+        const titles = { 'personal-review': 'Actualizar personal', 'personal-result': 'Personal actualizado', 'personal-received': 'Personal recibido', 'backup-result': 'Respaldo restaurado' };
         return { key: s.native || 'direct', title: titles[s.native || ''] || s.nativeTitle || 'Conexión directa', back: true };
     }
     /** The three real links, in the order shown by Vincular. One tap on each enters its flow. */
@@ -317,7 +317,15 @@
                     snapshot = { task: 'confirm', taskTitle: 'Confirmar vínculo' };
             }
             else if (!home) {
-                const native = o.body.querySelector('.mini-roster-review:not(.mini-backup-review)') ? 'personal-review' : o.body.querySelector('.mini-roster-result') ? 'personal-result' : o.body.querySelector('[data-review-roster]') ? 'personal-received' : 'direct';
+                let native = 'direct';
+                if (o.body.querySelector('[data-finish-restore]'))
+                    native = 'backup-result';
+                else if (o.body.querySelector('.mini-roster-review:not(.mini-backup-review)'))
+                    native = 'personal-review';
+                else if (o.body.querySelector('.mini-roster-result'))
+                    native = 'personal-result';
+                else if (o.body.querySelector('[data-review-roster]'))
+                    native = 'personal-received';
                 snapshot = { native, nativeTitle: ((_d = o.body.querySelector('[data-mini-title]')) === null || _d === void 0 ? void 0 : _d.dataset.miniTitle) || ((_e = o.body.querySelector('h3')) === null || _e === void 0 ? void 0 : _e.textContent) || '' };
             }
             const page = describePage(snapshot);

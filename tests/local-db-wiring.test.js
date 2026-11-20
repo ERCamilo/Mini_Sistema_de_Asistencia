@@ -50,7 +50,8 @@ test('Solicitudes UI routes request/template storage through its repository faca
 
 test('restoring a backup persists attendance through the repository', () => {
   const restore = html.slice(html.indexOf('function applyBackupRestore'), html.indexOf('function clearStagedBackup'));
-  assert.match(html.slice(html.indexOf('window.doRestoreBackup')), /applyBackupRestore\(parsed\)/);
-  assert.match(restore, /attendanceRepository\.importBatch\(state\.attendance, 'replace'\)/);
+  assert.match(html.slice(html.indexOf('window.doRestoreBackup')), /applyBackupRestore\(parsed, \{ allowComida: true \}\)/);
+  assert.match(restore, /attendanceRepository\.importBatch\(parsed\.attendance, 'replace', \{ preserveTimestamps: true \}\)/);
+  assert.match(restore, /dayStore\.flush\?\.\(\)/);
   assert.doesNotMatch(restore, /attendanceData = state\.attendance/);
 });

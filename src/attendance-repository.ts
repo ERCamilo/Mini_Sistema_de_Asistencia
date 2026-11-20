@@ -314,7 +314,8 @@ interface AttendanceRepositoryOptions {
 
     function importBatch(
       incoming: unknown,
-      mode: 'merge' | 'replace' = 'merge'
+      mode: 'merge' | 'replace' = 'merge',
+      { preserveTimestamps = false } = {}
     ): { updatedDays: number; totalRecords: number; attendance: AttendanceDataStoreMap } {
       if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) {
         throw new Error('Los datos de asistencia a importar deben ser un mapa de fechas a registros');
@@ -356,7 +357,7 @@ interface AttendanceRepositoryOptions {
                   schemaVersion: CURRENT_SCHEMA_VERSION,
                   localOnly: true,
                   createdAt: existing?.createdAt || rec.createdAt || timestamp,
-                  updatedAt: timestamp
+                  updatedAt: preserveTimestamps && typeof rec.updatedAt === 'string' ? rec.updatedAt : timestamp
                 };
               }
 
@@ -439,6 +440,11 @@ interface AttendanceRepositoryOptions {
       return loadTombstones().map(t => ({ ...t }));
     }
 
+    function restoreSnapshot(snapshot: { attendance: AttendanceDataStoreMap; tombstones: AttendanceTombstoneRecord[] }): void {
+      persistAttendance(snapshot.attendance);
+      persistTombstones(snapshot.tombstones);
+    }
+
     function clearTombstones(): void {
       persistTombstones([]);
     }
@@ -455,6 +461,7 @@ interface AttendanceRepositoryOptions {
       removeDays,
       importBatch,
       exportSnapshot,
+      restoreSnapshot,
       getTombstones,
       setDayPosition,
       clearTombstones

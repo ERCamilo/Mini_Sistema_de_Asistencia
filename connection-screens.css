@@ -87,7 +87,9 @@
 .mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>strong,.mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details li>span:not(.mini-roster-state) {grid-column:1;}
 .mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-version {padding:10px 12px;font-size:12px;}
 .mini-p2p-shell[data-mini-connection-page=personal-review] .mini-roster-details summary {font-size:13px;}
-.mini-p2p-shell[data-mini-connection-page=personal-result] .mini-p2p-result-copy h3 {display:none;}
+.mini-p2p-shell[data-mini-connection-page=personal-result] .mini-p2p-result-copy h3,
+.mini-p2p-shell[data-mini-connection-page=backup-result] .mini-p2p-result-copy h3,
+.mini-p2p-shell[data-mini-connection-page=backup-result] .mini-roster-flow-head {display:none;}
 .mini-p2p-shell .mini-roster-footer {background:var(--card-bg);}
 @media(max-width:520px){.mini-p2p-shell[data-mini-connection-page] {width:100%;max-height:94dvh;}.mini-p2p-shell[data-mini-connection-page]>.mini-p2p-topbar {padding:10px 12px;}.mini-p2p-shell[data-mini-connection-page] .connections-task {padding:14px;}.mini-p2p-shell .mini-p2p-step {padding:14px;}.mini-connection-status {grid-column:2;grid-row:auto;justify-self:start;}.mini-connection-identity {padding:14px!important;}}
 

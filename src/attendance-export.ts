@@ -833,7 +833,15 @@ interface AttExportHandlerContext {
     if (!isChannelAuthSafe(channel, isAuthFn)) {
       throw new Error('Canal P2P no autenticado.');
     }
-    channel.send(JSON.stringify(response));
+    const text = JSON.stringify(response);
+    try {
+      channel.send(text);
+    } catch (error) {
+      if (error instanceof TypeError && new TextEncoder().encode(text).byteLength > 64 * 1024) {
+        throw new Error('La asistencia supera el tamaño admitido por la conexión. Solicita un intervalo de fechas más corto desde SA.');
+      }
+      throw error;
+    }
   }
 
   function attachAttendanceResponder(

@@ -40,9 +40,9 @@ test('the central + opens the Comida options and closes its sheet', () => {
 
 test('the file backup carries Comida and a restore validates it before changing anything', () => {
   const download = html.slice(html.indexOf('function downloadJSON()'), html.indexOf('function downloadJSON()') + 600);
-  assert.match(download, /data\.comida = window\.ComidaUI\.exportBackup\(\)/);
-  const restore = html.slice(html.indexOf('function applyBackupRestore(parsed)'), html.indexOf('function clearStagedBackup'));
-  const parse = restore.indexOf('ComidaRepository.parseBackup(parsed.comida');
+  assert.match(download, /const comida = window\.ComidaUI\?\.exportBackup\(\);[\s\S]*data\.comida = comida/);
+  const restore = html.slice(html.indexOf('function applyBackupRestore('), html.indexOf('function clearStagedBackup'));
+  const parse = restore.indexOf('MiniBackupSummary.validate(parsed, { allowComida })');
   assert.ok(parse > 0, 'valida la sección comida');
   assert.ok(parse < restore.indexOf('runAtomicRestore'), 'antes de restaurar lo demás');
   assert.match(restore, /ComidaUI\.importBackup\(/);

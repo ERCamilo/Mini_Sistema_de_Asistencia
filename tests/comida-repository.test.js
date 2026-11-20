@@ -74,18 +74,17 @@ test('transactions from two readers preserve both changes', async () => {
   assert.deepEqual(first.load().clients.map(c => [c.id, c.num]), [['c1', 'C01'], ['c2', 'C02']]);
 });
 
-test('a failed food restore leaves other data alone and a failed application rolls Comida back', async () => {
+test('a failed replacement write preserves the previous Comida state', async () => {
   const storage = memoryStorage();
   const repo = repoWith(storage);
   const before = repo.load();
   repo.save(before);
   const next = Store.setNavSlot(before, 'comida');
   const set = storage.setItem;
-  let applied = false;
   storage.setItem = () => { throw new DOMException('Full', 'QuotaExceededError'); };
-  await assert.rejects(() => repo.restore(next, () => { applied = true; }), /espacio/i);
-  assert.equal(applied, false);
-  storage.setItem = set;
-  await assert.rejects(() => repo.restore(next, () => { throw new Error('falla de otras secciones'); }), /otras secciones/);
+  await assert.rejects(() => repo.update(() => next), /espacio/i);
   assert.deepEqual(repo.load(), before);
+  storage.setItem = set;
+  await repo.update(() => next);
+  assert.deepEqual(repo.load(), next);
 });

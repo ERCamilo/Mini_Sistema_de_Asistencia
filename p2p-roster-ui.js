@@ -2621,10 +2621,12 @@
           <h4 id="mini-backup-compare-title">Qué cambiará en este Mini</h4>
           <ul>${changeRows}</ul>
         </section>
+        <p class="mini-p2p-subtitle">Comida se conserva en este Mini. Para transferirla, usa el archivo .json.</p>
         ${replaceNotice}
         ${employeeRows ? `<details class="mini-roster-details"><summary>${vectorIcon('users', 16)}<span>Ver empleados del respaldo</span>${countBadge(model.backupEmployees.length, 'empleados')}${vectorIcon('chevronRight', 15)}</summary><ul>${employeeRows}</ul></details>` : ''}
         <footer class="mini-roster-footer">
           <span class="mini-roster-hint">Podés descartarlo: no se aplica nada hasta que confirmes.</span>
+          <p class="mini-p2p-subtitle" data-restore-error role="alert" hidden></p>
           <div class="mini-backup-footer-actions">${secondary('Descartar', 'data-discard-review')}${primary('Restaurar', 'data-apply-backup', 'restore')}</div>
         </footer>
       </div>`; });
@@ -2639,18 +2641,36 @@
       toast('Respaldo descartado.');
       renderBackupHub();
     });
-    body().querySelector('[data-apply-backup]')?.addEventListener('click', async () => {
-      if (model.replacesExistingData && typeof root.showConfirm === 'function') {
-        const ok = await root.showConfirm(`Se reemplazarán ${model.current.employees} empleados y ${model.current.attendanceDays} días de asistencia de este Mini por el respaldo de ${sender}.`, { title: '¿Restaurar respaldo?', confirmText: 'Restaurar', danger: true });
-        if (!ok) return;
-      }
+    body().querySelector('[data-apply-backup]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const discard = body().querySelector('[data-discard-review]');
+      const errorMessage = body().querySelector('[data-restore-error]');
+      if (button.disabled) return;
+      button.disabled = true;
+      discard.disabled = true;
+      errorMessage.hidden = true;
+      let restored = false;
       try {
+        if (typeof root.showConfirm === 'function') {
+          const ok = await root.showConfirm(`Se reemplazarán los datos de este Mini en las secciones incluidas en el respaldo de ${sender}.`, { title: '¿Restaurar respaldo?', confirmText: 'Restaurar', danger: true });
+          if (!ok) return;
+        }
         await root.restoreMiniBackupData(parsed, { stagedTransferId: transferId });
+        restored = true;
       } catch (err) {
-        return renderError(err.message || String(err));
+        errorMessage.textContent = 'Error al restaurar. ' + (err.message || String(err));
+        errorMessage.hidden = false;
+        return;
+      } finally {
+        if (!restored) {
+          button.disabled = false;
+          discard.disabled = false;
+          button.focus();
+        }
       }
       try { recordP2PActivity('backup-restored', { peerId: staged.sourcePeerId, peerApp: 'mini', displayName: sender }, 'Respaldo de ' + sender + ' restaurado.', 'backup-restored:' + staged.sha256); } catch (_) {}
       try { await refreshMiniP2PHeader(); } catch (_) {}
+      if (!button.isConnected) return;
       morphShell(() => { body().innerHTML = `
         <div class="mini-p2p-step mini-roster-result">
           <div class="mini-roster-flow-head"><div class="mini-p2p-mode-chip">${vectorIcon('check', 15)}<span>RESTAURADO</span></div><span class="mini-roster-step-count">2 / 2</span></div>
@@ -2663,7 +2683,9 @@
           </div>
           <div class="mini-p2p-actions">${primary('Finalizar', 'data-finish-restore', 'check')}</div>
         </div>`; });
-      body().querySelector('[data-finish-restore]')?.addEventListener('click', () => closeTransferModal());
+      const finish = body().querySelector('[data-finish-restore]');
+      finish?.addEventListener('click', () => closeTransferModal());
+      finish?.focus();
       try { signalTerminalSuccess('backup-restored:' + staged.sha256, { title: 'Respaldo restaurado', detail: 'Datos de ' + sender + ' aplicados.' }); } catch (_) {}
     });
   }
@@ -2692,7 +2714,7 @@
     const pendingSection = stagedBackups.length > 0 ? `
       <section class="mini-p2p-activity" aria-labelledby="mini-backup-pending-title">
         <div class="mini-p2p-activity-head">
-          <div><h3 id="mini-backup-pending-title">Respaldos pendientes</h3><div class="mini-p2p-subtitle">Copias recibidas que requieren una decisión</div></div>
+          <div><h3 id="mini-backup-pending-title">Respaldos pendientes</h3><div class="mini-p2p-subtitle">Revisa las copias recibidas antes de cerrar o recargar Mini.</div></div>
           ${countBadge(stagedBackups.length, 'pendientes')}
         </div>
         ${stagedCards}
@@ -2728,7 +2750,7 @@
         <div class="mini-p2p-home">
           <div class="mini-p2p-header-line" data-mini-title="Respaldos">
             ${backButton('Inicio')}
-            <div><h2>Respaldos</h2><p>Transfiere copias de seguridad de forma directa y segura.</p></div>
+            <div><h2>Respaldos</h2><p>Envía copias por conexión directa. Para llevar también Comida, descarga el archivo .json desde Más → Datos.</p></div>
           </div>
           ${pendingSection}
           <section class="mini-p2p-devices" aria-labelledby="mini-backup-devices-title">

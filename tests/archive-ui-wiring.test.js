@@ -27,7 +27,7 @@ test('an archive file is merged back on restore, never replacing current data', 
   assert.match(validate, /AttendanceArchive\.isArchiveFile\(parsed\)/);
   const restore = between('window.doRestoreBackup', 'IMPORTAR / ACTUALIZAR EMPLEADOS');
   const merge = restore.indexOf('mergeArchiveFile(parsed)');
-  assert.ok(merge > -1 && merge < restore.indexOf('applyBackupRestore(parsed)'));
+  assert.ok(merge > -1 && merge < restore.indexOf('applyBackupRestore(parsed, { allowComida: true })'));
   const mergeFn = between('function mergeArchiveFile', 'window.restoreMiniBackupData');
   assert.match(mergeFn, /attendanceRepository\.importBatch\(parsed\.attendance, 'merge'\)/);
   assert.doesNotMatch(mergeFn, /'replace'/);
